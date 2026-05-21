@@ -307,12 +307,12 @@ def analytical_solution_u(geometry, on):
 
 
 def error_u(solution_u):
-    def error_u(data, on):
+    def _error_u(data, on):
         sol = solution_u.evaluate(on)
         ansol = analytical_solution_u(data, on)
         return np.abs(sol.flat - ansol)
 
-    return error_u
+    return _error_u
 
 
 def analytical_solution_v(geometry, on):
@@ -323,12 +323,12 @@ def analytical_solution_v(geometry, on):
 
 
 def error_v(solution_v):
-    def error_v(data, on):
+    def _error_v(data, on):
         sol = solution_v.evaluate(on)
         ansol = analytical_solution_v(data, on)
         return np.abs(sol.flat - ansol)
 
-    return error_v
+    return _error_v
 
 
 def analytical_solution_p(geometry, on):
@@ -350,13 +350,13 @@ if not impose_pressure_bcs:
 
 
 def error_p(solution_p):
-    def error_p(data, on):
+    def _error_p(data, on):
         sol = solution_p.evaluate(on)
         corr_sol = sol.flatten() - pressure_error_offset
         ansol = analytical_solution_p(data, on)
         return np.abs(corr_sol - ansol)
 
-    return error_p
+    return _error_p
 
 
 # Plot geometry and fields
@@ -412,8 +412,10 @@ def loss_function_v(data, on):
 
 
 def loss_function_p(_data, on):
-    return mass_factor * (
-        mapper_u.gradient(on)[:, 0, 0] + mapper_v.gradient(on)[:, 0, 1]
+    return np.abs(
+        mass_factor * (
+            mapper_u.gradient(on)[:, 0, 0] + mapper_v.gradient(on)[:, 0, 1]
+        )
     )
 
 
