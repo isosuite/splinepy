@@ -413,9 +413,8 @@ def loss_function_v(data, on):
 
 def loss_function_p(_data, on):
     return np.abs(
-        mass_factor * (
-            mapper_u.gradient(on)[:, 0, 0] + mapper_v.gradient(on)[:, 0, 1]
-        )
+        mass_factor
+        * (mapper_u.gradient(on)[:, 0, 0] + mapper_v.gradient(on)[:, 0, 1])
     )
 
 
