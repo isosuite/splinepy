@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - v0.2.1
+## [0.2.1] - 2026-06
 
 ### Added
 
@@ -108,7 +108,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`microstructure/tiles`**: Fixed incorrect ordering in finite-difference sensitivity calculation; fixed derivative implementations for `Chi`, `CubeVoid`, `EllipsVoid`, `InverseCross3D`; fixed typo causing errors in `HollowOctagonExtrude`
 - **`microstructure/microstructure.py`**: Fixed typo in class docstring (`facilitatae` → `facilitate`)
 - **`multipatch.py`**: Added check to verify that Jacobians exist before computing interface orientations
-- **`bspline.py`**: Allow any negative number in the knot vector (previously restricted), fixing issue [#476](https://github.com/tataratat/splinepy/pull/476)
+- **`bspline.py`**: Allow any negative number in the knot vector (previously restricted), fixing issue [#476](https://github.com/isosuite/splinepy/pull/476)
 - **`utils/data.py`**: Minor fixes
 - **Various IO modules**: Fixed miscellaneous issues and improved error handling
 
@@ -150,7 +150,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial stable release series
 
-[Unreleased]: https://github.com/isosuite/splinepy/compare/v0.2.0...HEAD
+[0.2.1]: https://github.com/isosuite/splinepy/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/isosuite/splinepy/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/isosuite/splinepy/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/isosuite/splinepy/compare/v0.1.1...v0.1.2
