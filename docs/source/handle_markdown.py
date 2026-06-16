@@ -16,7 +16,6 @@ import os
 import pathlib
 import re
 import warnings
-from typing import List, Tuple
 
 # Path to this file.
 file_path = os.path.abspath(os.path.dirname(__file__))
@@ -38,7 +37,7 @@ def get_markdown_links(line: str) -> str:
     return possible or ""
 
 
-def get_special_links(line: str) -> List[Tuple[str, str]]:
+def get_special_links(line: str) -> list[tuple[str, str]]:
     """Get the special links from a string.
 
     Args:
@@ -208,6 +207,24 @@ def process_file(
                     new_path = "_static/" + str(pathlib.Path(item[1]).name)
                 line = line.replace(item[1], str(new_path))  # noqa: PLW2901
             content += f"{line}"
+
+    # super special links (just special images) that the sphinx markdown
+    # parser won't correctly handle since they are in html tags.
+    special_links = get_special_links(content)
+    for item in special_links:
+        if not item[0].strip():
+            warnings.warn(
+                f"Empty link in `{file}`. Link name `{item[1]}` link path "
+                f"`{item[0]}`. Will ignore link.",
+                stacklevel=3,
+            )
+            continue
+        if item[0].startswith("http"):  # skip http links and anchors
+            continue
+        else:
+            # just link to static folder in docs
+            new_path = "_static/" + str(pathlib.Path(item[1]).name)
+            content = content.replace(item[1], str(new_path))
 
     os.chdir(original_cwd)
 
