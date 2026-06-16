@@ -52,8 +52,7 @@ class TileBase(_SplinepyBase):
         attr = getattr(cls, attr_name, None)
         if attr is None and cls is not TileBase:
             raise NotImplementedError(
-                f"Inherited Tile-types need to provide {attr_name}, see "
-                "documentation."
+                f"Inherited Tile-types need to provide {attr_name}, see documentation."
             )
         return attr
 
@@ -224,9 +223,7 @@ class TileBase(_SplinepyBase):
                 parameters.ravel() < upper_bounds
             )
             if not _np.all(within_bounds):
-                out_of_bounds = parameters[
-                    ~within_bounds.reshape(parameters.shape)
-                ]
+                out_of_bounds = parameters[~within_bounds.reshape(parameters.shape)]
                 raise ValueError(
                     f"The following parameters are out of bounds: {out_of_bounds}. "
                     f"Expected bounds: lower: {lower_bounds} and upper: {upper_bounds}"
@@ -249,9 +246,7 @@ class TileBase(_SplinepyBase):
         if derivatives is None:
             return False
 
-        if not (
-            isinstance(derivatives, _np.ndarray) and derivatives.ndim == 3
-        ):
+        if not (isinstance(derivatives, _np.ndarray) and derivatives.ndim == 3):
             raise TypeError("parameters must be three-dimensional np array")
 
         if not (
@@ -282,9 +277,7 @@ class TileBase(_SplinepyBase):
           List of list of splines that represents parameter sensitivities.
           If it is not implemented, returns None.
         """
-        raise NotImplementedError(
-            f"create_tile() not implemented for {type(self)}"
-        )
+        raise NotImplementedError(f"create_tile() not implemented for {type(self)}")
 
     def _process_input(self, parameters, parameter_sensitivities):
         """Processing input for create_tile and _closing_tile
@@ -308,9 +301,7 @@ class TileBase(_SplinepyBase):
         # Set parameters to default values if not user-given
         if parameters is None:
             default_value = self.default_parameter_value
-            self._logd(
-                f"Setting parameters to default values ({default_value})"
-            )
+            self._logd(f"Setting parameters to default values ({default_value})")
             if isinstance(default_value, float):
                 parameters = _np.full(
                     (len(self.evaluation_points), self.n_info_per_eval_point),
@@ -319,6 +310,10 @@ class TileBase(_SplinepyBase):
             elif isinstance(default_value, _np.ndarray):
                 parameters = default_value
 
+        # Validity check of parameters and their sensitivities
+        self.check_params(parameters)
+        self.check_param_derivatives(parameter_sensitivities)
+
         # Initialize list of derivatives
         if parameter_sensitivities is not None:
             n_derivatives = parameter_sensitivities.shape[2]
@@ -326,10 +321,6 @@ class TileBase(_SplinepyBase):
         else:
             n_derivatives = 0
             derivatives = None
-
-        # Validity check of parameters and their sensitivities
-        self.check_params(parameters)
-        self.check_param_derivatives(parameter_sensitivities)
 
         return parameters, n_derivatives, derivatives
 
@@ -356,6 +347,4 @@ class TileBase(_SplinepyBase):
             raise ValueError(f"Invalid type for {param_name}")
 
         if not ((value > min_bound) and (value < max_bound)):
-            raise ValueError(
-                f"{param_name} must be in ({min_bound}, {max_bound})"
-            )
+            raise ValueError(f"{param_name} must be in ({min_bound}, {max_bound})")

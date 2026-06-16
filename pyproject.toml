@@ -10,7 +10,7 @@ authors = [
 license = {file = "LICENSE"}
 description = "Library for prototyping spline geometries of arbitrary dimensions and degrees, and IGA"
 keywords = ["bezier", "rational bezier", "bspline", "nurbs", "multi patch"]
-urls = {Homepage = "https://github.com/tataratat/splinepy"}
+urls = {Homepage = "https://github.com/isosuite/splinepy"}
 classifiers=[
     "Development Status :: 4 - Beta",
     "License :: OSI Approved :: MIT License",
@@ -113,9 +113,6 @@ lint.ignore = [
 ignore-words-list = "connec,tye,ned"
 skip="./docs/source/_generated/**,./docs/build/*,./build/*,./third_party/*,./tests/data/*.svg,*.html,*.js"
 
-[tool.black]
-line-length = 79
-exclude = "third_party"
 
 [tool.blackdoc]
 line-length = 75

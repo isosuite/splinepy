@@ -48,8 +48,7 @@ def get_special_links(line: str) -> list[tuple[str, str]]:
     """
 
     possible = [
-        x[::-1]
-        for x in re.findall(r"<img src=\"(.*?)\".*title=\"(.*?)\">", line)
+        x[::-1] for x in re.findall(r"<img src=\"(.*?)\".*title=\"(.*?)\">", line)
     ]
     return possible or ""
 
@@ -71,7 +70,7 @@ def get_github_path_from(link):
         _type_: _description_
     """
     return str(pathlib.Path(link).resolve()).replace(
-        repo_root, "https://raw.githubusercontent.com/tataratat/splinepy/main/"
+        repo_root, "https://raw.githubusercontent.com/isosuite/splinepy/main/"
     )
 
 
@@ -111,9 +110,7 @@ link_substitutions = {
 }
 
 
-def process_file(
-    file: str, relative_links: bool = True, return_content: bool = False
-):
+def process_file(file: str, relative_links: bool = True, return_content: bool = False):
     """Process a markdown file.
 
     This function will process a markdown file. It will replace all relative
@@ -148,9 +145,7 @@ def process_file(
                         stacklevel=3,
                     )
                     continue
-                if item[1].startswith(
-                    ("http", "#")
-                ):  # skip http links and anchors
+                if item[1].startswith(("http", "#")):  # skip http links and anchors
                     if "badge" in item[1]:
                         continue
                     line = line.replace(  # noqa: PLW2901
@@ -171,17 +166,13 @@ def process_file(
                             "See documentation for examples.",
                         )
                 elif not relative_links:  # generate links to github repo
-                    new_path = get_github_path_from(
-                        pathlib.Path(item[1]).resolve()
-                    )
+                    new_path = get_github_path_from(pathlib.Path(item[1]).resolve())
                 else:  # generate relative links
                     common_sub_path, steps_back = get_common_parent(
                         item[1], folder_to_save_to
                     )
                     new_path = "../" * steps_back + str(
-                        pathlib.Path(item[1])
-                        .resolve()
-                        .relative_to(common_sub_path)
+                        pathlib.Path(item[1]).resolve().relative_to(common_sub_path)
                     )
                 line = line.replace(item[1], str(new_path))  # noqa: PLW2901
 
@@ -199,41 +190,19 @@ def process_file(
                 if item[0].startswith("http"):  # skip http links and anchors
                     continue
                 elif not relative_links:  # generate links to github repo
-                    new_path = get_github_path_from(
-                        pathlib.Path(item[1]).resolve()
-                    )
+                    new_path = get_github_path_from(pathlib.Path(item[1]).resolve())
                 else:
                     # just link to static folder in docs
                     new_path = "_static/" + str(pathlib.Path(item[1]).name)
                 line = line.replace(item[1], str(new_path))  # noqa: PLW2901
             content += f"{line}"
 
-    # super special links (just special images) that the sphinx markdown
-    # parser won't correctly handle since they are in html tags.
-    special_links = get_special_links(content)
-    for item in special_links:
-        if not item[0].strip():
-            warnings.warn(
-                f"Empty link in `{file}`. Link name `{item[1]}` link path "
-                f"`{item[0]}`. Will ignore link.",
-                stacklevel=3,
-            )
-            continue
-        if item[0].startswith("http"):  # skip http links and anchors
-            continue
-        else:
-            # just link to static folder in docs
-            new_path = "_static/" + str(pathlib.Path(item[1]).name)
-            content = content.replace(item[1], str(new_path))
-
     os.chdir(original_cwd)
 
     if return_content:
         return content
 
-    with open(
-        os.path.join(folder_to_save_to, os.path.basename(file)), "w"
-    ) as f:
+    with open(os.path.join(folder_to_save_to, os.path.basename(file)), "w") as f:
         f.write(content)
 
 
@@ -246,9 +215,7 @@ def prepare_file_for_PyPI():
     Args:
         file (str): Path to the README file.
     """
-    content = process_file(
-        "README.md", relative_links=False, return_content=True
-    )
+    content = process_file("README.md", relative_links=False, return_content=True)
     with open("README.md", "w") as f:
         f.write(content)
 

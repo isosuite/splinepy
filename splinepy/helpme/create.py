@@ -36,9 +36,7 @@ def embedded(spline, new_dimension):
 
     if spline.dim > new_dimension:
         spline_dict = spline.todict()
-        spline_dict["control_points"] = spline_dict["control_points"][
-            :, :new_dimension
-        ]
+        spline_dict["control_points"] = spline_dict["control_points"][:, :new_dimension]
         return type(spline)(**spline_dict)
     elif spline.dim < new_dimension:
         spline_dict = spline.todict()
@@ -105,9 +103,7 @@ def extruded(spline, extrusion_vector=None):
             )
         )
     else:
-        raise ValueError(
-            "Dimension Mismatch between extrusion extrusion vector and spline."
-        )
+        raise ValueError("Dimension Mismatch between extrusion vector and spline.")
 
     # Start Extrusion
     spline_dict = {}
@@ -117,9 +113,7 @@ def extruded(spline, extrusion_vector=None):
     if spline.has_knot_vectors:
         spline_dict["knot_vectors"] = spline.knot_vectors + [[0, 0, 1, 1]]
     if spline.is_rational:
-        spline_dict["weights"] = _np.concatenate(
-            (spline.weights, spline.weights)
-        )
+        spline_dict["weights"] = _np.concatenate((spline.weights, spline.weights))
 
     return type(spline)(**spline_dict)
 
@@ -160,9 +154,7 @@ def revolved(
         axis = _np.asarray(axis).ravel()
         # Check Axis dimension
         if spline.control_points.shape[1] > axis.shape[0]:
-            raise ValueError(
-                "Dimension Mismatch between extrusion axis and spline."
-            )
+            raise ValueError("Dimension Mismatch between extrusion axis and spline.")
         elif spline.control_points.shape[1] < axis.shape[0]:
             _log.debug(
                 "Control Point dimension is smaller than axis dimension,"
@@ -172,9 +164,7 @@ def revolved(
             cps = _np.hstack(
                 (
                     spline.control_points,
-                    _np.zeros(
-                        (len(spline.control_points), expansion_dimension)
-                    ),
+                    _np.zeros((len(spline.control_points), expansion_dimension)),
                 )
             )
         else:
@@ -212,24 +202,20 @@ def revolved(
         center = _np.asarray(center).ravel()
         # Check Axis dimension
         if not (problem_dimension == center.shape[0]):
-            raise ValueError(
-                "Dimension Mismatch between axis and center of rotation."
-            )
+            raise ValueError("Dimension Mismatch between axis and center of rotation.")
         cps -= center
 
     # The parametric dimension is independent of the revolution but the
     # rotation-matrix is only implemented for 2D and 3D problems
     if cps.shape[1] not in {2, 3}:
         raise NotImplementedError(
-            "Sorry,revolutions only implemented for 2D and 3D splines"
+            "Sorry, revolutions only implemented for 2D and 3D splines"
         )
 
     # Angle must be (0, pi) non including
     # Rotation is always performed in half steps
     PI = _np.pi
-    minimum_n_knot_spans = int(
-        _np.ceil((abs(angle) + abs(_settings.TOLERANCE)) / PI)
-    )
+    minimum_n_knot_spans = int(_np.ceil((abs(angle) + abs(_settings.TOLERANCE)) / PI))
     if n_knot_spans is None or (n_knot_spans < minimum_n_knot_spans):
         n_knot_spans = minimum_n_knot_spans
 
@@ -275,9 +261,7 @@ def revolved(
     if spline.has_knot_vectors:
         kv = [0, 0, 0]
         [kv.extend([i + 1, i + 1]) for i in range(n_knot_spans - 1)]
-        spline_dict["knot_vectors"] = spline.knot_vectors + [
-            kv + [n_knot_spans] * 3
-        ]
+        spline_dict["knot_vectors"] = spline.knot_vectors + [kv + [n_knot_spans] * 3]
     if spline.is_rational:
         mid_weights = spline.weights * weight
         spline_dict["weights"] = spline.weights
@@ -383,24 +367,16 @@ def swept(
 
     if isinstance(cross_section, Spline) and isinstance(trajectory, Spline):
         if not isinstance(cross_section, (_BSpline, _NURBS)):
-            raise TypeError(
-                "cross_section must be an instance of BSpline or NURBS"
-            )
+            raise TypeError("cross_section must be an instance of BSpline or NURBS")
         if not isinstance(trajectory, (_BSpline, _NURBS)):
-            raise TypeError(
-                "trajectory must be an instance of BSpline or NURBS"
-            )
+            raise TypeError("trajectory must be an instance of BSpline or NURBS")
     else:
-        raise TypeError(
-            "cross_section and trajectory must be instances of Spline"
-        )
+        raise TypeError("cross_section and trajectory must be instances of Spline")
     if not trajectory.para_dim == 1:
         raise ValueError("trajectory must have a parametric dimension of 1")
 
     if cross_section.para_dim > 2:
-        raise ValueError(
-            "cross_section must have a parametric dimension of at most 2"
-        )
+        raise ValueError("cross_section must have a parametric dimension of at most 2")
 
     if not isinstance(set_on_trajectory, bool):
         raise TypeError("set_on_trajectory must be a boolean")
@@ -409,9 +385,7 @@ def swept(
         try:
             rotation_adaption = float(rotation_adaption)
         except TypeError:
-            raise TypeError(
-                "rotation_adaption must be a number (float, int) or None"
-            )
+            raise TypeError("rotation_adaption must be a number (float, int) or None")
 
     if cross_section_normal is None:
         cross_section_normal = _np.array([0, 0, 1])
@@ -421,21 +395,15 @@ def swept(
         try:
             cross_section_normal = _np.asarray(cross_section_normal).ravel()
         except (TypeError, ValueError):
-            raise TypeError(
-                "cross_section_normal must be array-like and a 3D vector"
-            )
+            raise TypeError("cross_section_normal must be array-like and a 3D vector")
         if cross_section_normal.shape != (3,):
-            raise ValueError(
-                "cross_section_normal must be array-like and a 3D vector"
-            )
+            raise ValueError("cross_section_normal must be array-like and a 3D vector")
 
     if not isinstance(anchor, str):
         raise TypeError("anchor must be a string")
     anchor = anchor.lower()
     if anchor == "auto":
-        anchor = (
-            "geometry_box" if cross_section.para_dim == 1 else "parametric"
-        )
+        anchor = "geometry_box" if cross_section.para_dim == 1 else "parametric"
     if anchor not in {"parametric", "control_box", "geometry_box"}:
         raise ValueError(
             "anchor must be one of 'auto', 'parametric', "
@@ -553,8 +521,7 @@ def swept(
         # calculation according to NURBS Book, eq. 10.27
         for i in range(len(par_value)):
             B_rec[i + 1] = (
-                B_rec[i]
-                - _np.dot(B_rec[i], tang_collection[i]) * tang_collection[i]
+                B_rec[i] - _np.dot(B_rec[i], tang_collection[i]) * tang_collection[i]
             )
             if _np.linalg.norm(B_rec[i + 1]) < _settings.TOLERANCE:
                 _log.warning(
@@ -640,13 +607,9 @@ def swept(
         cs_center = 0.5 * (cs_min + cs_max)
     else:  # geometry_box
         if cross_section.para_dim == 1:
-            sample_resolution = max(
-                101, 4 * cross_section.control_points.shape[0]
-            )
+            sample_resolution = max(101, 4 * cross_section.control_points.shape[0])
         else:
-            sample_resolution = int(
-                _np.ceil(625 ** (1 / cross_section.para_dim))
-            )
+            sample_resolution = int(_np.ceil(625 ** (1 / cross_section.para_dim)))
             sample_resolution = max(5, min(25, sample_resolution))
 
         sample_axes = [
@@ -678,9 +641,7 @@ def swept(
         else:
             section_origin = trajectory.control_points[i]
 
-        swept_spline_cps.append(
-            rotated_cross_section_cps @ A[i].T + section_origin
-        )
+        swept_spline_cps.append(rotated_cross_section_cps @ A[i].T + section_origin)
 
     # create spline dictionary
     dict_swept_spline = {
@@ -689,9 +650,7 @@ def swept(
             *cross_section.knot_vectors,
             *trajectory.knot_vectors,
         ],
-        "control_points": _np.asarray(swept_spline_cps).reshape(
-            -1, cross_section.dim
-        ),
+        "control_points": _np.asarray(swept_spline_cps).reshape(-1, cross_section.dim),
     }
 
     # add weights properly if spline is rational
@@ -900,9 +859,7 @@ def parametric_view(spline, axes=True, conform=False):
     para_spline: BSpline
     """
     p_bounds = spline.parametric_bounds
-    para_spline = from_bounds(
-        parametric_bounds=p_bounds, physical_bounds=p_bounds
-    )
+    para_spline = from_bounds(parametric_bounds=p_bounds, physical_bounds=p_bounds)
 
     # process to create conforming para_view splines
     if conform:

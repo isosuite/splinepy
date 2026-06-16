@@ -63,7 +63,7 @@ class Cross3DLinear(_TileBase):
           Six evaluation points with one parameter is used. This parameter
           describes the radius of the cylinder at the evaluation point.
           The parameters must be a two-dimensional np.array, where the
-          value must be between 0.01 and 0.49
+          value must be between 0.0 and 0.5 (not inclusive)
         parameter_sensitivities: np.ndarray(6, 1, para_dim)
           Describes the parameter sensitivities with respect to some design
           variable. In case the design variables directly apply to the
@@ -201,8 +201,7 @@ class Cross3DLinear(_TileBase):
                         degrees=[1, 1, 1],
                         control_points=(
                             _np.maximum(
-                                center_ctps
-                                - _np.array([center_width, v_zero, v_zero]),
+                                center_ctps - _np.array([center_width, v_zero, v_zero]),
                                 v_zero,
                             )
                             if i_derivative == 0
@@ -216,8 +215,7 @@ class Cross3DLinear(_TileBase):
                         degrees=[1, 1, 1],
                         control_points=(
                             _np.maximum(
-                                center_ctps
-                                - _np.array([v_zero, center_width, v_zero]),
+                                center_ctps - _np.array([v_zero, center_width, v_zero]),
                                 v_zero,
                             )
                             if i_derivative == 0
@@ -231,8 +229,7 @@ class Cross3DLinear(_TileBase):
                         degrees=[1, 1, 1],
                         control_points=(
                             _np.minimum(
-                                center_ctps
-                                + _np.array([center_width, v_zero, v_zero]),
+                                center_ctps + _np.array([center_width, v_zero, v_zero]),
                                 v_one,
                             )
                             if i_derivative == 0
@@ -246,8 +243,7 @@ class Cross3DLinear(_TileBase):
                         degrees=[1, 1, 1],
                         control_points=(
                             _np.minimum(
-                                center_ctps
-                                + _np.array([v_zero, center_width, v_zero]),
+                                center_ctps + _np.array([v_zero, center_width, v_zero]),
                                 v_one,
                             )
                             if i_derivative == 0
@@ -355,8 +351,7 @@ class Cross3DLinear(_TileBase):
                         degrees=[1, 1, 1],
                         control_points=(
                             _np.maximum(
-                                center_ctps
-                                - _np.array([center_width, v_zero, v_zero]),
+                                center_ctps - _np.array([center_width, v_zero, v_zero]),
                                 v_zero,
                             )
                             if i_derivative == 0
@@ -370,8 +365,7 @@ class Cross3DLinear(_TileBase):
                         degrees=[1, 1, 1],
                         control_points=(
                             _np.maximum(
-                                center_ctps
-                                - _np.array([v_zero, center_width, v_zero]),
+                                center_ctps - _np.array([v_zero, center_width, v_zero]),
                                 v_zero,
                             )
                             if i_derivative == 0
@@ -385,8 +379,7 @@ class Cross3DLinear(_TileBase):
                         degrees=[1, 1, 1],
                         control_points=(
                             _np.minimum(
-                                center_ctps
-                                + _np.array([center_width, v_zero, v_zero]),
+                                center_ctps + _np.array([center_width, v_zero, v_zero]),
                                 v_one,
                             )
                             if i_derivative == 0
@@ -400,8 +393,7 @@ class Cross3DLinear(_TileBase):
                         degrees=[1, 1, 1],
                         control_points=(
                             _np.minimum(
-                                center_ctps
-                                + _np.array([v_zero, center_width, v_zero]),
+                                center_ctps + _np.array([v_zero, center_width, v_zero]),
                                 v_one,
                             )
                             if i_derivative == 0
@@ -499,13 +491,12 @@ class Cross3DLinear(_TileBase):
         for i_derivative in range(n_derivatives + 1):
             # Constant auxiliary values
             if i_derivative == 0:
-                [x_min_r, x_max_r, y_min_r, y_max_r, z_min_r, z_max_r] = (
-                    parameters[:, 0]
-                )
+                [x_min_r, x_max_r, y_min_r, y_max_r, z_min_r, z_max_r] = parameters[
+                    :, 0
+                ]
                 v_one_half = 0.5
                 center_r = center_expansion * _np.mean(parameters[:, 0])
             else:
-
                 [x_min_r, x_max_r, y_min_r, y_max_r, z_min_r, z_max_r] = (
                     parameter_sensitivities[:, :, i_derivative - 1].flatten()
                 )
@@ -530,9 +521,7 @@ class Cross3DLinear(_TileBase):
                 ]
             )
             spline_list.append(
-                _Bezier(
-                    degrees=[1, 1, 1], control_points=center_points + center
-                )
+                _Bezier(degrees=[1, 1, 1], control_points=center_points + center)
             )
 
             # X-Axis branches

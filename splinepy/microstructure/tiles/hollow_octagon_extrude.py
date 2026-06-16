@@ -244,6 +244,7 @@ class HollowOctagonExtrude(_TileBase):
         parameter_sensitivities=None,
         contact_length=0.2,
         closure=None,
+        **kwargs,  # noqa ARG002
     ):
         """Create a closing tile to match with closed surface.
 
@@ -257,7 +258,7 @@ class HollowOctagonExtrude(_TileBase):
           Describes the parameter sensitivities with respect to some design
           variable. In case the design variables directly apply to the
           parameter itself, they evaluate as delta_ij
-        closure : int
+        closure : int or str
           parametric dimension that needs to be closed. Positive values mean
           that minimum parametric dimension is requested. That means,
           i.e. -2 closes the tile at maximum z-coordinate.
@@ -272,6 +273,13 @@ class HollowOctagonExtrude(_TileBase):
         """
         if closure is None:
             raise ValueError("No closing direction given")
+        if isinstance(closure, int):
+            closure = self._closure_directions[closure]
+        if closure not in self._closure_directions:
+            raise ValueError(
+                f"Closure direction {closure} not implemented. "
+                f"Choose from {self._closure_directions}"
+            )
 
         # Process input
         parameters, n_derivatives, derivatives = self._process_input(

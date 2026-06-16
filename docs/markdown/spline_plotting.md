@@ -1,7 +1,7 @@
 # Visualization
 One of the highlights of splinepy is that we can visualize splines.
 Most of the classes have their own `show()` function to visualize current state of each object.
-Visualizations utilize mesh types and data structures of [gustaf](https://tataratat.github.io/gustaf/).
+Visualizations utilize mesh types and data structures of [gustaf](https://isosuite.github.io/gustaf/).
 Then, actual rendering happens with [vedo](https://vedo.embl.es) - a powerful scientific analysis and visualization library - check them out for details!
 
 The following will give a brief introduction to spline visualization.
@@ -63,7 +63,7 @@ nurbs.show()
 ![plotting_data](../source/_static/plotting_data.png)
 You can easily plot data on splines.
 Scalar data can be represented with a colormap and vector data can be represented with arrows.
-You can take a look at [this example](https://github.com/tataratat/splinepy/blob/main/examples/show_spline_data.py) for detailed introduction.
+You can take a look at [this example](https://github.com/isosuite/splinepy/blob/main/examples/show_spline_data.py) for detailed introduction.
 ```python
 # set data - we will plot self spline, which will plot coordinates
 nurbs.spline_data["coords"] = nurbs
@@ -92,7 +92,7 @@ nurbs.show()  # Nr. 3
 ```
 
 ## Examples
-Take a look at the <a href='https://github.com/tataratat/splinepy/tree/main/examples'>examples folder</a> for more!
+Take a look at the <a href='https://github.com/isosuite/splinepy/tree/main/examples'>examples folder</a> for more!
 
 
 ## Notebook plotting

@@ -57,6 +57,13 @@ class HollowOctagon(_TileBase):
         """
         if closure is None:
             raise ValueError("No closing direction given")
+        if isinstance(closure, int):
+            closure = self._closure_directions[closure]
+        if closure not in self._closure_directions:
+            raise ValueError(
+                f"Closure direction {closure} not implemented. "
+                f"Choose from {self._closure_directions}"
+            )
 
         parameters, n_derivatives, derivatives = self._process_input(
             parameters=parameters,
