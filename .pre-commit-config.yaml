@@ -6,7 +6,8 @@
 
 # use default options for ci
 ci:
-  autoupdate_schedule: "weekly"
+  autoupdate_branch: 'develop'
+  autoupdate_schedule: "monthly"
   submodules: false
 
 repos:
@@ -24,24 +25,19 @@ repos:
   - id: check-yaml
   - id: debug-statements
   - id: end-of-file-fixer
+    exclude: '^tests/data/.*$'
   - id: mixed-line-ending
   - id: requirements-txt-fixer
   - id: trailing-whitespace
 
-- repo: https://github.com/psf/black-pre-commit-mirror
-  rev: "26.3.1"
-  hooks:
-  - id: black
-    additional_dependencies: [tomli]
-
 - repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: v0.15.7
+  rev: v0.15.16
   hooks:
     - id: ruff
       args: [--fix, --exit-non-zero-on-fix]
 
 - repo: https://github.com/pre-commit/mirrors-clang-format
-  rev: v22.1.1
+  rev: v22.1.5
   hooks:
   - id: clang-format
     types_or: [c, c++]

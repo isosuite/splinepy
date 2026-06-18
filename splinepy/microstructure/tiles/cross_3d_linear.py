@@ -28,6 +28,23 @@ class Cross3DLinear(_TileBase):
         ]
     )
     _n_info_per_eval_point = 1
+    _sensitivities_implemented = True
+    _closure_directions = ["z_min", "z_max"]
+    _parameters_shape = (6, 1)
+    _default_parameter_value = 0.2
+
+    # Default value of center_expansion
+    _center_expansion = 1.0
+
+    # Dynamical computation of parameter bounds depending on center expansion
+    @property
+    def _parameter_bounds(self):
+        max_radius = min(0.5, (0.5 / self._center_expansion))
+        return [[0.0, max_radius]] * 6
+
+    _BOUNDARY_WIDTH_BOUNDS = [0.0, 0.5]
+    _FILLING_HEIGHT_BOUNDS = [0.0, 1.0]
+    _CENTER_EXPANSION_BOUNDS = [0.5, 1.5]
 
     def _closing_tile(
         self,
@@ -46,7 +63,7 @@ class Cross3DLinear(_TileBase):
           Six evaluation points with one parameter is used. This parameter
           describes the radius of the cylinder at the evaluation point.
           The parameters must be a two-dimensional np.array, where the
-          value must be between 0.01 and 0.49
+          value must be between 0.0 and 0.5 (not inclusive)
         parameter_sensitivities: np.ndarray(6, 1, para_dim)
           Describes the parameter sensitivities with respect to some design
           variable. In case the design variables directly apply to the
@@ -68,32 +85,17 @@ class Cross3DLinear(_TileBase):
         if closure is None:
             raise ValueError("No closing direction given")
 
-        if parameters is None:
-            self._logd("Tile request is not parametrized, setting default 0.2")
-            parameters = _np.array(
-                _np.ones(
-                    (len(self._evaluation_points), self._n_info_per_eval_point)
-                )
-                * 0.2
-            )
+        parameters, n_derivatives, derivatives = self._process_input(
+            parameters=parameters,
+            parameter_sensitivities=parameter_sensitivities,
+        )
 
-        if not (_np.all(parameters > 0) and _np.all(parameters < 0.5)):
-            raise ValueError("Thickness out of range (0, .5)")
-
-        # Check if user requests derivative splines
-        if parameter_sensitivities is not None:
-            self.check_param_derivatives(parameter_sensitivities)
-            n_derivatives = parameter_sensitivities.shape[2]
-            derivatives = []
-        else:
-            n_derivatives = 0
-            derivatives = None
-
-        if not (0.0 < float(boundary_width) < 0.5):
-            raise ValueError("Boundary Width is out of range")
-
-        if not (0.0 < float(filling_height) < 1.0):
-            raise ValueError("Filling must  be in (0,1)")
+        self._check_custom_parameter(
+            boundary_width, "boundary width", self._BOUNDARY_WIDTH_BOUNDS
+        )
+        self._check_custom_parameter(
+            filling_height, "filling height", self._FILLING_HEIGHT_BOUNDS
+        )
 
         splines = []
         for i_derivative in range(n_derivatives + 1):
@@ -199,8 +201,7 @@ class Cross3DLinear(_TileBase):
                         degrees=[1, 1, 1],
                         control_points=(
                             _np.maximum(
-                                center_ctps
-                                - _np.array([center_width, v_zero, v_zero]),
+                                center_ctps - _np.array([center_width, v_zero, v_zero]),
                                 v_zero,
                             )
                             if i_derivative == 0
@@ -214,8 +215,7 @@ class Cross3DLinear(_TileBase):
                         degrees=[1, 1, 1],
                         control_points=(
                             _np.maximum(
-                                center_ctps
-                                - _np.array([v_zero, center_width, v_zero]),
+                                center_ctps - _np.array([v_zero, center_width, v_zero]),
                                 v_zero,
                             )
                             if i_derivative == 0
@@ -229,8 +229,7 @@ class Cross3DLinear(_TileBase):
                         degrees=[1, 1, 1],
                         control_points=(
                             _np.minimum(
-                                center_ctps
-                                + _np.array([center_width, v_zero, v_zero]),
+                                center_ctps + _np.array([center_width, v_zero, v_zero]),
                                 v_one,
                             )
                             if i_derivative == 0
@@ -244,8 +243,7 @@ class Cross3DLinear(_TileBase):
                         degrees=[1, 1, 1],
                         control_points=(
                             _np.minimum(
-                                center_ctps
-                                + _np.array([v_zero, center_width, v_zero]),
+                                center_ctps + _np.array([v_zero, center_width, v_zero]),
                                 v_one,
                             )
                             if i_derivative == 0
@@ -353,8 +351,7 @@ class Cross3DLinear(_TileBase):
                         degrees=[1, 1, 1],
                         control_points=(
                             _np.maximum(
-                                center_ctps
-                                - _np.array([center_width, v_zero, v_zero]),
+                                center_ctps - _np.array([center_width, v_zero, v_zero]),
                                 v_zero,
                             )
                             if i_derivative == 0
@@ -368,8 +365,7 @@ class Cross3DLinear(_TileBase):
                         degrees=[1, 1, 1],
                         control_points=(
                             _np.maximum(
-                                center_ctps
-                                - _np.array([v_zero, center_width, v_zero]),
+                                center_ctps - _np.array([v_zero, center_width, v_zero]),
                                 v_zero,
                             )
                             if i_derivative == 0
@@ -383,8 +379,7 @@ class Cross3DLinear(_TileBase):
                         degrees=[1, 1, 1],
                         control_points=(
                             _np.minimum(
-                                center_ctps
-                                + _np.array([center_width, v_zero, v_zero]),
+                                center_ctps + _np.array([center_width, v_zero, v_zero]),
                                 v_one,
                             )
                             if i_derivative == 0
@@ -398,8 +393,7 @@ class Cross3DLinear(_TileBase):
                         degrees=[1, 1, 1],
                         control_points=(
                             _np.minimum(
-                                center_ctps
-                                + _np.array([v_zero, center_width, v_zero]),
+                                center_ctps + _np.array([v_zero, center_width, v_zero]),
                                 v_one,
                             )
                             if i_derivative == 0
@@ -474,43 +468,16 @@ class Cross3DLinear(_TileBase):
         derivative_list : list / None
         """
 
-        if not isinstance(center_expansion, float):
-            raise ValueError("Invalid Type")
+        self._check_custom_parameter(
+            center_expansion, "center expansion", self._CENTER_EXPANSION_BOUNDS
+        )
 
-        if not ((center_expansion > 0.5) and (center_expansion < 1.5)):
-            raise ValueError("Center Expansion must be in (.5,1.5)")
+        self._center_expansion = center_expansion
 
-        # Max radius, so there is no tanglement in the crosstile
-        max_radius = min(0.5, (0.5 / center_expansion))
-
-        # set to default if nothing is given
-        if parameters is None:
-            self._logd("Setting branch thickness to default 0.2")
-            parameters = (
-                _np.ones(
-                    (
-                        self._evaluation_points.shape[0],
-                        self._n_info_per_eval_point,
-                    )
-                )
-                * 0.2
-            )
-
-        # Check for type and consistency
-        self.check_params(parameters)
-        if _np.any(parameters <= 0) or _np.any(parameters > max_radius):
-            raise ValueError(
-                f"Radii must be in (0,{max_radius}) for "
-                f"center_expansion {center_expansion}"
-            )
-
-        if parameter_sensitivities is not None:
-            self.check_param_derivatives(parameter_sensitivities)
-            n_derivatives = parameter_sensitivities.shape[2]
-            derivatives = []
-        else:
-            n_derivatives = 0
-            derivatives = None
+        parameters, n_derivatives, derivatives = self._process_input(
+            parameters=parameters,
+            parameter_sensitivities=parameter_sensitivities,
+        )
 
         if closure is not None:
             return self._closing_tile(
@@ -524,13 +491,12 @@ class Cross3DLinear(_TileBase):
         for i_derivative in range(n_derivatives + 1):
             # Constant auxiliary values
             if i_derivative == 0:
-                [x_min_r, x_max_r, y_min_r, y_max_r, z_min_r, z_max_r] = (
-                    parameters[:, 0]
-                )
+                [x_min_r, x_max_r, y_min_r, y_max_r, z_min_r, z_max_r] = parameters[
+                    :, 0
+                ]
                 v_one_half = 0.5
                 center_r = center_expansion * _np.mean(parameters[:, 0])
             else:
-
                 [x_min_r, x_max_r, y_min_r, y_max_r, z_min_r, z_max_r] = (
                     parameter_sensitivities[:, :, i_derivative - 1].flatten()
                 )
@@ -555,9 +521,7 @@ class Cross3DLinear(_TileBase):
                 ]
             )
             spline_list.append(
-                _Bezier(
-                    degrees=[1, 1, 1], control_points=center_points + center
-                )
+                _Bezier(degrees=[1, 1, 1], control_points=center_points + center)
             )
 
             # X-Axis branches

@@ -16,7 +16,7 @@ Table of Contents
    :caption: Library
    :maxdepth: 1
 
-   Github <https://github.com/tataratat/splinepy>
+   Github <https://github.com/isosuite/splinepy>
    Contributing <CONTRIBUTING>
    API Reference <api_reference>
 

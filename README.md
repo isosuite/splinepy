@@ -1,9 +1,9 @@
 ![txt_logo](docs/source/_static/splinepy_name.png)
 **splinepy - Library for prototyping spline geometries of arbitrary dimensions and degrees, and IGA**
 
-[![workflow](https://github.com/tataratat/splinepy/actions/workflows/main.yml/badge.svg)](https://github.com/tataratat/splinepy/actions)
+[![workflow](https://github.com/isosuite/splinepy/actions/workflows/main.yml/badge.svg)](https://github.com/isosuite/splinepy/actions)
 [![PyPI version](https://badge.fury.io/py/splinepy.svg)](https://badge.fury.io/py/splinepy)
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/tataratat/try-splinepy/main)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/isosuite/try-splinepy/main)
 
 ![gallery](docs/source/_static/gallery.png)
 
@@ -19,7 +19,7 @@ pip install splinepy
 
 You can install it directly from the source:
 ```bash
-git clone git@github.com:tataratat/splinepy.git
+git clone git@github.com:isosuite/splinepy.git
 cd splinepy
 git submodule update --init --recursive
 pip install -e .
@@ -27,15 +27,15 @@ pip install -e .
 
 ## Documentation
 Here are links to related documentation for the library:
-- [Documentation home](https://tataratat.github.io/splinepy)
-- [Introduction to splines](https://tataratat.github.io/splinepy/spline_intro.html#introduction-to-splines)
-- [Spline visualization](https://tataratat.github.io/splinepy/spline_intro.html#visualizing-splines)
+- [Documentation home](https://isosuite.github.io/splinepy)
+- [Introduction to splines](https://isosuite.github.io/splinepy/spline_intro.html#introduction-to-splines)
+- [Spline visualization](https://isosuite.github.io/splinepy/spline_intro.html#visualizing-splines)
 
 
 ## Quick start
 ### 1. Create a spline
 
-Here, we will create a [NURBS](https://tataratat.github.io/splinepy/_generated/splinepy.nurbs.NURBS.html#splinepy.nurbs.NURBS) for the following example. Alternatively, we can also create [Bezier](https://tataratat.github.io/splinepy/_generated/splinepy.bezier.Bezier.html#splinepy.bezier.Bezier), [RationalBezier](https://tataratat.github.io/splinepy/_generated/splinepy.rational_bezier.RationalBezier.html#splinepy.rational_bezier.RationalBezier), and [BSpline](https://tataratat.github.io/splinepy/_generated/splinepy.bspline.BSpline.html#splinepy.bspline.BSpline).
+Here, we will create a [NURBS](https://isosuite.github.io/splinepy/_generated/splinepy.nurbs.NURBS.html#splinepy.nurbs.NURBS) for the following example. Alternatively, we can also create [Bezier](https://isosuite.github.io/splinepy/_generated/splinepy.bezier.Bezier.html#splinepy.bezier.Bezier), [RationalBezier](https://isosuite.github.io/splinepy/_generated/splinepy.rational_bezier.RationalBezier.html#splinepy.rational_bezier.RationalBezier), and [BSpline](https://isosuite.github.io/splinepy/_generated/splinepy.bspline.BSpline.html#splinepy.bspline.BSpline).
 
 ```python
 import splinepy
@@ -73,9 +73,9 @@ nurbs.show()
 ### 2. Modifications
 All the splines can be modified. For example, by
 1. directly accessing properties,
-2. [elevating degrees](https://tataratat.github.io/splinepy/_generated/splinepy.spline.Spline.elevate_degrees.html#splinepy.spline.Spline.elevate_degrees),
-3. [inserting knots](https://tataratat.github.io/splinepy/_generated/splinepy.bspline.BSplineBase.insert_knots.html#splinepy.bspline.BSplineBase.insert_knots),
-4. [reducing degrees](https://tataratat.github.io/splinepy/_generated/splinepy.bspline.BSplineBase.reduce_degrees.html) and [removing knots](https://tataratat.github.io/splinepy/_generated/splinepy.bspline.BSplineBase.remove_knots.html) with a specified tolerance
+2. [elevating degrees](https://isosuite.github.io/splinepy/_generated/splinepy.spline.Spline.elevate_degrees.html#splinepy.spline.Spline.elevate_degrees),
+3. [inserting knots](https://isosuite.github.io/splinepy/_generated/splinepy.bspline.BSplineBase.insert_knots.html#splinepy.bspline.BSplineBase.insert_knots),
+4. [reducing degrees](https://isosuite.github.io/splinepy/_generated/splinepy.bspline.BSplineBase.reduce_degrees.html) and [removing knots](https://isosuite.github.io/splinepy/_generated/splinepy.bspline.BSplineBase.remove_knots.html) with a specified tolerance
 
 *Note: currently {3, 4} are limited to BSpline families.*
 ```python
@@ -130,7 +130,7 @@ p_basis0 = nurbs.basis(queries, nthreads=2)
 splinepy.settings.NTHREADS = 3
 p_basis1 = nurbs.basis(queries)
 ```
-We also implemented [point inversion](https://tataratat.github.io/splinepy/_generated/splinepy.spline.Spline.proximities.html#splinepy-spline-spline-proximities) for splines.
+We also implemented [point inversion](https://isosuite.github.io/splinepy/_generated/splinepy.spline.Spline.proximities.html#splinepy-spline-spline-proximities) for splines.
 ```python
 # see docs for options
 para_coordinates = nurbs.proximities(physical_coordinates)
@@ -153,11 +153,11 @@ In cases, where you may have to compute derivatives at the inverted locations or
 ```
 
 ### 4. Helper Modules
-There's a list of helper modules under the namespace `splinepy.helpme` to boost prototyping efficiencies. Please check out the full list [here](https://tataratat.github.io/splinepy/_generated/splinepy.helpme.html)!
+There's a list of helper modules under the namespace `splinepy.helpme` to boost prototyping efficiencies. Please check out the full list [here](https://isosuite.github.io/splinepy/_generated/splinepy.helpme.html)!
 Here are some highlights.
 
 #### 4.1 Create
-[splinepy.helpme.create](https://tataratat.github.io/splinepy/_generated/splinepy.helpme.create.html#module-splinepy.helpme.create) module can help you create several primitive shapes and another spline based on the existing spline.
+[splinepy.helpme.create](https://isosuite.github.io/splinepy/_generated/splinepy.helpme.create.html#module-splinepy.helpme.create) module can help you create several primitive shapes and another spline based on the existing spline.
 ```python
 # basic splines
 box = splinepy.helpme.create.box(1, 2, 3)  # length per dim
@@ -171,7 +171,7 @@ torus = splinepy.helpme.create.torus(
 splinepy.show(["box", box], ["disk", disk], ["torus", torus])
 ```
 ![create_basic](docs/source/_static/readme_create_basic.png)
-For the latter, you can directly access such functions through [spline.create](https://tataratat.github.io/splinepy/_generated/splinepy.spline.Spline.create.html#splinepy.spline.Spline.create).
+For the latter, you can directly access such functions through [spline.create](https://isosuite.github.io/splinepy/_generated/splinepy.spline.Spline.create.html#splinepy.spline.Spline.create).
 ```python
 # based on existing splines
 extruded = nurbs.create.extruded(extrusion_vector=[1, 2, 3])
@@ -182,9 +182,17 @@ revolved = nurbs.create.revolved(
 splinepy.show(["extruded", extruded], ["revolved", revolved])
 ```
 ![create_derived](docs/source/_static/readme_create_derived.png)
+You can also create swept surfaces and solids along spline trajectories.
+```python
+swept = splinepy.helpme.create.swept(
+    cross_section=splinepy.helpme.create.circle(0.5).nurbs,
+    trajectory=trajectory,
+)
+```
+![show_swept](docs/source/_static/show_swept.png)
 
 ### 4.2 Extract
-Using [splinepy.helpme.extract](https://tataratat.github.io/splinepy/_generated/splinepy.helpme.extract.html#module-splinepy.helpme.extract) module, you can extract meshes (as a [gustaf](https://tataratat.github.io/gustaf/index.html) object)
+Using [splinepy.helpme.extract](https://isosuite.github.io/splinepy/_generated/splinepy.helpme.extract.html#module-splinepy.helpme.extract) module, you can extract meshes (as a [gustaf](https://isosuite.github.io/gustaf/index.html) object)
 ```python
 # extract meshes as gustaf objects
 control_mesh = nurbs.extract.control_mesh()
@@ -198,7 +206,7 @@ splinepy.show(
 )
 ```
 ![extract_mesh](docs/source/_static/readme_extract_mesh.png)
-or part of splines from an existing spline using [spline.extract](https://tataratat.github.io/splinepy/_generated/splinepy.spline.Spline.extract.html#splinepy.spline.Spline.extract).
+or part of splines from an existing spline using [spline.extract](https://isosuite.github.io/splinepy/_generated/splinepy.spline.Spline.extract.html#splinepy.spline.Spline.extract).
 ```python
 # extract splines
 boundaries = nurbs.extract.boundaries()
@@ -226,7 +234,7 @@ splinepy.show(
 ![extract_spline](docs/source/_static/readme_extract_spline.png)
 
 #### 4.3 Free-form deformation
-Together with mesh types of [gustaf](https://tataratat.github.io/gustaf), we can perform [free-form deformation](https://tataratat.github.io/splinepy/_generated/splinepy.helpme.ffd.FFD.html)
+Together with mesh types of [gustaf](https://isosuite.github.io/gustaf), we can perform [free-form deformation](https://isosuite.github.io/splinepy/_generated/splinepy.helpme.ffd.FFD.html)
 ```python
 import gustaf as gus
 
@@ -248,7 +256,7 @@ deformed = ffd.mesh
 ![ffd](docs/source/_static/readme_ffd.png)
 
 #### 4.4 Fitting
-You can [fit](https://tataratat.github.io/splinepy/_generated/splinepy.helpme.fit.html#module-splinepy.helpme.fit) your point data using splines.
+You can [fit](https://isosuite.github.io/splinepy/_generated/splinepy.helpme.fit.html#module-splinepy.helpme.fit) your point data using splines.
 ```python
 data = [
     [-0.955, 0.293],
@@ -279,8 +287,8 @@ splinepy.show(
 
 #### 4.5 Mapper
 
-[Mapper](https://tataratat.github.io/splinepy/_generated/splinepy.helpme.mapper.Mapper.html#splinepy.helpme.mapper.Mapper) class is a geometric mapping helper that brings expression and derivatives into the physical domain.
-This is especially useful for trying collocation methods. Here, we show how you can create a left hand side matrix for a laplace problem - see [this example](https://github.com/tataratat/splinepy/blob/main/examples/iga/collocation_laplace_problem_sparse.py) for a full solution:
+[Mapper](https://isosuite.github.io/splinepy/_generated/splinepy.helpme.mapper.Mapper.html#splinepy.helpme.mapper.Mapper) class is a geometric mapping helper that brings expression and derivatives into the physical domain.
+This is especially useful for trying collocation methods. Here, we show how you can create a left hand side matrix for a laplace problem - see [this example](https://github.com/isosuite/splinepy/blob/main/examples/iga/collocation_laplace_problem_sparse.py) for a full solution:
  <p align="center"><img src="docs/source/_static/readme_matrix.png" width="70%" title="laplacian"></p>
 
 ```python
@@ -305,14 +313,14 @@ laplacian_matrix = splinepy.utils.data.make_matrix(
 ```
 
 ### 5. Microstructure
-(Rational) Bezier splines in splinepy are capable of [composition](https://tataratat.github.io/splinepy/_generated/splinepy.bezier.BezierBase.compose.html#splinepy.bezier.BezierBase.compose), where you can place a spline (inner spline/function) into another spline (outer spline/function) in an exact fashion.
+(Rational) Bezier splines in splinepy are capable of [composition](https://isosuite.github.io/splinepy/_generated/splinepy.bezier.BezierBase.compose.html#splinepy.bezier.BezierBase.compose), where you can place a spline (inner spline/function) into another spline (outer spline/function) in an exact fashion.
 We can systematically perform this to create certain shapes that consist of multiple inner splines.
-The resulting shapes are called [microstructure](https://tataratat.github.io/splinepy/_generated/splinepy.microstructure.microstructure.Microstructure.html#splinepy.microstructure.microstructure.Microstructure)s and the inner spline that serves as a basis shape is called [tile](https://tataratat.github.io/splinepy/_generated/splinepy.microstructure.tiles.tile_base.TileBase.html#splinepy.microstructure.tiles.tile_base.TileBase).
+The resulting shapes are called [microstructure](https://isosuite.github.io/splinepy/_generated/splinepy.microstructure.microstructure.Microstructure.html#splinepy.microstructure.microstructure.Microstructure)s and the inner spline that serves as a basis shape is called [tile](https://isosuite.github.io/splinepy/_generated/splinepy.microstructure.tiles.tile_base.TileBase.html#splinepy.microstructure.tiles.tile_base.TileBase).
 
 
 splinepy has several tiles that are ready to use.
-Implementations of available tiles can be found [here](https://tataratat.github.io/splinepy/_generated/splinepy.microstructure.tiles.html).
-However, it is easier to access them through [module functions](https://tataratat.github.io/splinepy/_generated/splinepy.microstructure.tiles.html):
+Implementations of available tiles can be found [here](https://isosuite.github.io/splinepy/_generated/splinepy.microstructure.tiles.html).
+However, it is easier to access them through [module functions](https://isosuite.github.io/splinepy/_generated/splinepy.microstructure.tiles.html):
 ```python
 splinepy.microstructure.tiles.show()
 ```
@@ -344,12 +352,12 @@ generated = microstructure.create()
 ![microstructures](docs/source/_static/readme_microstructure.png)
 
 
-Please take a look at [this example](https://github.com/tataratat/splinepy/blob/main/examples/show_microstructures.py) for a broad overview of what microstructures can do!
+Please take a look at [this example](https://github.com/isosuite/splinepy/blob/main/examples/show_microstructures.py) for a broad overview of what microstructures can do!
 
 
 ### 6. Multipatch
-In practice, including [Microstructure](https://tataratat.github.io/splinepy/_generated/splinepy.microstructure.microstructure.Microstructure.html#splinepy.microstructure.microstructure.Microstructure)s, it is common to work with multiple patches.
-For that, we provide a [Multipatch](https://tataratat.github.io/splinepy/_generated/splinepy.multipatch.Multipatch.html#splinepy.multipatch.Multipatch) class, equipped with various useful functionalities:
+In practice, including [Microstructure](https://isosuite.github.io/splinepy/_generated/splinepy.microstructure.microstructure.Microstructure.html#splinepy.microstructure.microstructure.Microstructure)s, it is common to work with multiple patches.
+For that, we provide a [Multipatch](https://isosuite.github.io/splinepy/_generated/splinepy.multipatch.Multipatch.html#splinepy.multipatch.Multipatch) class, equipped with various useful functionalities:
 - patch interface identification
 - boundary patch identification
 - boundary assignment with various options
@@ -381,7 +389,7 @@ splinepy.io.gismo.export("microstructure.xml", generated)
 ![multipatch](docs/source/_static/readme_multipatch.png)
 
 ### 7. Input/output and vector graphics
-splinepy supports various [IO formats](https://tataratat.github.io/splinepy/_generated/splinepy.io.html).
+splinepy supports various [IO formats](https://isosuite.github.io/splinepy/_generated/splinepy.io.html).
 Most notably, [gismo](https://github.com/gismo/gismo) and [mfem](https://github.com/mfem/mfem) formats allow a seamless transition to analysis. In addition splinepy is also able to import and export the `iges` format. Specifically, `Type 126` (B-Spline curve) and `Type 128` (B-Spline surface).
 ```python
 # export
@@ -392,16 +400,16 @@ quarter_circle = splinepy.io.mfem.load("quarter_circle.mesh")
 ```
 
 
-[svg format](https://tataratat.github.io/splinepy/_generated/splinepy.io.svg.export.html#splinepy.io.svg.export) enables true vector graphic export which preserves the smoothness of splines for publications/documentation. Try to zoom in!
+[svg format](https://isosuite.github.io/splinepy/_generated/splinepy.io.svg.export.html#splinepy.io.svg.export) enables true vector graphic export which preserves the smoothness of splines for publications/documentation. Try to zoom in!
 ```python
 splinepy.io.svg.export("nurbs.svg", nurbs)
 ```
  <p align="center"><img src="docs/source/_static/nurbs.svg" width="50%" title="nurbs_svg"></p>
 
 ## Try online
-You can also try splinepy online by clicking the [Binder](https://mybinder.org/v2/gh/tataratat/try-splinepy/main) badge above!
+You can also try splinepy online by clicking the [Binder](https://mybinder.org/v2/gh/isosuite/try-splinepy/main) badge above!
 
 ## Contributing
 splinepy welcomes any form of contributions!
-Feel free to write us an [issue](https://github.com/tataratat/splinepy/issues) or start a [discussion](https://github.com/tataratat/splinepy/discussions).
-Contribution guidelines can be found [here](https://tataratat.github.io/splinepy/CONTRIBUTING.html).
+Feel free to write us an [issue](https://github.com/isosuite/splinepy/issues) or start a [discussion](https://github.com/isosuite/splinepy/discussions).
+Contribution guidelines can be found [here](https://isosuite.github.io/splinepy/CONTRIBUTING.html).

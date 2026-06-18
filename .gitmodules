@@ -3,10 +3,10 @@
 	url = git@github.com:pybind/pybind11.git
 [submodule "third_party/napf"]
 	path = third_party/napf
-	url = git@github.com:tataratat/napf.git
+	url = git@github.com:isosuite/napf.git
 [submodule "third_party/BSplineLib"]
 	path = third_party/BSplineLib
-	url = git@github.com:tataratat/BSplineLib.git
+	url = git@github.com:isosuite/BSplineLib.git
 [submodule "third_party/bezman"]
 	path = third_party/bezman
-	url = git@github.com:tataratat/bezman.git
+	url = git@github.com:isosuite/bezman.git

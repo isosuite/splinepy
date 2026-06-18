@@ -9,7 +9,7 @@ from splinepy.utils.data import cartesian_product as _cartesian_product
 
 
 class Microstructure(_SplinepyBase):
-    """Helper class to facilitatae the construction of microstructures."""
+    """Helper class to facilitate the construction of microstructures."""
 
     def __init__(
         self,
@@ -18,7 +18,7 @@ class Microstructure(_SplinepyBase):
         microtile=None,
         parametrization_function=None,
     ):
-        """Helper class to facilitatae the construction of microstructures.
+        """Helper class to facilitate the construction of microstructures.
 
         Parameters
         ----------
@@ -79,8 +79,7 @@ class Microstructure(_SplinepyBase):
 
         if not isinstance(deformation_function, _PySpline):
             raise ValueError(
-                "Deformation function must be splinepy-Spline."
-                " e.g. splinepy.NURBS"
+                "Deformation function must be splinepy-Spline. e.g. splinepy.NURBS"
             )
         self._deformation_function = deformation_function
 
@@ -120,9 +119,7 @@ class Microstructure(_SplinepyBase):
         None
         """
         if not isinstance(tiling, list) and not isinstance(tiling, int):
-            raise ValueError(
-                "Tiling mus be either list of integers of integer " "value"
-            )
+            raise ValueError("Tiling mus be either list of integers of integer value")
         self._tiling = tiling
         # Is defaulted to False using function arguments
         self._sanity_check()
@@ -263,7 +260,7 @@ class Microstructure(_SplinepyBase):
         # Create Spline that will be used to iterate over parametric space
         ukvs = self.deformation_function.unique_knots
         if knot_span_wise:
-            for tt, ukv in zip(self.tiling, ukvs):
+            for tt, ukv in zip(self.tiling, ukvs, strict=True):
                 inv_t = 1 / tt
                 new_knots = [
                     ukv[i - 1] + j * inv_t * (ukv[i] - ukv[i - 1])
@@ -276,7 +273,7 @@ class Microstructure(_SplinepyBase):
                 "New knots will be inserted one by one with the objective"
                 " to evenly distribute tiles within the parametric domain"
             )
-            for i_pd, (tt, ukv) in enumerate(zip(self.tiling, ukvs)):
+            for i_pd, (tt, ukv) in enumerate(zip(self.tiling, ukvs, strict=True)):
                 n_current_spans = len(ukv) - 1
                 if tt == n_current_spans:
                     continue
@@ -358,10 +355,8 @@ class Microstructure(_SplinepyBase):
         # First step : insert all required knots into the deformation function
         # spline
         if macro_sensitivity:
-            knot_insertion_matrix = (
-                deformation_function_copy.knot_insertion_matrix(
-                    0, additional_knots[0]
-                )
+            knot_insertion_matrix = deformation_function_copy.knot_insertion_matrix(
+                0, additional_knots[0]
             )
         deformation_function_copy.insert_knots(0, additional_knots[0])
         for i_pd, akv in enumerate(additional_knots[1:], start=1):
@@ -427,8 +422,8 @@ class Microstructure(_SplinepyBase):
     def create(
         self,
         closing_face=None,
-        knot_span_wise=None,
-        macro_sensitivities=None,
+        knot_span_wise=True,
+        macro_sensitivities=False,
         **kwargs,
     ):
         """Create a Microstructure.
@@ -455,18 +450,15 @@ class Microstructure(_SplinepyBase):
         if not self._sanity_check():
             raise ValueError("Not enough information provided, abort")
 
-        # Set default values
-        if knot_span_wise is None:
-            knot_span_wise = True
-        if macro_sensitivities is None:
-            macro_sensitivities = False
+        if isinstance(knot_span_wise, bool) is False:
+            raise TypeError("knot_span_wise must be a bool")
+        if isinstance(macro_sensitivities, bool) is False:
+            raise TypeError("macro_senstivities must be a bool")
 
         # check if user wants closed structure
         if closing_face is not None:
             if not hasattr(self.microtile, "_closing_tile"):
-                raise ValueError(
-                    "Microtile does not provide closing tile definition"
-                )
+                raise ValueError("Microtile does not provide closing tile definition")
             closing_face_dim = {"x": 0, "y": 1, "z": 2}.get(closing_face)
             if closing_face is None:
                 raise ValueError(
@@ -485,9 +477,7 @@ class Microstructure(_SplinepyBase):
 
         # Check if parametrized
         is_parametrized = self.parametrization_function is not None
-        parameter_sensitivities = (
-            self.parameter_sensitivity_function is not None
-        )
+        parameter_sensitivities = self.parameter_sensitivity_function is not None
 
         if parameter_sensitivities and not is_parametrized:
             raise ValueError(
@@ -532,10 +522,7 @@ class Microstructure(_SplinepyBase):
         # Prepare field for derivatives
         if macro_sensitivities or parameter_sensitivities:
             spline_list_derivs = [
-                []
-                for i in range(
-                    n_parameter_sensitivities + n_macro_sensitivities
-                )
+                [] for _ in range(n_parameter_sensitivities + n_macro_sensitivities)
             ]
 
         spline_list_ms = []
@@ -557,9 +544,7 @@ class Microstructure(_SplinepyBase):
             # If the sensitivities are requested, evaluate the sensitivity
             # function, which must be provided by the user
             if parameter_sensitivities:
-                tile_sensitivities = self.parameter_sensitivity_function(
-                    positions
-                )
+                tile_sensitivities = self.parameter_sensitivity_function(positions)
                 # To avoid unnecessary constructions (if a parameter
                 # sensitivity evaluates to zero), perform only those that are
                 # in the support of a specific design variable
@@ -604,9 +589,7 @@ class Microstructure(_SplinepyBase):
                         tile_patch, compute_sensitivities=True
                     )
                     spline_list_ms.append(composed)
-                    basis_function_compositions.append(
-                        basis_function_composition
-                    )
+                    basis_function_compositions.append(basis_function_composition)
             else:
                 for tile_patch in tile:
                     spline_list_ms.append(def_fun.compose(tile_patch))
@@ -618,7 +601,7 @@ class Microstructure(_SplinepyBase):
                 for j in anti_support:
                     spline_list_derivs[j].extend(empty_splines)
                 for j, deris in enumerate(derivatives):
-                    for tile_v, tile_deriv in zip(tile, deris):
+                    for tile_v, tile_deriv in zip(tile, deris, strict=True):
                         spline_list_derivs[support[j]].append(
                             def_fun.composition_derivative(tile_v, tile_deriv)
                         )
@@ -642,16 +625,10 @@ class Microstructure(_SplinepyBase):
                         control_points = _np.zeros(
                             (cps.shape[0], self._deformation_function.dim)
                         )
-                        ii_ctps, jj_dim = divmod(
-                            j_cc, self._deformation_function.dim
-                        )
+                        ii_ctps, jj_dim = divmod(j_cc, self._deformation_function.dim)
                         control_points[:, jj_dim] = mapped_cps[:, ii_ctps]
-                        spline_list_derivs[
-                            n_parameter_sensitivities + j_cc
-                        ].append(
-                            type(patch_info[0])(
-                                patch_info[0].degrees, control_points
-                            )
+                        spline_list_derivs[n_parameter_sensitivities + j_cc].append(
+                            type(patch_info[0])(patch_info[0].degrees, control_points)
                         )
 
         # Use a multipatch object to bundle all information
@@ -723,8 +700,7 @@ class Microstructure(_SplinepyBase):
             or (self.tiling is None)
         ):
             self._logd(
-                "Current information not sufficient,"
-                " awaiting further assignments"
+                "Current information not sufficient, awaiting further assignments"
             )
             return False
         # Check if microtile object fulfils requirements
@@ -768,9 +744,7 @@ class Microstructure(_SplinepyBase):
                 "attribute `evaluation_points`, that is required for"
                 " a parametrized microstructure construction"
             )
-        result = self._parametrization_function(
-            self._microtile.evaluation_points
-        )
+        result = self._parametrization_function(self._microtile.evaluation_points)
         if not isinstance(result, _np.ndarray):
             raise ValueError(
                 "Function outline of parametrization function must be "
@@ -781,9 +755,7 @@ class Microstructure(_SplinepyBase):
             return True
 
         # Check sensitivity function
-        result = self.parameter_sensitivity_function(
-            self._microtile.evaluation_points
-        )
+        result = self.parameter_sensitivity_function(self._microtile.evaluation_points)
         if (not isinstance(result, _np.ndarray)) or (not result.ndim == 3):
             raise ValueError(
                 "Function outline of parameter sensitivity function must "
@@ -823,8 +795,7 @@ class _UserTile(_SplinepyBase):
         for m in microtile:
             if not isinstance(m, _PySpline):
                 raise ValueError(
-                    "Microtiles must be (list of) "
-                    "splinepy-Splines. e.g. splinepy.NURBS"
+                    "Microtiles must be (list of) splinepy-Splines. e.g. splinepy.NURBS"
                 )
             # Extract beziers for every non Bezier patch else this just
             # returns itself
