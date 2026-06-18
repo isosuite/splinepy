@@ -2,7 +2,7 @@ name: main
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "fix-build"]
 
 jobs:
   macos_wheel:
@@ -42,7 +42,7 @@ jobs:
       with:
         submodules: recursive
     - name: build wheels
-      uses: pypa/cibuildwheel@v2.23.2
+      uses: pypa/cibuildwheel@v3
       env:
         CIBW_ARCHS: ${{ matrix.arch }}
         CIBW_BUILD: ${{ matrix.cw_build }}
@@ -67,7 +67,7 @@ jobs:
       with:
         submodules: recursive
     - name: build wheels
-      uses: pypa/cibuildwheel@v2.23.2
+      uses: pypa/cibuildwheel@v3
       env:
         CIBW_ARCHS: ${{ matrix.arch }}
         CIBW_BUILD: ${{ matrix.cw_build }}
@@ -92,7 +92,7 @@ jobs:
       with:
         submodules: recursive
     - name: build wheels
-      uses: pypa/cibuildwheel@v2.23.2
+      uses: pypa/cibuildwheel@v3
       env:
         CIBW_ARCHS: ${{ matrix.arch }}
         CIBW_BUILD: ${{ matrix.cw_build }}
@@ -123,18 +123,18 @@ jobs:
         retention-days: 1
 
 
-  upload_pypi:
-    needs: [macos_wheel, macos_wheel-m1, linux_wheel, windows_wheel, source_dist]
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: wheels-*
-          merge-multiple: true
-          path: dist
+  # upload_pypi:
+  #   needs: [macos_wheel, macos_wheel-m1, linux_wheel, windows_wheel, source_dist]
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     id-token: write
+  #   steps:
+  #     - uses: actions/download-artifact@v4
+  #       with:
+  #         pattern: wheels-*
+  #         merge-multiple: true
+  #         path: dist
 
-      - uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          skip-existing: true
+  #     - uses: pypa/gh-action-pypi-publish@release/v1
+  #       with:
+  #         skip-existing: true
