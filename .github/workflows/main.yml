@@ -71,6 +71,7 @@ jobs:
       env:
         CIBW_ARCHS: ${{ matrix.arch }}
         CIBW_BUILD: ${{ matrix.cw_build }}
+        CIBW_SKIP: "cp314t-*"
         SPLINEPY_GITHUB_ACTIONS_BUILD: True
         SKBUILD_INSTALL_COMPONENTS: PythonModule
 
