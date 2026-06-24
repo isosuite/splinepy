@@ -43,7 +43,7 @@ jobs:
       uses: pypa/cibuildwheel@v4.1.0
       env:
         CIBW_ARCHS: ${{ matrix.arch }}
-        CIBW_BUILD: ${{ matrix.build }}
+        CIBW_BUILD: ${{ join(matrix.build, ',') }}
         CIBW_SKIP: ${{ matrix.skip || '' }}
         CIBW_TEST_SKIP: ${{ matrix.test_skip || '' }}
         SPLINEPY_GITHUB_ACTIONS_BUILD: True
