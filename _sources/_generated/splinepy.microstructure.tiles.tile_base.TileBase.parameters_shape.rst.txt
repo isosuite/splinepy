@@ -1,0 +1,6 @@
+splinepy.microstructure.tiles.tile\_base.TileBase.parameters\_shape
+===================================================================
+
+.. currentmodule:: splinepy.microstructure.tiles.tile_base
+
+.. autoproperty:: TileBase.parameters_shape

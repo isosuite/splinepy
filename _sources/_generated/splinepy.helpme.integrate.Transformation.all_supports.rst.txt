@@ -1,0 +1,6 @@
+splinepy.helpme.integrate.Transformation.all\_supports
+======================================================
+
+.. currentmodule:: splinepy.helpme.integrate
+
+.. autoproperty:: Transformation.all_supports

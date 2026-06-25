@@ -1,0 +1,6 @@
+splinepy.helpme.integrate.Transformation.check\_element\_id\_validity
+=====================================================================
+
+.. currentmodule:: splinepy.helpme.integrate
+
+.. automethod:: Transformation.check_element_id_validity

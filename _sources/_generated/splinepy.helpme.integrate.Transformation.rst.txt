@@ -1,0 +1,86 @@
+splinepy.helpme.integrate.Transformation
+========================================
+
+.. currentmodule:: splinepy.helpme.integrate
+
+.. autoclass:: Transformation
+   :show-inheritance:
+
+   
+
+   
+   .. rubric:: Methods
+
+   .. autosummary::
+      :toctree:
+   
+     
+     
+       Transformation.check_element_id_validity
+     
+     
+       Transformation.compute_all_element_jacobian_determinants
+     
+     
+       Transformation.compute_all_element_jacobian_inverses
+     
+     
+       Transformation.compute_all_element_jacobians
+     
+     
+       Transformation.compute_all_element_measures
+     
+     
+       Transformation.compute_all_element_quad_points
+     
+     
+       Transformation.compute_all_supports
+     
+     
+       Transformation.get_element_grid_id
+     
+     
+       Transformation.get_element_quad_points
+     
+     
+       Transformation.get_element_support
+     
+     
+       Transformation.jacobian
+     
+     
+       Transformation.jacobian_determinant
+     
+     
+       Transformation.jacobian_inverse
+     
+   
+   
+
+   
+   
+   .. rubric:: Attributes
+
+   .. autosummary::
+      :toctree:
+   
+      
+         Transformation.all_jacobian_determinants
+      
+      
+         Transformation.all_jacobian_inverses
+      
+      
+         Transformation.all_jacobians
+      
+      
+         Transformation.all_quad_points
+      
+      
+         Transformation.all_supports
+      
+      
+         Transformation.quadrature_weights
+      
+   
+   

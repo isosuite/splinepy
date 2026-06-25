@@ -1,0 +1,6 @@
+splinepy.helpme.integrate.FieldIntegrator.apply\_dirichlet\_boundary\_conditions
+================================================================================
+
+.. currentmodule:: splinepy.helpme.integrate
+
+.. automethod:: FieldIntegrator.apply_dirichlet_boundary_conditions

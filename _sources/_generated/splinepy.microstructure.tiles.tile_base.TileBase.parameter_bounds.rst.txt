@@ -1,0 +1,6 @@
+splinepy.microstructure.tiles.tile\_base.TileBase.parameter\_bounds
+===================================================================
+
+.. currentmodule:: splinepy.microstructure.tiles.tile_base
+
+.. autoproperty:: TileBase.parameter_bounds

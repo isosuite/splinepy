@@ -1,0 +1,6 @@
+splinepy.helpme.integrate.FieldIntegrator.check\_if\_assembled
+==============================================================
+
+.. currentmodule:: splinepy.helpme.integrate
+
+.. automethod:: FieldIntegrator.check_if_assembled

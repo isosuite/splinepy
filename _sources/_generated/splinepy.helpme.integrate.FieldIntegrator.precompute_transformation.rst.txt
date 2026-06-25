@@ -1,0 +1,6 @@
+splinepy.helpme.integrate.FieldIntegrator.precompute\_transformation
+====================================================================
+
+.. currentmodule:: splinepy.helpme.integrate
+
+.. automethod:: FieldIntegrator.precompute_transformation

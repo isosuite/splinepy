@@ -1,0 +1,6 @@
+splinepy.microstructure.tiles.tile\_base.TileBase.closure\_directions
+=====================================================================
+
+.. currentmodule:: splinepy.microstructure.tiles.tile_base
+
+.. autoproperty:: TileBase.closure_directions

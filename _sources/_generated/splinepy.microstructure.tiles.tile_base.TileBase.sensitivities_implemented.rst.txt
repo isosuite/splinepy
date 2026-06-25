@@ -1,0 +1,6 @@
+splinepy.microstructure.tiles.tile\_base.TileBase.sensitivities\_implemented
+============================================================================
+
+.. currentmodule:: splinepy.microstructure.tiles.tile_base
+
+.. autoproperty:: TileBase.sensitivities_implemented

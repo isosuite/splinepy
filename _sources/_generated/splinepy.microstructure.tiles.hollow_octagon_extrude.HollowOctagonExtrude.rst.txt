@@ -1,0 +1,47 @@
+splinepy.microstructure.tiles.hollow\_octagon\_extrude.HollowOctagonExtrude
+===========================================================================
+
+.. currentmodule:: splinepy.microstructure.tiles.hollow_octagon_extrude
+
+.. autoclass:: HollowOctagonExtrude
+   :show-inheritance:
+
+   
+
+   
+   .. rubric:: Methods
+
+   .. autosummary::
+      :toctree:
+   
+     
+     
+       HollowOctagonExtrude.check_param_derivatives
+     
+     
+       HollowOctagonExtrude.check_params
+     
+     
+       HollowOctagonExtrude.create_tile
+     
+   
+   
+
+   
+   
+   .. rubric:: Attributes
+
+   .. autosummary::
+      :toctree:
+   
+      
+      
+      
+      
+      
+      
+      
+      
+      
+   
+   

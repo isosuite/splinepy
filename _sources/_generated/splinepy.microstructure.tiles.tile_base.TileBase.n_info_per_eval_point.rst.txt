@@ -1,0 +1,6 @@
+splinepy.microstructure.tiles.tile\_base.TileBase.n\_info\_per\_eval\_point
+===========================================================================
+
+.. currentmodule:: splinepy.microstructure.tiles.tile_base
+
+.. autoproperty:: TileBase.n_info_per_eval_point

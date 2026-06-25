@@ -1,0 +1,6 @@
+splinepy.helpme.integrate.Transformation.get\_element\_support
+==============================================================
+
+.. currentmodule:: splinepy.helpme.integrate
+
+.. automethod:: Transformation.get_element_support

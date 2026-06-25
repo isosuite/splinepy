@@ -1,0 +1,6 @@
+splinepy.helpme.integrate.FieldIntegrator.L2\_projection
+========================================================
+
+.. currentmodule:: splinepy.helpme.integrate
+
+.. automethod:: FieldIntegrator.L2_projection

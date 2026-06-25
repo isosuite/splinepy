@@ -1,0 +1,6 @@
+splinepy.helpme.integrate.FieldIntegrator.assemble\_matrix
+==========================================================
+
+.. currentmodule:: splinepy.helpme.integrate
+
+.. automethod:: FieldIntegrator.assemble_matrix

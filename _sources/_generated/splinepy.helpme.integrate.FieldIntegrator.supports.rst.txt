@@ -1,0 +1,6 @@
+splinepy.helpme.integrate.FieldIntegrator.supports
+==================================================
+
+.. currentmodule:: splinepy.helpme.integrate
+
+.. autoproperty:: FieldIntegrator.supports

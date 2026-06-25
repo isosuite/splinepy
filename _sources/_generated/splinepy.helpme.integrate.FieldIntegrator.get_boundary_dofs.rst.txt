@@ -1,0 +1,6 @@
+splinepy.helpme.integrate.FieldIntegrator.get\_boundary\_dofs
+=============================================================
+
+.. currentmodule:: splinepy.helpme.integrate
+
+.. automethod:: FieldIntegrator.get_boundary_dofs

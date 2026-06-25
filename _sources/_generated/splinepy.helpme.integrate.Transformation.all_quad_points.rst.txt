@@ -1,0 +1,6 @@
+splinepy.helpme.integrate.Transformation.all\_quad\_points
+==========================================================
+
+.. currentmodule:: splinepy.helpme.integrate
+
+.. autoproperty:: Transformation.all_quad_points

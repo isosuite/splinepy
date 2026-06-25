@@ -1,0 +1,6 @@
+splinepy.helpme.integrate.Transformation.compute\_all\_element\_jacobians
+=========================================================================
+
+.. currentmodule:: splinepy.helpme.integrate
+
+.. automethod:: Transformation.compute_all_element_jacobians

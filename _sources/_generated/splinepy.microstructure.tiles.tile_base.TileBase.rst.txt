@@ -1,0 +1,65 @@
+splinepy.microstructure.tiles.tile\_base.TileBase
+=================================================
+
+.. currentmodule:: splinepy.microstructure.tiles.tile_base
+
+.. autoclass:: TileBase
+   :show-inheritance:
+
+   
+
+   
+   .. rubric:: Methods
+
+   .. autosummary::
+      :toctree:
+   
+     
+     
+       TileBase.check_param_derivatives
+     
+     
+       TileBase.check_params
+     
+     
+       TileBase.create_tile
+     
+   
+   
+
+   
+   
+   .. rubric:: Attributes
+
+   .. autosummary::
+      :toctree:
+   
+      
+         TileBase.closure_directions
+      
+      
+         TileBase.default_parameter_value
+      
+      
+         TileBase.dim
+      
+      
+         TileBase.evaluation_points
+      
+      
+         TileBase.n_info_per_eval_point
+      
+      
+         TileBase.para_dim
+      
+      
+         TileBase.parameter_bounds
+      
+      
+         TileBase.parameters_shape
+      
+      
+         TileBase.sensitivities_implemented
+      
+   
+   

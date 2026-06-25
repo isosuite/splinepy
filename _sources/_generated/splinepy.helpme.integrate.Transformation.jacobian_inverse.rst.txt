@@ -1,0 +1,6 @@
+splinepy.helpme.integrate.Transformation.jacobian\_inverse
+==========================================================
+
+.. currentmodule:: splinepy.helpme.integrate
+
+.. automethod:: Transformation.jacobian_inverse

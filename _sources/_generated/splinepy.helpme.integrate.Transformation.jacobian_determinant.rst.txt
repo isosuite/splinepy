@@ -1,0 +1,6 @@
+splinepy.helpme.integrate.Transformation.jacobian\_determinant
+==============================================================
+
+.. currentmodule:: splinepy.helpme.integrate
+
+.. automethod:: Transformation.jacobian_determinant

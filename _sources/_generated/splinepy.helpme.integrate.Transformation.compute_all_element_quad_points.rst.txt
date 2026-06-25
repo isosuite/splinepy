@@ -1,0 +1,6 @@
+splinepy.helpme.integrate.Transformation.compute\_all\_element\_quad\_points
+============================================================================
+
+.. currentmodule:: splinepy.helpme.integrate
+
+.. automethod:: Transformation.compute_all_element_quad_points

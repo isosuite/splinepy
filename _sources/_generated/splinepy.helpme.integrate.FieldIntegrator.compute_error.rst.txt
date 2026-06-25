@@ -1,0 +1,6 @@
+splinepy.helpme.integrate.FieldIntegrator.compute\_error
+========================================================
+
+.. currentmodule:: splinepy.helpme.integrate
+
+.. automethod:: FieldIntegrator.compute_error

@@ -1,0 +1,6 @@
+splinepy.helpme.integrate.FieldIntegrator.solve\_linear\_system
+===============================================================
+
+.. currentmodule:: splinepy.helpme.integrate
+
+.. automethod:: FieldIntegrator.solve_linear_system

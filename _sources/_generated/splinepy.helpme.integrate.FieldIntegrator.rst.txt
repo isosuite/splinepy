@@ -1,0 +1,68 @@
+splinepy.helpme.integrate.FieldIntegrator
+=========================================
+
+.. currentmodule:: splinepy.helpme.integrate
+
+.. autoclass:: FieldIntegrator
+   :show-inheritance:
+
+   
+
+   
+   .. rubric:: Methods
+
+   .. autosummary::
+      :toctree:
+   
+     
+       FieldIntegrator.L2_projection
+     
+     
+     
+       FieldIntegrator.apply_dirichlet_boundary_conditions
+     
+     
+       FieldIntegrator.apply_homogeneous_dirichlet_boundary_conditions
+     
+     
+       FieldIntegrator.assemble_matrix
+     
+     
+       FieldIntegrator.assemble_matrix_and_vector
+     
+     
+       FieldIntegrator.assemble_vector
+     
+     
+       FieldIntegrator.check_if_assembled
+     
+     
+       FieldIntegrator.compute_error
+     
+     
+       FieldIntegrator.get_boundary_dofs
+     
+     
+       FieldIntegrator.precompute_transformation
+     
+     
+       FieldIntegrator.reset
+     
+     
+       FieldIntegrator.solve_linear_system
+     
+   
+   
+
+   
+   
+   .. rubric:: Attributes
+
+   .. autosummary::
+      :toctree:
+   
+      
+         FieldIntegrator.supports
+      
+   
+   

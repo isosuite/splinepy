@@ -1,0 +1,6 @@
+splinepy.helpme.integrate.Transformation.quadrature\_weights
+============================================================
+
+.. currentmodule:: splinepy.helpme.integrate
+
+.. autoproperty:: Transformation.quadrature_weights

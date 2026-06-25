@@ -1,0 +1,6 @@
+splinepy.microstructure.tiles.tile\_base.TileBase.default\_parameter\_value
+===========================================================================
+
+.. currentmodule:: splinepy.microstructure.tiles.tile_base
+
+.. autoproperty:: TileBase.default_parameter_value
