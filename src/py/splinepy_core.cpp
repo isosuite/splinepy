@@ -44,12 +44,4 @@ NB_MODULE(splinepy_core, m) {
     return "release";
 #endif
   });
-
-  m.def("is_minimal", []() {
-#ifdef SPLINEPY_MORE
-    return false;
-#else
-    return true;
-#endif
-  });
 }

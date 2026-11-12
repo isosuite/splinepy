@@ -22,8 +22,7 @@ void BasisAndSupport(const SplineView& spline,
   }
 
   if (spline.para_dim <= 0 || spline.dim <= 0) {
-    throw SplinepyException("Invalid spline dimensions",
-                            Status::kInvalidArgument);
+    throw SplinepyException("Invalid spline dimensions", Status::kInvalidArgument);
   }
 
   if (queries.size() % static_cast<std::size_t>(spline.para_dim) != 0) {
@@ -32,8 +31,7 @@ void BasisAndSupport(const SplineView& spline,
         Status::kDimensionMismatch);
   }
 
-  const int64_t num_queries =
-      static_cast<int64_t>(queries.size()) / spline.para_dim;
+  const int64_t num_queries = static_cast<int64_t>(queries.size()) / spline.para_dim;
   if (num_queries == 0) {
     return;
   }
@@ -48,8 +46,7 @@ void BasisAndSupport(const SplineView& spline,
     throw SplinepyException("out_basis span size is smaller than expected",
                             Status::kDimensionMismatch);
   }
-  if (write_support
-      && static_cast<int64_t>(out_support.size()) < expected_size) {
+  if (write_support && static_cast<int64_t>(out_support.size()) < expected_size) {
     throw SplinepyException("out_support span size is smaller than expected",
                             Status::kDimensionMismatch);
   }
@@ -78,19 +75,16 @@ void BasisAndSupport(const SplineView& spline,
   }
 
   // Workspace for zero-allocation scratch in basis evaluations
-  Workspace local_workspace(64 * 1024, options.nthreads);
-  Workspace* ws =
-      options.workspace != nullptr ? options.workspace : &local_workspace;
+  WorkspaceRef ws_ref(options, 64 * 1024, options.nthreads);
+  Workspace* ws = ws_ref.get();
 
   auto evaluate_single_query = [&](int64_t q, int thread_id) {
     MemoryArena& arena = ws->GetThreadArena(thread_id);
     auto scope = arena.CreateScope();
 
     const double* u_query = queries.data() + q * para_dim;
-    double* q_out_basis =
-        write_basis ? (out_basis.data() + q * num_supports) : nullptr;
-    int32_t* q_out_supp =
-        write_support ? (out_support.data() + q * num_supports) : nullptr;
+    double* q_out_basis = write_basis ? (out_basis.data() + q * num_supports) : nullptr;
+    int32_t* q_out_supp = write_support ? (out_support.data() + q * num_supports) : nullptr;
 
     constexpr int32_t kStack1DLimit = 64;
     double stack_1d[kStack1DLimit];
@@ -124,8 +118,7 @@ void BasisAndSupport(const SplineView& spline,
           spans[d],
           starts[d],
           Span<double>(basis_1d_storage + current_1d_offset, p_d + 1));
-      axis_1d_bases[d] =
-          Span<const double>(basis_1d_storage + current_1d_offset, p_d + 1);
+      axis_1d_bases[d] = Span<const double>(basis_1d_storage + current_1d_offset, p_d + 1);
       current_1d_offset += (p_d + 1);
     }
 
@@ -185,10 +178,7 @@ void BasisAndSupport(const SplineView& spline,
     }
   };
 
-  ParallelForWithThreadId(int64_t{0},
-                          num_queries,
-                          options.nthreads,
-                          evaluate_single_query);
+  ParallelForWithThreadId(int64_t{0}, num_queries, options.nthreads, evaluate_single_query);
 }
 
 void Basis(const SplineView& spline,
@@ -202,11 +192,9 @@ Buffer<double> Basis(const SplineView& spline,
                      Span<const double> queries,
                      const Options& options) {
   if (spline.para_dim <= 0) {
-    throw SplinepyException("Invalid spline dimensions",
-                            Status::kInvalidArgument);
+    throw SplinepyException("Invalid spline dimensions", Status::kInvalidArgument);
   }
-  const int64_t num_queries =
-      static_cast<int64_t>(queries.size()) / spline.para_dim;
+  const int64_t num_queries = static_cast<int64_t>(queries.size()) / spline.para_dim;
   Buffer<double> out(num_queries * spline.NumSupports());
   Basis(spline, queries, out.span(), options);
   return out;
@@ -223,34 +211,31 @@ Buffer<int32_t> Support(const SplineView& spline,
                         Span<const double> queries,
                         const Options& options) {
   if (spline.para_dim <= 0) {
-    throw SplinepyException("Invalid spline dimensions",
-                            Status::kInvalidArgument);
+    throw SplinepyException("Invalid spline dimensions", Status::kInvalidArgument);
   }
-  const int64_t num_queries =
-      static_cast<int64_t>(queries.size()) / spline.para_dim;
+  const int64_t num_queries = static_cast<int64_t>(queries.size()) / spline.para_dim;
   Buffer<int32_t> out(num_queries * spline.NumSupports());
   Support(spline, queries, out.span(), options);
   return out;
 }
 
 void BasisDerivativeAndSupport(const SplineView& spline,
-                               Span<const double> queries,
-                               Span<const int32_t> orders,
-                               Span<double> out_basis_ders,
-                               Span<int32_t> out_support,
-                               const Options& options) {
+                              Span<const double> queries,
+                              Span<const int32_t> orders,
+                              Span<double> out_basis_ders,
+                              Span<int32_t> out_support,
+                              const Options& options) {
   if (options.validate) {
     ThrowIfInvalid(spline, options);
   }
 
   if (spline.para_dim <= 0 || spline.dim <= 0) {
-    throw SplinepyException("Invalid spline dimensions",
-                            Status::kInvalidArgument);
+    throw SplinepyException("Invalid spline dimensions", Status::kInvalidArgument);
   }
 
   if (orders.size() != static_cast<std::size_t>(spline.para_dim)) {
-    throw SplinepyException("Orders length must match parametric dimension",
-                            Status::kDimensionMismatch);
+    throw SplinepyException(
+        "Orders length must match parametric dimension", Status::kDimensionMismatch);
   }
 
   bool all_zero = true;
@@ -275,8 +260,7 @@ void BasisDerivativeAndSupport(const SplineView& spline,
         Status::kDimensionMismatch);
   }
 
-  const int64_t num_queries =
-      static_cast<int64_t>(queries.size()) / spline.para_dim;
+  const int64_t num_queries = static_cast<int64_t>(queries.size()) / spline.para_dim;
   if (num_queries == 0) {
     return;
   }
@@ -287,13 +271,11 @@ void BasisDerivativeAndSupport(const SplineView& spline,
   const bool write_basis = !out_basis_ders.empty();
   const bool write_support = !out_support.empty();
 
-  if (write_basis
-      && static_cast<int64_t>(out_basis_ders.size()) < expected_size) {
+  if (write_basis && static_cast<int64_t>(out_basis_ders.size()) < expected_size) {
     throw SplinepyException("out_basis_ders span size is smaller than expected",
                             Status::kDimensionMismatch);
   }
-  if (write_support
-      && static_cast<int64_t>(out_support.size()) < expected_size) {
+  if (write_support && static_cast<int64_t>(out_support.size()) < expected_size) {
     throw SplinepyException("out_support span size is smaller than expected",
                             Status::kDimensionMismatch);
   }
@@ -337,19 +319,16 @@ void BasisDerivativeAndSupport(const SplineView& spline,
   }
 
   // Workspace for zero-allocation scratch in basis derivative evaluations
-  Workspace local_workspace(64 * 1024, options.nthreads);
-  Workspace* ws =
-      options.workspace != nullptr ? options.workspace : &local_workspace;
+  WorkspaceRef ws_ref(options, 64 * 1024, options.nthreads);
+  Workspace* ws = ws_ref.get();
 
   auto evaluate_single_query = [&](int64_t q, int thread_id) {
     MemoryArena& arena = ws->GetThreadArena(thread_id);
     auto scope = arena.CreateScope();
 
     const double* u_query = queries.data() + q * para_dim;
-    double* q_out_ders =
-        write_basis ? (out_basis_ders.data() + q * num_supports) : nullptr;
-    int32_t* q_out_supp =
-        write_support ? (out_support.data() + q * num_supports) : nullptr;
+    double* q_out_ders = write_basis ? (out_basis_ders.data() + q * num_supports) : nullptr;
+    int32_t* q_out_supp = write_support ? (out_support.data() + q * num_supports) : nullptr;
 
     constexpr int32_t kStack1DLimit = 128;
     double stack_1d[kStack1DLimit];
@@ -392,13 +371,10 @@ void BasisDerivativeAndSupport(const SplineView& spline,
       current_offset += n_elems;
     }
 
-    auto get_1d_der =
-        [&](int32_t axis, int32_t order_k, int32_t basis_j) -> double {
+    auto get_1d_der = [&](int32_t axis, int32_t order_k, int32_t basis_j) -> double {
       const int32_t p_d = spline.degrees[axis];
-      if (order_k > p_d)
-        return 0.0;
-      return ders_1d_storage[p_axis_offsets[axis] + order_k * (p_d + 1)
-                             + basis_j];
+      if (order_k > p_d) return 0.0;
+      return ders_1d_storage[p_axis_offsets[axis] + order_k * (p_d + 1) + basis_j];
     };
 
     if (!spline.IsRational()) {
@@ -453,8 +429,7 @@ void BasisDerivativeAndSupport(const SplineView& spline,
 
       if (write_basis) {
         Span<double> W_beta = arena.AllocateSpan<double>(num_sub_orders);
-        Span<double> R_beta =
-            arena.AllocateSpan<double>(num_sub_orders * num_supports);
+        Span<double> R_beta = arena.AllocateSpan<double>(num_sub_orders * num_supports);
 
         for (int64_t m = 0; m < num_sub_orders; ++m) {
           int32_t beta[detail::kStackParaDim];
@@ -477,8 +452,7 @@ void BasisDerivativeAndSupport(const SplineView& spline,
 
             const double wb = supp_weights[s] * basis_der;
             w_acc += wb;
-            R_beta[m * num_supports + s] =
-                wb; // initially store w_s * B^(beta)_s
+            R_beta[m * num_supports + s] = wb;  // initially store w_s * B^(beta)_s
           }
 
           W_beta[m] = w_acc;
@@ -508,22 +482,18 @@ void BasisDerivativeAndSupport(const SplineView& spline,
                     break;
                   }
                   binom_prod *= Binomial(beta[d], gamma[d]);
-                  beta_minus_gamma_idx +=
-                      (beta[d] - gamma[d]) * p_sub_order_strides[d];
+                  beta_minus_gamma_idx += (beta[d] - gamma[d]) * p_sub_order_strides[d];
                 }
 
                 if (!gamma_le_beta) {
                   continue;
                 }
 
-                const double factor =
-                    static_cast<double>(binom_prod) * W_beta[g];
-                corr +=
-                    factor * R_beta[beta_minus_gamma_idx * num_supports + s];
+                const double factor = static_cast<double>(binom_prod) * W_beta[g];
+                corr += factor * R_beta[beta_minus_gamma_idx * num_supports + s];
               }
 
-              R_beta[m * num_supports + s] =
-                  (R_beta[m * num_supports + s] - corr) * inv_w0;
+              R_beta[m * num_supports + s] = (R_beta[m * num_supports + s] - corr) * inv_w0;
             }
           }
         }
@@ -536,10 +506,7 @@ void BasisDerivativeAndSupport(const SplineView& spline,
     }
   };
 
-  ParallelForWithThreadId(int64_t{0},
-                          num_queries,
-                          options.nthreads,
-                          evaluate_single_query);
+  ParallelForWithThreadId(int64_t{0}, num_queries, options.nthreads, evaluate_single_query);
 }
 
 void BasisDerivative(const SplineView& spline,
@@ -547,12 +514,7 @@ void BasisDerivative(const SplineView& spline,
                      Span<const int32_t> orders,
                      Span<double> out_basis_ders,
                      const Options& options) {
-  BasisDerivativeAndSupport(spline,
-                            queries,
-                            orders,
-                            out_basis_ders,
-                            Span<int32_t>{},
-                            options);
+  BasisDerivativeAndSupport(spline, queries, orders, out_basis_ders, Span<int32_t>{}, options);
 }
 
 Buffer<double> BasisDerivative(const SplineView& spline,
@@ -560,14 +522,12 @@ Buffer<double> BasisDerivative(const SplineView& spline,
                                Span<const int32_t> orders,
                                const Options& options) {
   if (spline.para_dim <= 0) {
-    throw SplinepyException("Invalid spline dimensions",
-                            Status::kInvalidArgument);
+    throw SplinepyException("Invalid spline dimensions", Status::kInvalidArgument);
   }
-  const int64_t num_queries =
-      static_cast<int64_t>(queries.size()) / spline.para_dim;
+  const int64_t num_queries = static_cast<int64_t>(queries.size()) / spline.para_dim;
   Buffer<double> out(num_queries * spline.NumSupports());
   BasisDerivative(spline, queries, orders, out.span(), options);
   return out;
 }
 
-} // namespace splinepy::core
+}  // namespace splinepy::core

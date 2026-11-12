@@ -1035,7 +1035,7 @@ class Spline(_SplinepyBase):
 
         self._set_property("weights", weights)
 
-    def evaluate(self, queries, nthreads=None):
+    def evaluate(self, queries, nthreads=None, out=None):
         """
         Evaluates spline.
 
@@ -1043,6 +1043,10 @@ class Spline(_SplinepyBase):
         -----------
         queries: (n, para_dim) array-like
         n_threads: int
+        out: optional
+          Preallocated, C-contiguous result array (a float64 array of the shape of
+          the result), filled in place and returned, like numpy's ``out``.
+          A fresh array is created if it is not given.
 
         Returns
         --------
@@ -1061,9 +1065,10 @@ class Spline(_SplinepyBase):
             self,
             queries,
             nthreads=_default_if_none(nthreads, _settings.NTHREADS),
+            out=out,
         )
 
-    def sample(self, resolutions, nthreads=None):
+    def sample(self, resolutions, nthreads=None, out=None):
         """
         Uniformly sample along each parametric dimensions from spline.
 
@@ -1071,6 +1076,10 @@ class Spline(_SplinepyBase):
         -----------
         resolutions: (n,) array-like
         nthreads: int
+        out: optional
+          Preallocated, C-contiguous result array (a float64 array of the shape of
+          the result), filled in place and returned, like numpy's ``out``.
+          A fresh array is created if it is not given.
 
         Returns
         --------
@@ -1086,9 +1095,10 @@ class Spline(_SplinepyBase):
             self,
             resolutions,
             nthreads=_default_if_none(nthreads, _settings.NTHREADS),
+            out=out,
         )
 
-    def derivative(self, queries, orders, nthreads=None):
+    def derivative(self, queries, orders, nthreads=None, out=None):
         """
         Evaluates derivatives of spline.
 
@@ -1097,6 +1107,10 @@ class Spline(_SplinepyBase):
         queries: (n, para_dim) array-like
         orders: (para_dim,) or (m, para_dim) array-like
         nthreads: int
+        out: optional
+          Preallocated, C-contiguous result array (a float64 array of the shape of
+          the result), filled in place and returned, like numpy's ``out``.
+          A fresh array is created if it is not given.
 
         Returns
         --------
@@ -1119,9 +1133,10 @@ class Spline(_SplinepyBase):
             queries=queries,
             orders=orders,
             nthreads=_default_if_none(nthreads, _settings.NTHREADS),
+            out=out,
         )
 
-    def jacobian(self, queries, nthreads=None):
+    def jacobian(self, queries, nthreads=None, out=None):
         """
         Evaluates jacobians on spline.
 
@@ -1129,6 +1144,10 @@ class Spline(_SplinepyBase):
         -----------
         queries: (n, para_dim) array-like
         n_threads: int
+        out: optional
+          Preallocated, C-contiguous result array (a float64 array of the shape of
+          the result), filled in place and returned, like numpy's ``out``.
+          A fresh array is created if it is not given.
 
         Returns
         --------
@@ -1147,9 +1166,10 @@ class Spline(_SplinepyBase):
             self,
             queries,
             nthreads=_default_if_none(nthreads, _settings.NTHREADS),
+            out=out,
         )
 
-    def support(self, queries, nthreads=None):
+    def support(self, queries, nthreads=None, out=None):
         """
         Returns basis support ids of given queries.
 
@@ -1157,6 +1177,10 @@ class Spline(_SplinepyBase):
         -----------
         queries: (n, para_dim) array-like
         n_threads: int
+        out: optional
+          Preallocated, C-contiguous result array (a int32 array of the shape of
+          the result), filled in place and returned, like numpy's ``out``.
+          A fresh array is created if it is not given.
 
         Returns
         --------
@@ -1174,9 +1198,10 @@ class Spline(_SplinepyBase):
             self,
             queries=queries,
             nthreads=_default_if_none(nthreads, _settings.NTHREADS),
+            out=out,
         )
 
-    def basis(self, queries, nthreads=None):
+    def basis(self, queries, nthreads=None, out=None):
         """
         Returns basis function values on the supports of given queries.
 
@@ -1184,6 +1209,10 @@ class Spline(_SplinepyBase):
         -----------
         queries: (n, para_dim) array-like
         n_threads: int
+        out: optional
+          Preallocated, C-contiguous result array (a float64 array of the shape of
+          the result), filled in place and returned, like numpy's ``out``.
+          A fresh array is created if it is not given.
 
         Returns
         --------
@@ -1201,9 +1230,10 @@ class Spline(_SplinepyBase):
             self,
             queries=queries,
             nthreads=_default_if_none(nthreads, _settings.NTHREADS),
+            out=out,
         )
 
-    def basis_and_support(self, queries, nthreads=None):
+    def basis_and_support(self, queries, nthreads=None, out=None):
         """
         Returns basis function values and their support ids of given queries.
         Same as calling `basis` and `support` at the same time.
@@ -1212,6 +1242,10 @@ class Spline(_SplinepyBase):
         -----------
         queries: (n, para_dim) array-like
         n_threads: int
+        out: optional
+          Preallocated, C-contiguous result array (a tuple of two arrays (basis float64, support int32) of the shape of
+          the result), filled in place and returned, like numpy's ``out``.
+          A fresh array is created if it is not given.
 
         Returns
         --------
@@ -1230,9 +1264,10 @@ class Spline(_SplinepyBase):
             self,
             queries=queries,
             nthreads=_default_if_none(nthreads, _settings.NTHREADS),
+            out=out,
         )
 
-    def basis_derivative(self, queries, orders, nthreads=None):
+    def basis_derivative(self, queries, orders, nthreads=None, out=None):
         """
         Returns derivative of basis functions evaluated on the supports
         of given queries.
@@ -1242,6 +1277,10 @@ class Spline(_SplinepyBase):
         queries: (n, para_dim) array-like
         orders: (para_dim,) or (m, para_dim) array-like
         nthreads: int
+        out: optional
+          Preallocated, C-contiguous result array (a float64 array of the shape of
+          the result), filled in place and returned, like numpy's ``out``.
+          A fresh array is created if it is not given.
 
         Returns
         --------
@@ -1263,9 +1302,10 @@ class Spline(_SplinepyBase):
             queries=queries,
             orders=orders,
             nthreads=_default_if_none(nthreads, _settings.NTHREADS),
+            out=out,
         )
 
-    def basis_derivative_and_support(self, queries, orders, nthreads=None):
+    def basis_derivative_and_support(self, queries, orders, nthreads=None, out=None):
         """
         Returns derivative of basis functions and their support ids of given
         queries. Same as calling `basis_derivative` and `support` at the same
@@ -1276,6 +1316,10 @@ class Spline(_SplinepyBase):
         queries: (n, para_dim) array-like
         orders: (para_dim,) or (m, para_dim) array-like
         nthreads: int
+        out: optional
+          Preallocated, C-contiguous result array (a tuple of two arrays (basis float64, support int32) of the shape of
+          the result), filled in place and returned, like numpy's ``out``.
+          A fresh array is created if it is not given.
 
         Returns
         --------
@@ -1298,6 +1342,7 @@ class Spline(_SplinepyBase):
             queries=queries,
             orders=orders,
             nthreads=_default_if_none(nthreads, _settings.NTHREADS),
+            out=out,
         )
 
     def proximities(

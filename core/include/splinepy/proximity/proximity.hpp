@@ -29,6 +29,7 @@ SOFTWARE.
 #include <utility>
 #include <vector>
 
+#include "splinepy/core/memory/memory_arena.hpp"
 #include "splinepy/core/model/spline_view.hpp"
 #include "splinepy/core/spatial/element_bvh.hpp"
 #include "splinepy/utils/arrays.hpp"
@@ -74,6 +75,10 @@ struct SearchData {
   int para_dim;
   int dim;
 
+  /// scratch for everything below that is not a view of caller memory. The
+  /// owner opens a scope on it that outlives this struct.
+  splinepy::core::MemoryArena* arena{nullptr};
+
   // view array
   ConstRealArray phys_query;
   // either view or allocated
@@ -83,7 +88,7 @@ struct SearchData {
   RealArray2D spline_gradient;
   RealArray3D spline_hessian;
 
-  // local allocated
+  // scratch (arena views)
   RealArray initial_guess;
   RealArray2D d2jdu2;
   RealArray djdu;
@@ -165,8 +170,10 @@ struct SearchData {
     RealArray prev_guess;
 
     void Setup(SearchData& data) {
-      metric.Reallocate(data.para_dim);
-      prev_guess.Reallocate(data.para_dim);
+      metric.SetData(data.arena->AllocateSpan<double>(data.para_dim).data(),
+                     data.para_dim);
+      prev_guess.SetData(data.arena->AllocateSpan<double>(data.para_dim).data(),
+                         data.para_dim);
     }
 
     /// @brief Computes || F(x) + J^T * dX ||^2
@@ -181,7 +188,8 @@ struct SearchData {
     }
   } LM;
 
-  SearchData(const int para_dim,
+  SearchData(splinepy::core::MemoryArena& arena_,
+             const int para_dim,
              const int dim,
              const double tolerance,
              const int max_iter,
@@ -191,6 +199,7 @@ struct SearchData {
              double* nearest_minus_query,
              double* first_derivatives,
              double* second_derivatives) {
+    arena = &arena_;
     Setup(para_dim,
           dim,
           tolerance,
@@ -259,6 +268,10 @@ public:
   // element bvh based initial guesses
   std::unique_ptr<splinepy::core::ElementBvh> bvh_;
   std::vector<int> bvh_samples_per_axis_;
+  /// spline(sample) of every element's sampling grid, element-major, first
+  /// parametric dimension fastest. Empty if it would exceed the memory budget,
+  /// in which case samples are evaluated at query time.
+  std::vector<double> bvh_sample_points_;
 
   /// at most this many starting points are tried per query
   int max_starts_{4};

@@ -190,6 +190,94 @@ class BezierBase(_spline.Spline):
         else:
             return _settings.NAME_TO_TYPE[composed.name](spline=composed)
 
+    @staticmethod
+    def compose_batch(
+        outers, inners, compute_sensitivities=False, nthreads=1
+    ):
+        r"""
+        Composes every outer spline with every inner spline, see
+        :meth:`compose` for a single pair.
+
+        The composed Bernstein basis depends on the outer degrees and the inner
+        spline, but not on the outer control points. It is built once per
+        inner spline and shared by all outers, which makes this much cheaper
+        than calling :meth:`compose` for each pair. A typical use is a refined
+        spline that is split into Bezier elements (``outers``), each filled
+        with the same microstructure patches (``inners``).
+
+        Parameters
+        ----------
+        outers : list
+          Bezier-Type splines with identical degrees, dim and rationality.
+        inners : list
+          Bezier-Type splines. ``inner.dim`` has to match ``outer.para_dim``.
+        compute_sensitivities : bool
+          If set, the sensitivities are returned as well, default False
+        nthreads : int
+          Number of threads, default 1
+
+        Returns
+        -------
+        composed : list
+          ``composed[o][i]`` is the composition of ``outers[o]`` with
+          ``inners[i]``.
+        sensitivities : list (optional)
+          ``sensitivities[o][i]`` is the list of sensitivities of
+          ``composed[o][i]``, see :meth:`compose`.
+        """
+        outers, inners = list(outers), list(inners)
+        nthreads = int(nthreads)
+
+        def wrap(grid):
+            return [
+                [_settings.NAME_TO_TYPE[c.name](spline=c) for c in row]
+                for row in grid
+            ]
+
+        composed = wrap(_splinepy_core.compose_batch(outers, inners, nthreads))
+        if not compute_sensitivities:
+            return composed
+
+        raw = _splinepy_core.compose_sensitivities_batch(
+            outers, inners, nthreads
+        )
+        sensitivities = [[wrap([cell])[0] for cell in row] for row in raw]
+        return composed, sensitivities
+
+    @staticmethod
+    def composition_derivative_batch(
+        outers, inners, inner_derivatives, nthreads=1
+    ):
+        r"""
+        Batched :meth:`composition_derivative`: pairs every outer with every
+        inner, with the derivative ``inner_derivatives[i]`` of ``inners[i]``.
+        Shares the composed basis like :meth:`compose_batch`.
+
+        Parameters
+        ----------
+        outers : list
+          Bezier-Type splines with identical degrees, dim and rationality.
+        inners : list
+          Bezier-Type splines.
+        inner_derivatives : list
+          One derivative spline per inner.
+        nthreads : int
+          Number of threads, default 1
+
+        Returns
+        -------
+        composition_ders : list
+          ``composition_ders[o][i]`` belongs to ``outers[o]`` and
+          ``inners[i]``.
+        """
+        raw = _splinepy_core.composition_derivative_batch(
+            list(outers), list(inners), list(inner_derivatives), int(nthreads)
+        )
+        return [
+            [_settings.NAME_TO_TYPE[c.name](spline=c) for c in row]
+            for row in raw
+        ]
+
     def composition_derivative(self, inner, inner_derivative):
         r"""
         Derivative of composition when given the differentiated inner function

@@ -10,13 +10,104 @@
 #include "splinepy/core/common.hpp"
 #include "splinepy/core/math/bspline_basis.hpp"
 #include "splinepy/core/memory/buffer.hpp"
+#include "splinepy/core/memory/memory_arena.hpp"
 #include "splinepy/core/memory/span.hpp"
+#include "splinepy/core/memory/workspace.hpp"
 #include "splinepy/core/model/spline_view.hpp"
+#include "splinepy/core/options.hpp"
 
 namespace splinepy::core::detail {
 
-/// Converts spline control points (and weights if rational) into homogeneous
-/// coordinates (dim + 1).
+/// Scratch arena for a single-threaded kernel call: the caller's workspace if
+/// options provide one, otherwise a small local one. Always the thread-0 arena,
+/// so concurrent callers must hand each worker its own arena (see the batch
+/// overloads) instead of sharing one Options::workspace.
+class LocalArena {
+ public:
+  explicit LocalArena(const Options& options)
+      : local_(options.workspace ? 1024 : 16 * 1024, 1),
+        ws_(options.workspace ? options.workspace : &local_) {}
+
+  LocalArena(const LocalArena&) = delete;
+  LocalArena& operator=(const LocalArena&) = delete;
+
+  Workspace& workspace() noexcept { return *ws_; }
+  MemoryArena& arena() { return ws_->GetThreadArena(0); }
+
+ private:
+  Workspace local_;
+  Workspace* ws_;
+};
+
+/// Index bookkeeping for a tensor-product control net being resized along one axis.
+/// All spans live in the arena that built it, so it is valid until that arena's
+/// scope ends. No limit on para_dim.
+struct TensorLayout {
+  int32_t axis{0};
+  int32_t coord_dim{1};
+  Span<int64_t> in_n, in_strides, out_n, out_strides;
+  int64_t num_rows{1};   // independent 1D rows along axis
+  int64_t in_s{0};       // distance between consecutive axis entries, in doubles
+  int64_t out_s{0};
+  int64_t out_total{0};  // number of output control points
+
+  /// in_n_of(d) gives the input control point count along axis d.
+  template <typename InN>
+  static TensorLayout Make(MemoryArena& arena,
+                           int32_t para_dim,
+                           int32_t axis,
+                           int32_t coord_dim,
+                           InN&& in_n_of,
+                           int64_t out_axis_n) {
+    assert(para_dim >= 1 && axis >= 0 && axis < para_dim);
+    TensorLayout l;
+    l.axis = axis;
+    l.coord_dim = coord_dim;
+
+    const std::size_t n = static_cast<std::size_t>(para_dim);
+    Span<int64_t> block = arena.AllocateSpan<int64_t>(4 * n);
+    l.in_n = block.subspan(0, n);
+    l.in_strides = block.subspan(n, n);
+    l.out_n = block.subspan(2 * n, n);
+    l.out_strides = block.subspan(3 * n, n);
+
+    for (int32_t d = 0; d < para_dim; ++d) {
+      l.in_n[d] = in_n_of(d);
+      l.out_n[d] = (d == axis) ? out_axis_n : l.in_n[d];
+      if (d == 0) {
+        l.in_strides[0] = 1;
+        l.out_strides[0] = 1;
+      } else {
+        l.in_strides[d] = l.in_strides[d - 1] * l.in_n[d - 1];
+        l.out_strides[d] = l.out_strides[d - 1] * l.out_n[d - 1];
+      }
+      if (d != axis) {
+        l.num_rows *= l.in_n[d];
+      }
+    }
+    l.in_s = l.in_strides[axis] * coord_dim;
+    l.out_s = l.out_strides[axis] * coord_dim;
+    l.out_total = l.out_strides[para_dim - 1] * l.out_n[para_dim - 1];
+    return l;
+  }
+
+  /// Offsets (in doubles) of the first entry of row r in the input and output nets.
+  void RowBases(int64_t r, int64_t& in_base, int64_t& out_base) const noexcept {
+    in_base = 0;
+    out_base = 0;
+    for (int32_t d = 0; d < static_cast<int32_t>(in_n.size()); ++d) {
+      if (d == axis) continue;
+      const int64_t idx_d = r % in_n[d];
+      r /= in_n[d];
+      in_base += idx_d * in_strides[d];
+      out_base += idx_d * out_strides[d];
+    }
+    in_base *= coord_dim;
+    out_base *= coord_dim;
+  }
+};
+
+/// Converts spline control points (and weights if rational) into homogeneous coordinates (dim + 1).
 inline Buffer<double> ToHomogeneous(const SplineView& spline) {
   const int64_t n_cps = spline.num_control_points;
   const int32_t dim = spline.dim;
@@ -42,8 +133,7 @@ inline Buffer<double> ToHomogeneous(const SplineView& spline) {
   return homo;
 }
 
-/// Converts homogeneous coordinates (dim + 1) back into physical coordinates
-/// and weights.
+/// Converts homogeneous coordinates (dim + 1) back into physical coordinates and weights.
 inline void FromHomogeneous(Span<const double> homo,
                             int64_t n_cps,
                             int32_t dim,
@@ -75,42 +165,28 @@ inline void FromHomogeneous(Span<const double> homo,
 
 /// N-D tensor-product single knot insertion along axis.
 /// Precomputes knot span and blending coefficients once for all parallel rows.
-inline void
-InsertKnotAlongAxisND(int32_t para_dim,
-                      int32_t coord_dim,
-                      Span<const int32_t> degrees,
-                      const std::vector<Span<const double>>& current_kvs,
-                      Span<const double> in_cps,
-                      int32_t axis,
-                      double u_new,
-                      std::vector<double>& out_axis_knots,
-                      Buffer<double>& out_cps) {
+inline void InsertKnotAlongAxisND(MemoryArena& arena,
+                                  int32_t para_dim,
+                                  int32_t coord_dim,
+                                  Span<const int32_t> degrees,
+                                  const std::vector<Span<const double>>& current_kvs,
+                                  Span<const double> in_cps,
+                                  int32_t axis,
+                                  double u_new,
+                                  std::vector<double>& out_axis_knots,
+                                  Buffer<double>& out_cps) {
   assert(axis >= 0 && axis < para_dim);
+  auto scope = arena.CreateScope();
 
-  std::vector<int64_t> in_n(para_dim);
-  std::vector<int64_t> in_strides(para_dim);
-  in_strides[0] = 1;
-  for (int32_t d = 0; d < para_dim; ++d) {
-    in_n[d] = static_cast<int64_t>(current_kvs[d].size()) - degrees[d] - 1;
-    if (d > 0) {
-      in_strides[d] = in_strides[d - 1] * in_n[d - 1];
-    }
-  }
-
-  std::vector<int64_t> out_n = in_n;
-  out_n[axis] = in_n[axis] + 1;
-
-  std::vector<int64_t> out_strides(para_dim);
-  out_strides[0] = 1;
-  for (int32_t d = 1; d < para_dim; ++d) {
-    out_strides[d] = out_strides[d - 1] * out_n[d - 1];
-  }
-
-  const int64_t total_out_cps = out_strides[para_dim - 1] * out_n[para_dim - 1];
-  out_cps.resize(total_out_cps * coord_dim);
+  auto in_n_of = [&](int32_t d) {
+    return static_cast<int64_t>(current_kvs[d].size()) - degrees[d] - 1;
+  };
+  const TensorLayout layout = TensorLayout::Make(
+      arena, para_dim, axis, coord_dim, in_n_of, in_n_of(axis) + 1);
+  out_cps.resize(layout.out_total * coord_dim);
 
   const int32_t p = degrees[axis];
-  const int32_t n = static_cast<int32_t>(in_n[axis]);
+  const int32_t n = static_cast<int32_t>(layout.in_n[axis]);
   Span<const double> knots = current_kvs[axis];
 
   // 1. Find span k such that knots[k] <= u_new < knots[k+1]
@@ -137,39 +213,20 @@ InsertKnotAlongAxisND(int32_t para_dim,
 
   // 3. Precompute blending coefficients alphas for i in [k - p + 1, k]
   // alpha_i = (u_new - knots[i]) / (knots[i + p] - knots[i])
-  std::vector<double> alphas(p);
+  Span<double> alphas = arena.AllocateSpan<double>(p);
   for (int32_t j = 0; j < p; ++j) {
     const int32_t i = k - p + 1 + j;
     const double denom = knots[i + p] - knots[i];
     alphas[j] = (denom != 0.0) ? ((u_new - knots[i]) / denom) : 0.0;
   }
 
-  // Number of parallel 1D rows along axis
-  int64_t num_rows = 1;
-  for (int32_t d = 0; d < para_dim; ++d) {
-    if (d != axis) {
-      num_rows *= in_n[d];
-    }
-  }
+  const int64_t in_s = layout.in_s;
+  const int64_t out_s = layout.out_s;
 
-  const int64_t in_s = in_strides[axis] * coord_dim;
-  const int64_t out_s = out_strides[axis] * coord_dim;
-
-  for (int64_t r = 0; r < num_rows; ++r) {
+  for (int64_t r = 0; r < layout.num_rows; ++r) {
     int64_t in_base = 0;
     int64_t out_base = 0;
-    int64_t rem = r;
-
-    for (int32_t d = 0; d < para_dim; ++d) {
-      if (d == axis)
-        continue;
-      const int64_t idx_d = rem % in_n[d];
-      rem /= in_n[d];
-      in_base += idx_d * in_strides[d];
-      out_base += idx_d * out_strides[d];
-    }
-    in_base *= coord_dim;
-    out_base *= coord_dim;
+    layout.RowBases(r, in_base, out_base);
 
     // 1. Unaffected left points: 0 ... k - p
     for (int32_t i = 0; i <= k - p; ++i) {
@@ -207,18 +264,19 @@ InsertKnotAlongAxisND(int32_t para_dim,
 
 /// N-D tensor-product single knot removal along axis within tolerance.
 /// Returns true if removal succeeded across all rows within tolerance.
-inline bool
-TryRemoveKnotAlongAxisND(int32_t para_dim,
-                         int32_t coord_dim,
-                         Span<const int32_t> degrees,
-                         const std::vector<Span<const double>>& current_kvs,
-                         Span<const double> in_cps,
-                         int32_t axis,
-                         double u_remove,
-                         double tolerance,
-                         std::vector<double>& out_axis_knots,
-                         Buffer<double>& out_cps) {
+inline bool TryRemoveKnotAlongAxisND(MemoryArena& arena,
+                                     int32_t para_dim,
+                                     int32_t coord_dim,
+                                     Span<const int32_t> degrees,
+                                     const std::vector<Span<const double>>& current_kvs,
+                                     Span<const double> in_cps,
+                                     int32_t axis,
+                                     double u_remove,
+                                     double tolerance,
+                                     std::vector<double>& out_axis_knots,
+                                     Buffer<double>& out_cps) {
   assert(axis >= 0 && axis < para_dim);
+  auto scope = arena.CreateScope();
 
   const int32_t p = degrees[axis];
   Span<const double> knots = current_kvs[axis];
@@ -226,7 +284,7 @@ TryRemoveKnotAlongAxisND(int32_t para_dim,
   const int32_t n = m - p - 1;
 
   if (n <= p) {
-    return false; // cannot reduce control points below p + 1
+    return false;  // cannot reduce control points below p + 1
   }
 
   // Find knot u_remove in knots
@@ -241,7 +299,7 @@ TryRemoveKnotAlongAxisND(int32_t para_dim,
   }
 
   if (s == 0) {
-    return false; // knot not found
+    return false;  // knot not found
   }
 
   // Check if boundary knot: cannot remove clamped boundary knots
@@ -252,58 +310,29 @@ TryRemoveKnotAlongAxisND(int32_t para_dim,
   const int32_t first = r - p;
   const int32_t last = r - s;
 
-  std::vector<int64_t> in_n(para_dim);
-  std::vector<int64_t> in_strides(para_dim);
-  in_strides[0] = 1;
-  for (int32_t d = 0; d < para_dim; ++d) {
-    in_n[d] = static_cast<int64_t>(current_kvs[d].size()) - degrees[d] - 1;
-    if (d > 0) {
-      in_strides[d] = in_strides[d - 1] * in_n[d - 1];
-    }
-  }
+  auto in_n_of = [&](int32_t d) {
+    return static_cast<int64_t>(current_kvs[d].size()) - degrees[d] - 1;
+  };
+  const TensorLayout layout = TensorLayout::Make(
+      arena, para_dim, axis, coord_dim, in_n_of, in_n_of(axis) - 1);
+  const int64_t num_rows = layout.num_rows;
+  const int64_t in_s = layout.in_s;
+  const int64_t out_s = layout.out_s;
 
-  std::vector<int64_t> out_n = in_n;
-  out_n[axis] = in_n[axis] - 1;
-
-  std::vector<int64_t> out_strides(para_dim);
-  out_strides[0] = 1;
-  for (int32_t d = 1; d < para_dim; ++d) {
-    out_strides[d] = out_strides[d - 1] * out_n[d - 1];
-  }
-
-  // Number of parallel 1D rows along axis
-  int64_t num_rows = 1;
-  for (int32_t d = 0; d < para_dim; ++d) {
-    if (d != axis) {
-      num_rows *= in_n[d];
-    }
-  }
-
-  const int64_t in_s = in_strides[axis] * coord_dim;
-  const int64_t out_s = out_strides[axis] * coord_dim;
-
-  // Buffer to store candidate control points for each row during check
-  // Size of temp per row is (last - first + 3) * coord_dim
+  // Candidate control points for each row during the tolerance check:
+  // (last - first + 3) * coord_dim doubles per side
   const int32_t temp_size = last - first + 3;
-  std::vector<double> temp_left(temp_size * coord_dim);
-  std::vector<double> temp_right(temp_size * coord_dim);
+  Span<double> temp_left = arena.AllocateSpan<double>(temp_size * coord_dim);
+  Span<double> temp_right = arena.AllocateSpan<double>(temp_size * coord_dim);
 
   // Check tolerance across all rows
   for (int64_t r_idx = 0; r_idx < num_rows; ++r_idx) {
     int64_t in_base = 0;
-    int64_t rem = r_idx;
-    for (int32_t d = 0; d < para_dim; ++d) {
-      if (d == axis)
-        continue;
-      const int64_t idx_d = rem % in_n[d];
-      rem /= in_n[d];
-      in_base += idx_d * in_strides[d];
-    }
-    in_base *= coord_dim;
+    int64_t out_base = 0;
+    layout.RowBases(r_idx, in_base, out_base);
 
     // Boundary seeds
-    const double* p_first_minus_1 =
-        in_cps.data() + in_base + (first - 1) * in_s;
+    const double* p_first_minus_1 = in_cps.data() + in_base + (first - 1) * in_s;
     const double* p_last_plus_1 = in_cps.data() + in_base + (last + 1) * in_s;
 
     for (int32_t c = 0; c < coord_dim; ++c) {
@@ -331,8 +360,7 @@ TryRemoveKnotAlongAxisND(int32_t para_dim,
         temp_left[ii * coord_dim + c] =
             (pi[c] - (1.0 - alfi) * temp_left[(ii - 1) * coord_dim + c]) / alfi;
         temp_right[jj * coord_dim + c] =
-            (pj[c] - alfj * temp_right[(jj + 1) * coord_dim + c])
-            / (1.0 - alfj);
+            (pj[c] - alfj * temp_right[(jj + 1) * coord_dim + c]) / (1.0 - alfj);
       }
 
       i++;
@@ -345,28 +373,28 @@ TryRemoveKnotAlongAxisND(int32_t para_dim,
     double dist_sq = 0.0;
     if (j - i < 0) {
       for (int32_t c = 0; c < coord_dim; ++c) {
-        const double diff = temp_left[(ii - 1) * coord_dim + c]
-                            - temp_right[(jj + 1) * coord_dim + c];
+        const double diff =
+            temp_left[(ii - 1) * coord_dim + c] - temp_right[(jj + 1) * coord_dim + c];
         dist_sq += diff * diff;
       }
     } else {
       const double alfi = (u_remove - knots[i]) / (knots[i + p + 1] - knots[i]);
       const double* pi = in_cps.data() + in_base + i * in_s;
       for (int32_t c = 0; c < coord_dim; ++c) {
-        const double interp = (1.0 - alfi) * temp_left[(ii - 1) * coord_dim + c]
-                              + alfi * temp_right[(jj + 1) * coord_dim + c];
+        const double interp =
+            (1.0 - alfi) * temp_left[(ii - 1) * coord_dim + c] +
+            alfi * temp_right[(jj + 1) * coord_dim + c];
         const double diff = pi[c] - interp;
         dist_sq += diff * diff;
       }
     }
 
     if (std::sqrt(dist_sq) > tolerance) {
-      return false; // cannot remove knot within tolerance
+      return false;  // cannot remove knot within tolerance
     }
   }
 
-  // All rows passed tolerance check! Construct new knot vector and new control
-  // points.
+  // All rows passed tolerance check! Construct new knot vector and new control points.
   out_axis_knots.resize(knots.size() - 1);
   for (int32_t i = 0; i < r; ++i) {
     out_axis_knots[i] = knots[i];
@@ -375,24 +403,13 @@ TryRemoveKnotAlongAxisND(int32_t para_dim,
     out_axis_knots[i - 1] = knots[i];
   }
 
-  const int64_t total_out_cps = out_strides[para_dim - 1] * out_n[para_dim - 1];
-  out_cps.resize(total_out_cps * coord_dim);
+  out_cps.resize(layout.out_total * coord_dim);
 
   // Fill out_cps across all rows
   for (int64_t r_idx = 0; r_idx < num_rows; ++r_idx) {
     int64_t in_base = 0;
     int64_t out_base = 0;
-    int64_t rem = r_idx;
-    for (int32_t d = 0; d < para_dim; ++d) {
-      if (d == axis)
-        continue;
-      const int64_t idx_d = rem % in_n[d];
-      rem /= in_n[d];
-      in_base += idx_d * in_strides[d];
-      out_base += idx_d * out_strides[d];
-    }
-    in_base *= coord_dim;
-    out_base *= coord_dim;
+    layout.RowBases(r_idx, in_base, out_base);
 
     // 1. Copy unaffected left points: 0 ... first - 1
     for (int32_t k = 0; k < first; ++k) {
@@ -404,8 +421,7 @@ TryRemoveKnotAlongAxisND(int32_t para_dim,
     }
 
     // 2. Compute candidate points
-    const double* p_first_minus_1 =
-        in_cps.data() + in_base + (first - 1) * in_s;
+    const double* p_first_minus_1 = in_cps.data() + in_base + (first - 1) * in_s;
     const double* p_last_plus_1 = in_cps.data() + in_base + (last + 1) * in_s;
     for (int32_t c = 0; c < coord_dim; ++c) {
       temp_left[0 * coord_dim + c] = p_first_minus_1[c];
@@ -428,17 +444,13 @@ TryRemoveKnotAlongAxisND(int32_t para_dim,
         temp_left[ii * coord_dim + c] =
             (pi[c] - (1.0 - alfi) * temp_left[(ii - 1) * coord_dim + c]) / alfi;
         temp_right[jj * coord_dim + c] =
-            (pj[c] - alfj * temp_right[(jj + 1) * coord_dim + c])
-            / (1.0 - alfj);
+            (pj[c] - alfj * temp_right[(jj + 1) * coord_dim + c]) / (1.0 - alfj);
       }
-      i++;
-      ii++;
-      j--;
-      jj--;
+      i++; ii++;
+      j--; jj--;
     }
 
-    // Replace modified points: exactly L = (last - first) points into
-    // out_cps[first ... last - 1]
+    // Replace modified points: exactly L = (last - first) points into out_cps[first ... last - 1]
     const int32_t L = last - first;
     if (L > 0) {
       const int32_t half = L / 2;
@@ -456,15 +468,13 @@ TryRemoveKnotAlongAxisND(int32_t para_dim,
         const int32_t mid_right = last - first + 2 - mid_left;
         double* dst = out_cps.data() + out_base + k_dst * out_s;
         for (int32_t c = 0; c < coord_dim; ++c) {
-          dst[c] = 0.5
-                   * (temp_left[mid_left * coord_dim + c]
-                      + temp_right[mid_right * coord_dim + c]);
+          dst[c] = 0.5 * (temp_left[mid_left * coord_dim + c] +
+                          temp_right[mid_right * coord_dim + c]);
         }
         k_dst++;
       }
       // Right points: k = (last - first + 2 - half) ... (last - first + 1)
-      for (int32_t k = last - first + 2 - half; k <= last - first + 1;
-           ++k, ++k_dst) {
+      for (int32_t k = last - first + 2 - half; k <= last - first + 1; ++k, ++k_dst) {
         double* dst = out_cps.data() + out_base + k_dst * out_s;
         for (int32_t c = 0; c < coord_dim; ++c) {
           dst[c] = temp_right[k * coord_dim + c];
@@ -472,8 +482,7 @@ TryRemoveKnotAlongAxisND(int32_t para_dim,
       }
     }
 
-    // 3. Copy unaffected right points: last + 1 ... n -> shift to last ... n -
-    // 1
+    // 3. Copy unaffected right points: last + 1 ... n -> shift to last ... n - 1
     for (int32_t k = last + 1; k <= n; ++k) {
       const double* src = in_cps.data() + in_base + k * in_s;
       double* dst = out_cps.data() + out_base + (k - 1) * out_s;
@@ -487,12 +496,12 @@ TryRemoveKnotAlongAxisND(int32_t para_dim,
 }
 
 /// Elevates a single 1D Bezier curve of degree p by 1.
+/// out_cps must hold (p + 2) * coord_dim doubles and not alias in_cps.
 inline void ElevateBezier1D(int32_t p,
                             Span<const double> in_cps,
                             int32_t coord_dim,
-                            Buffer<double>& out_cps) {
-  const int32_t n_out = p + 2;
-  out_cps.resize(n_out * coord_dim);
+                            Span<double> out_cps) {
+  assert(out_cps.size() >= static_cast<std::size_t>((p + 2) * coord_dim));
 
   // Q_0 = P_0
   for (int32_t c = 0; c < coord_dim; ++c) {
@@ -506,8 +515,8 @@ inline void ElevateBezier1D(int32_t p,
     const double one_minus_alpha = 1.0 - alpha;
     for (int32_t c = 0; c < coord_dim; ++c) {
       out_cps[i * coord_dim + c] =
-          alpha * in_cps[(i - 1) * coord_dim + c]
-          + one_minus_alpha * in_cps[i * coord_dim + c];
+          alpha * in_cps[(i - 1) * coord_dim + c] +
+          one_minus_alpha * in_cps[i * coord_dim + c];
     }
   }
 
@@ -517,4 +526,4 @@ inline void ElevateBezier1D(int32_t p,
   }
 }
 
-} // namespace splinepy::core::detail
+}  // namespace splinepy::core::detail

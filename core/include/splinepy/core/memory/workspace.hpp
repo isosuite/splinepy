@@ -9,6 +9,7 @@
 
 #include "splinepy/core/common.hpp"
 #include "splinepy/core/memory/memory_arena.hpp"
+#include "splinepy/core/options.hpp"
 
 namespace splinepy::core {
 
@@ -89,6 +90,37 @@ private:
   std::size_t per_thread_bytes_{64 * 1024};
   std::vector<std::unique_ptr<MemoryArena>> arenas_;
   std::mutex mutex_;
+};
+
+/// Borrows options.workspace when one is given. Otherwise the calling thread's
+/// default workspace is used, which is created once per thread and grown to
+/// num_threads arenas here, before any worker runs. Kernels restore their arena
+/// scope on exit, so nested and repeated calls reuse the same memory instead of
+/// allocating a workspace per call.
+class WorkspaceRef {
+ public:
+  WorkspaceRef(const Options& options,
+               std::size_t per_thread_bytes,
+               std::size_t num_threads) {
+    if (options.workspace != nullptr) {
+      ws_ = options.workspace;
+      return;
+    }
+    thread_local Workspace default_workspace(per_thread_bytes, 1);
+    default_workspace.GetThreadArena(
+        static_cast<int>(std::max<std::size_t>(num_threads, 1) - 1));
+    ws_ = &default_workspace;
+  }
+
+  WorkspaceRef(const WorkspaceRef&) = delete;
+  WorkspaceRef& operator=(const WorkspaceRef&) = delete;
+
+  Workspace* get() noexcept { return ws_; }
+  Workspace* operator->() noexcept { return ws_; }
+  Workspace& operator*() noexcept { return *ws_; }
+
+ private:
+  Workspace* ws_{nullptr};
 };
 
 } // namespace splinepy::core
