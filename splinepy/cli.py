@@ -183,7 +183,6 @@ def entry():
             "gustaf",
             "vedo",
             "scipy",
-            "napf",
             "meshio",
             "k3d",
         ]

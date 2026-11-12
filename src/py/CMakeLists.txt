@@ -9,7 +9,7 @@ nanobind_add_module(splinepy_core
   nb_spline_extensions.cpp
 )
 
-target_link_libraries(splinepy_core PRIVATE splinepy)
+target_link_libraries(splinepy_core PRIVATE splinepy::core)
 
 install(
   TARGETS splinepy_core

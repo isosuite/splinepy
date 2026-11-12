@@ -8,9 +8,7 @@ project(
 # build options
 option(SPLINEPY_VERBOSE_MAKE
        "Verbose `make` output. Alias to CMAKE_VERBOSE_MAKEFILE" OFF)
-option(SPLINEPY_BUILD_SHARED "build shared library for splinepy" OFF)
 option(SPLINEPY_COMPILE_PYTHON "Compile python module." ON)
-option(SPLINEPY_ENABLE_WARNINGS "Add warning flags" OFF)
 
 # config
 set(exe_dest "bin")
@@ -32,58 +30,9 @@ endif()
 
 # global flags
 set(CMAKE_CXX_VISIBILITY_PRESET "hidden")
-set(SPLINEPY_DEFS $<$<NOT:$<CONFIG:Debug>>:NDEBUG>)
-
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  set(SPLINEPY_FLAGS -fPIC)
-  set(SPLINEPY_OPTIMIZATION_FLAGS $<$<NOT:$<CONFIG:Debug>>:-O3>)
-elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-  set(SPLINEPY_OPTIMIZATION_FLAGS $<$<NOT:$<CONFIG:Debug>>:/O2>
-                                  $<$<NOT:$<CONFIG:Debug>>:/w>)
-  set(SPLINEPY_FLAGS /bigobj)
-endif()
-
-# compiler specific flags
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-  set(SPLINEPY_WARNING_FLAGS -Werror -Wall -Wextra -Wpedantic
-                             -Wzero-as-null-pointer-constant -Wno-unused)
-elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  set(SPLINEPY_WARNING_FLAGS
-      -Werror
-      -Wall
-      -Wmost
-      -Wextra
-      -Wpedantic
-      -Wunreachable-code
-      -Wshadow
-      -Wfloat-equal
-      -Weffc++
-      -Wno-unused-parameter
-      -Wno-unused-variable
-      -Wzero-as-null-pointer-constant)
-else()
-  message(WARNING "Untested compiler. splinepy is tested with GNU and Clang.")
-endif()
-
-# for warning we extend flags
-if(SPLINEPY_ENABLE_WARNINGS)
-  set(SPLINEPY_FLAGS ${SPLINEPY_FLAGS} ${SPLINEPY_WARNING_FLAGS})
-endif()
-
-# release mode includes optimization flags
-if(CMAKE_BUILD_TYPE MATCHES Release)
-  set(SPLINEPY_FLAGS ${SPLINEPY_FLAGS} ${SPLINEPY_OPTIMIZATION_FLAGS})
-endif()
 
 if(SPLINEPY_VERBOSE_MAKE)
   set(CMAKE_VERBOSE_MAKEFILE ON)
-endif()
-
-# determines library type
-if(SPLINEPY_BUILD_SHARED)
-  set(SPLINEPY_LIB_TYPE SHARED)
-else()
-  set(SPLINEPY_LIB_TYPE STATIC)
 endif()
 
 message("")
@@ -112,11 +61,5 @@ message("")
 set(SPLINEPY_CORE_BUILD_TESTS OFF CACHE BOOL "Build splinepy core tests")
 set(SPLINEPY_CORE_BUILD_BENCHMARKS OFF CACHE BOOL "Build splinepy core benchmarks")
 
-if(SPLINEPY_COMPILE_PYTHON)
-  find_package(Python 3.8 COMPONENTS Interpreter Development.Module REQUIRED)
-  find_package(nanobind CONFIG REQUIRED)
-endif()
-
-add_subdirectory(third_party)
 add_subdirectory(core)
 add_subdirectory(src)

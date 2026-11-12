@@ -15,6 +15,7 @@
 #include "splinepy/core/queries/derivative.hpp"
 #include "splinepy/core/queries/evaluate.hpp"
 #include "splinepy/core/queries/jacobian.hpp"
+#include "splinepy/proximity/grid_guess.hpp"
 #include "splinepy/proximity/proximity.hpp"
 #include "splinepy/utils/grid_points.hpp"
 #include "splinepy/utils/nthreads.hpp"
@@ -549,7 +550,7 @@ nb::tuple ProximityHandle::Query(nb::handle spline,
 
   const int para_dim = wrapper.view.para_dim;
   const int dim = wrapper.view.dim;
-  const int n_queries = static_cast<int>(q_adapter.size() / (para_dim > 0 ? para_dim : 1));
+  const int n_queries = static_cast<int>(q_adapter.size() / (dim > 0 ? dim : 1));
   const int pd = para_dim * dim;
   const int ppd = para_dim * pd;
 
@@ -576,10 +577,10 @@ nb::tuple ProximityHandle::Query(nb::handle spline,
   nb::capsule sder_owner(second_der_ptr, [](void* p) noexcept { delete[] static_cast<double*>(p); });
 
   const int32_t* igsr_ptr = igsr_adapter.data();
-  bool plant_kdtree = true;
+  bool plant_guess = true;
   for (int i = 0; i < para_dim; ++i) {
     if (igsr_ptr[i] < 0) {
-      plant_kdtree = false;
+      plant_guess = false;
       break;
     }
     if (igsr_ptr[i] < 2) {
@@ -588,12 +589,48 @@ nb::tuple ProximityHandle::Query(nb::handle spline,
   }
 
   std::vector<int> current_res(igsr_ptr, igsr_ptr + para_dim);
-  if (!proximity_ || (plant_kdtree && current_res != last_proximity_resolutions_)) {
+  const bool guess_changed = (planted_guess_ != guess_);
+  if (!proximity_ || guess_changed
+      || (plant_guess && current_res != last_proximity_resolutions_)) {
     proximity_ = std::make_unique<splinepy::proximity::Proximity>(wrapper.view);
-    if (plant_kdtree) {
-      proximity_->PlantNewKdTree(igsr_ptr, nthreads);
+    planted_guess_ = guess_;
+    if (plant_guess) {
+      bool bvh_planted{false};
+      if (guess_ == "bvh") {
+        bvh_planted = proximity_->PlantBvh(igsr_ptr);
+      } else if (guess_ != "grid") {
+        splinepy::utils::PrintAndThrowError("Unknown initial guess", guess_);
+      }
+      if (!bvh_planted) {
+        proximity_->SetInitialGuess(
+            splinepy::proximity::MakeGridGuess(wrapper.view,
+                                               igsr_ptr,
+                                               nthreads));
+      }
       last_proximity_resolutions_ = current_res;
     }
+  }
+  // spans in the view belong to this call
+  proximity_->SetSpline(wrapper.view);
+  proximity_->SetMaxStarts(max_starts_);
+
+  {
+    std::vector<splinepy::proximity::Solver> chain;
+    for (const auto& name : chain_) {
+      if (name == "newton") {
+        chain.push_back(splinepy::proximity::Solver::kNewton);
+      } else if (name == "dogleg") {
+        chain.push_back(splinepy::proximity::Solver::kDogleg);
+      } else if (name == "slsqp") {
+        chain.push_back(splinepy::proximity::Solver::kSlsqp);
+      } else if (name == "lm") {
+        chain.push_back(splinepy::proximity::Solver::kLevenbergMarquart);
+      } else {
+        splinepy::utils::PrintAndThrowError("Unknown solver", name);
+      }
+    }
+    proximity_->SetSolverChain(chain);
+    proximity_->SetGuard(guard_);
   }
 
   const double* q_ptr = q_adapter.data();
@@ -778,6 +815,10 @@ void init_nb_spline(nb::module_& m) {
 
   nb::class_<ProximityHandle>(m, "ProximityHandle")
       .def(nb::init<>())
+      .def_rw("chain", &ProximityHandle::chain_)
+      .def_rw("guard", &ProximityHandle::guard_)
+      .def_rw("guess", &ProximityHandle::guess_)
+      .def_rw("max_starts", &ProximityHandle::max_starts_)
       .def("query", &ProximityHandle::Query,
            nb::arg("spline"), nb::arg("queries"), nb::arg("initial_guess_sample_resolutions"),
            nb::arg("tolerance"), nb::arg("max_iterations"), nb::arg("aggressive_search_bounds"),

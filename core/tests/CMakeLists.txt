@@ -28,7 +28,9 @@ add_executable(
   test_manipulation.cpp
   test_bezier_algebra.cpp
   test_multipatch.cpp
-  test_workspace.cpp)
+  test_workspace.cpp
+  test_element_bvh.cpp
+  test_proximity.cpp)
 
 target_link_libraries(core_tests PRIVATE splinepy::core GTest::gtest_main)
 

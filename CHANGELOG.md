@@ -12,9 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Spline` and `Multipatch` are plain Python classes. Control points, weights, degrees and knot vectors are plain numpy arrays, no synchronization with the backend is needed.
 - `spline.knot_vectors` returns a list of `splinepy.KnotVector`, a numpy array subclass.
 
+### Added
+- Point inversion (`Spline.proximities`) lives in `core/`: bounded trust-region dogleg, SLSQP and Levenberg-Marquardt solver chain, multi-start from element boxes, restarts at singular points (cone apex, collapsed edges).
+
 ### Removed
 - `PySpline`, `PyMultipatch`, `PhysicalSpaceArray`, `_new_core`, `_coordinate_pointers` and related private helpers.
-- Vendored `pybind11`.
+- Vendored `pybind11` and the `napf` submodule. The kd-tree initial guess of `Spline.proximities` is replaced by an element bounding volume hierarchy (default) or a nearest sample grid search (`ProximityHandle.guess = "grid"`).
+- `SPLINEPY_BUILD_SHARED` and `SPLINEPY_ENABLE_WARNINGS` build options, the `splinepy` C++ library target.
 
 ## [0.2.1] - 2026-06
 
