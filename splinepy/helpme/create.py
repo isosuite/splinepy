@@ -808,7 +808,7 @@ def determinant_spline(spline):
         determinant_projection = _settings.NAME_TO_TYPE["BSpline"](
             degrees=degrees_determinant_spline,
             knot_vectors=knot_vectors_determinant_spline,
-            control_points=_np.empty((n_control_points, 1)),
+            control_points=_np.zeros((n_control_points, 1)),
         )
 
     else:
@@ -816,7 +816,7 @@ def determinant_spline(spline):
         n_control_points = _np.prod(degrees_determinant_spline + 1)
         determinant_projection = _settings.NAME_TO_TYPE["Bezier"](
             degrees=degrees_determinant_spline,
-            control_points=_np.empty((n_control_points, 1)),
+            control_points=_np.zeros((n_control_points, 1)),
         )
 
     # get det(J) of spline at greville pts

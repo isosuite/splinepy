@@ -22,68 +22,34 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-#include <pybind11/pybind11.h>
+#include <nanobind/nanobind.h>
 
-// core_spline
-namespace splinepy::py {
+#include "nb_knot_insertion_matrix.hpp"
+#include "nb_multipatch.hpp"
+#include "nb_spline.hpp"
+#include "nb_spline_extensions.hpp"
 
-namespace py = pybind11;
+namespace nb = nanobind;
 
-// CORE
-void init_pyspline(py::module_&);
+NB_MODULE(splinepy_core, m) {
+  splinepy::py::init_nb_spline(m);
+  splinepy::py::init_nb_multipatch(m);
+  splinepy::py::init_nb_knot_insertion_matrix(m);
+  splinepy::py::init_nb_spline_extensions(m);
 
-// Coordinate pointers
-void init_coordinate_pointers(py::module_&);
-
-// Knot Vector
-void init_knot_vector(py::module_&);
-
-// Parameter Space
-void init_parameter_space(py::module_&);
-
-// Extensions
-void init_spline_extensions(py::module_& m);
-
-// Reader
-void init_spline_reader(py::module_&);
-
-// Knot Insertion Matrix
-void init_knot_insertion_matrix(py::module_&);
-
-// Exporter
-void init_spline_exporter(py::module_&);
-
-// multipatch
-void init_multipatch(py::module_& m);
-
-} // namespace splinepy::py
-
-namespace py = pybind11;
-
-PYBIND11_MODULE(splinepy_core, m) {
-  splinepy::py::init_pyspline(m);
-  splinepy::py::init_coordinate_pointers(m);
-  splinepy::py::init_knot_vector(m);
-  splinepy::py::init_parameter_space(m);
-  splinepy::py::init_spline_extensions(m);
-  splinepy::py::init_spline_reader(m);
-  splinepy::py::init_spline_exporter(m);
-  splinepy::py::init_knot_insertion_matrix(m);
-  splinepy::py::init_multipatch(m);
-
-  // add some build configuration info
   m.def("build_type", []() {
 #ifndef NDEBUG
     return "debug";
 #else
-  return "release";
+    return "release";
 #endif
   });
+
   m.def("is_minimal", []() {
 #ifdef SPLINEPY_MORE
     return false;
 #else
-  return true;
+    return true;
 #endif
   });
 }

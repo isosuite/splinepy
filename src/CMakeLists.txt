@@ -1,42 +1,10 @@
 # create splinepy target - enables cpp standalone use define srcs
-set(SPLINEPY_SRCS
-    ${PROJECT_SOURCE_DIR}/src/proximity/proximity.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils/coordinate_pointers.cpp
-    ${PROJECT_SOURCE_DIR}/src/splines/helpers/extract.cpp
-    ${PROJECT_SOURCE_DIR}/src/splines/create/bezier1.cpp
-    ${PROJECT_SOURCE_DIR}/src/splines/create/bezier2.cpp
-    ${PROJECT_SOURCE_DIR}/src/splines/create/bezier3.cpp
-    ${PROJECT_SOURCE_DIR}/src/splines/create/rational_bezier1.cpp
-    ${PROJECT_SOURCE_DIR}/src/splines/create/rational_bezier2.cpp
-    ${PROJECT_SOURCE_DIR}/src/splines/create/rational_bezier3.cpp
-    ${PROJECT_SOURCE_DIR}/src/splines/splinepy_base.cpp)
-
-set(SPLINEPY_MORE_SRCS
-    ${PROJECT_SOURCE_DIR}/src/splines/create/bezier4.cpp
-    ${PROJECT_SOURCE_DIR}/src/splines/create/bezier5.cpp
-    ${PROJECT_SOURCE_DIR}/src/splines/create/bezier6.cpp
-    ${PROJECT_SOURCE_DIR}/src/splines/create/bezier7.cpp
-    ${PROJECT_SOURCE_DIR}/src/splines/create/bezier8.cpp
-    ${PROJECT_SOURCE_DIR}/src/splines/create/bezier9.cpp
-    ${PROJECT_SOURCE_DIR}/src/splines/create/bezier10.cpp
-    ${PROJECT_SOURCE_DIR}/src/splines/create/rational_bezier4.cpp
-    ${PROJECT_SOURCE_DIR}/src/splines/create/rational_bezier5.cpp
-    ${PROJECT_SOURCE_DIR}/src/splines/create/rational_bezier6.cpp
-    ${PROJECT_SOURCE_DIR}/src/splines/create/rational_bezier7.cpp
-    ${PROJECT_SOURCE_DIR}/src/splines/create/rational_bezier8.cpp
-    ${PROJECT_SOURCE_DIR}/src/splines/create/rational_bezier9.cpp
-    ${PROJECT_SOURCE_DIR}/src/splines/create/rational_bezier10.cpp)
+set(SPLINEPY_SRCS ${PROJECT_SOURCE_DIR}/src/proximity/proximity.cpp)
 
 set(SPLINEPY_SLSQP_SRCS ${PROJECT_SOURCE_DIR}/src/proximity/slsqp/slsqp.c)
 
-# extend src for high dim splines
-if(SPLINEPY_MORE)
-  set(SPLINEPY_SRCS ${SPLINEPY_SRCS} ${SPLINEPY_MORE_SRCS})
-endif(SPLINEPY_MORE)
-
 add_library(slsqp ${SPLINEPY_SLSQP_SRCS})
 add_library(splinepy::slsqp ALIAS slsqp)
-# as we don't really want to edit the source, we don't to add warning flags
 target_compile_options(slsqp PRIVATE -fPIC ${SPLINEPY_OPTIMIZATION_FLAGS})
 target_compile_definitions(slsqp PRIVATE ${SPLINEPY_DEFS})
 target_include_directories(
@@ -53,20 +21,8 @@ target_include_directories(
   splinepy PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
                   $<INSTALL_INTERFACE:${incl_dest}>)
 
-# make sure BSplineLib is available
-if(NOT TARGET BSplineLib::splines OR NOT TARGET BSplineLib::input_output)
-  find_package(BSplineLib REQUIRED)
-endif()
-
 # link
-target_link_libraries(splinepy PUBLIC bezman napf BSplineLib::splines
-                                      BSplineLib::input_output slsqp)
-
-# explicit?
-if(SPLINEPY_BUILD_EXPLICIT)
-  add_subdirectory(explicit)
-  target_link_libraries(splinepy PUBLIC explicit)
-endif()
+target_link_libraries(splinepy PUBLIC splinepy::core napf slsqp)
 
 # flags
 target_compile_options(splinepy PRIVATE ${SPLINEPY_FLAGS})

@@ -6,15 +6,11 @@ project(
   LANGUAGES C CXX)
 
 # build options
-option(SPLINEPY_COMPILE_BSPLINELIB "Compile bsplinelib together." ON)
 option(SPLINEPY_VERBOSE_MAKE
        "Verbose `make` output. Alias to CMAKE_VERBOSE_MAKEFILE" OFF)
-option(SPLINEPY_MORE "Compile a full set of splines." ON)
 option(SPLINEPY_BUILD_SHARED "build shared library for splinepy" OFF)
 option(SPLINEPY_COMPILE_PYTHON "Compile python module." ON)
 option(SPLINEPY_ENABLE_WARNINGS "Add warning flags" OFF)
-option(SPLINEPY_BUILD_EXPLICIT
-       "Explicit instantiation of (mainly third party) template classes" ON)
 
 # config
 set(exe_dest "bin")
@@ -83,15 +79,6 @@ if(SPLINEPY_VERBOSE_MAKE)
   set(CMAKE_VERBOSE_MAKEFILE ON)
 endif()
 
-# extend defs
-if(SPLINEPY_MORE)
-  set(SPLINEPY_DEFS ${SPLINEPY_DEFS} SPLINEPY_MORE)
-endif(SPLINEPY_MORE)
-
-if(SPLINEPY_BUILD_EXPLICIT)
-  set(SPLINEPY_DEFS ${SPLINEPY_DEFS} SPLINEPY_BUILD_EXPLICIT)
-endif(SPLINEPY_BUILD_EXPLICIT)
-
 # determines library type
 if(SPLINEPY_BUILD_SHARED)
   set(SPLINEPY_LIB_TYPE SHARED)
@@ -122,5 +109,14 @@ message(
   "          \\__|                                  \\__|       \\______/")
 message("")
 
+set(SPLINEPY_CORE_BUILD_TESTS OFF CACHE BOOL "Build splinepy core tests")
+set(SPLINEPY_CORE_BUILD_BENCHMARKS OFF CACHE BOOL "Build splinepy core benchmarks")
+
+if(SPLINEPY_COMPILE_PYTHON)
+  find_package(Python 3.8 COMPONENTS Interpreter Development.Module REQUIRED)
+  find_package(nanobind CONFIG REQUIRED)
+endif()
+
 add_subdirectory(third_party)
+add_subdirectory(core)
 add_subdirectory(src)

@@ -117,7 +117,7 @@ class BSplineBase(_spline.Spline):
 
         self._logd(f"Inserted {len(knots)} knot(s).")
 
-        self._data = {}
+        self._clear_saved_data()
 
         return inserted
 
@@ -313,7 +313,7 @@ class BSplineBase(_spline.Spline):
         )
 
         if any(removed):
-            self._data = {}
+            self._clear_saved_data()
 
         self._logd(f"Tried to remove {len(knots)} knot(s).")
         self._logd(f"Actually removed {sum(removed)} knot(s).")
@@ -331,15 +331,14 @@ class BSplineBase(_spline.Spline):
         -------
         None
         """
-        if not _splinepy_core.has_core(self):
+        if self.degrees is None or self.control_points is None:
             raise ValueError(
                 "spline is not fully initialized."
                 "Please, first initialize spline before normalize_knot_vectors."
             )
 
         for kv in self.knot_vectors:
-            if isinstance(kv, _splinepy_core.KnotVector):
-                kv.scale(0, 1)
+            kv.scale(0, 1)
 
     def extract_bezier_patches(self):
         """

@@ -5,7 +5,13 @@
 #include "splinepy/core/model/spline_view.hpp"
 #include "splinepy/core/options.hpp"
 
+#include <vector>
+
 namespace splinepy::core {
+
+/// Computes 1D Greville abscissae per parametric dimension.
+std::vector<Buffer<double>> GrevilleAbscissaeList(const SplineView& spline,
+                                                  const Options& options = {});
 
 /// Computes the Greville abscissae (collocation / node points in parameter
 /// space) for all control points of the spline. Returns owning Buffer<double>

@@ -4,7 +4,7 @@ import numpy as _np
 from splinepy._base import SplinepyBase as _SplinepyBase
 from splinepy.bspline import BSpline as _BSpline
 from splinepy.multipatch import Multipatch as _Multipatch
-from splinepy.splinepy_core import PySpline as _PySpline
+from splinepy.spline import Spline as _Spline
 from splinepy.utils.data import cartesian_product as _cartesian_product
 
 
@@ -77,7 +77,7 @@ class Microstructure(_SplinepyBase):
         None
         """
 
-        if not isinstance(deformation_function, _PySpline):
+        if not isinstance(deformation_function, _Spline):
             raise ValueError(
                 "Deformation function must be splinepy-Spline. e.g. splinepy.NURBS"
             )
@@ -156,7 +156,7 @@ class Microstructure(_SplinepyBase):
         None
         """
         # place single tiles into a list to provide common interface
-        if isinstance(microtile, (_PySpline, list)):
+        if isinstance(microtile, (_Spline, list)):
             microtile = self._make_microtilable(microtile)
         # Assign Microtile object to member variable
         self._microtile = microtile
@@ -793,7 +793,7 @@ class _UserTile(_SplinepyBase):
             microtile = [microtile]
 
         for m in microtile:
-            if not isinstance(m, _PySpline):
+            if not isinstance(m, _Spline):
                 raise ValueError(
                     "Microtiles must be (list of) splinepy-Splines. e.g. splinepy.NURBS"
                 )

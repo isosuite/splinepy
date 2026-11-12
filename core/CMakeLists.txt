@@ -43,6 +43,16 @@ target_compile_options(splinepy_core_lib PRIVATE -fPIC -Wall -Wextra -Wpedantic)
 # Modern alias
 add_library(splinepy::core ALIAS splinepy_core_lib)
 
+if(DEFINED TARGETS_EXPORT_NAME)
+    install(
+        TARGETS splinepy_core_lib
+        EXPORT "${TARGETS_EXPORT_NAME}"
+        LIBRARY DESTINATION ${lib_dest}
+        ARCHIVE DESTINATION ${lib_dest}
+        INCLUDES DESTINATION "${incl_dest}"
+    )
+endif()
+
 # Tests
 if(SPLINEPY_CORE_BUILD_TESTS)
   enable_testing()

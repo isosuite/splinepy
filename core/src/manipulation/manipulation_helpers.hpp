@@ -316,7 +316,7 @@ TryRemoveKnotAlongAxisND(int32_t para_dim,
     int32_t ii = 1;
     int32_t jj = last - first + 1;
 
-    while (j - i >= 0) {
+    while (j - i > 0) {
       const double alfi = (u_remove - knots[i]) / (knots[i + p + 1] - knots[i]);
       const double alfj = (u_remove - knots[j]) / (knots[j + p + 1] - knots[j]);
 
@@ -343,10 +343,21 @@ TryRemoveKnotAlongAxisND(int32_t para_dim,
 
     // Distance check
     double dist_sq = 0.0;
-    for (int32_t c = 0; c < coord_dim; ++c) {
-      const double diff = temp_left[(ii - 1) * coord_dim + c]
-                          - temp_right[(jj + 1) * coord_dim + c];
-      dist_sq += diff * diff;
+    if (j - i < 0) {
+      for (int32_t c = 0; c < coord_dim; ++c) {
+        const double diff = temp_left[(ii - 1) * coord_dim + c]
+                            - temp_right[(jj + 1) * coord_dim + c];
+        dist_sq += diff * diff;
+      }
+    } else {
+      const double alfi = (u_remove - knots[i]) / (knots[i + p + 1] - knots[i]);
+      const double* pi = in_cps.data() + in_base + i * in_s;
+      for (int32_t c = 0; c < coord_dim; ++c) {
+        const double interp = (1.0 - alfi) * temp_left[(ii - 1) * coord_dim + c]
+                              + alfi * temp_right[(jj + 1) * coord_dim + c];
+        const double diff = pi[c] - interp;
+        dist_sq += diff * diff;
+      }
     }
 
     if (std::sqrt(dist_sq) > tolerance) {
@@ -406,7 +417,7 @@ TryRemoveKnotAlongAxisND(int32_t para_dim,
     int32_t ii = 1;
     int32_t jj = last - first + 1;
 
-    while (j - i >= 0) {
+    while (j - i > 0) {
       const double alfi = (u_remove - knots[i]) / (knots[i + p + 1] - knots[i]);
       const double alfj = (u_remove - knots[j]) / (knots[j + p + 1] - knots[j]);
 
@@ -426,43 +437,43 @@ TryRemoveKnotAlongAxisND(int32_t para_dim,
       jj--;
     }
 
-    // Replace modified points: first ... last - 1
-    // Left half from temp_left
-    int32_t k_dst = first;
-    for (int32_t k = 1; k < ii - 1; ++k, ++k_dst) {
-      double* dst = out_cps.data() + out_base + k_dst * out_s;
-      for (int32_t c = 0; c < coord_dim; ++c) {
-        dst[c] = temp_left[k * coord_dim + c];
+    // Replace modified points: exactly L = (last - first) points into
+    // out_cps[first ... last - 1]
+    const int32_t L = last - first;
+    if (L > 0) {
+      const int32_t half = L / 2;
+      int32_t k_dst = first;
+      // Left points: k = 1 ... half
+      for (int32_t k = 1; k <= half; ++k, ++k_dst) {
+        double* dst = out_cps.data() + out_base + k_dst * out_s;
+        for (int32_t c = 0; c < coord_dim; ++c) {
+          dst[c] = temp_left[k * coord_dim + c];
+        }
       }
-    }
-    // If they met at the same index, average left and right
-    if (i - j == 2) {
-      double* dst = out_cps.data() + out_base + k_dst * out_s;
-      for (int32_t c = 0; c < coord_dim; ++c) {
-        dst[c] = 0.5
-                 * (temp_left[(ii - 1) * coord_dim + c]
-                    + temp_right[(jj + 1) * coord_dim + c]);
+      // If L is odd: center point at index half + 1
+      if (L % 2 != 0) {
+        const int32_t mid_left = half + 1;
+        const int32_t mid_right = last - first + 2 - mid_left;
+        double* dst = out_cps.data() + out_base + k_dst * out_s;
+        for (int32_t c = 0; c < coord_dim; ++c) {
+          dst[c] = 0.5
+                   * (temp_left[mid_left * coord_dim + c]
+                      + temp_right[mid_right * coord_dim + c]);
+        }
+        k_dst++;
       }
-      k_dst++;
-    } else {
-      // Adjacent
-      double* dst = out_cps.data() + out_base + k_dst * out_s;
-      for (int32_t c = 0; c < coord_dim; ++c) {
-        dst[c] = 0.5
-                 * (temp_left[(ii - 1) * coord_dim + c]
-                    + temp_right[(jj + 1) * coord_dim + c]);
-      }
-      k_dst++;
-    }
-    // Right half from temp_right
-    for (int32_t k = jj + 2; k <= last - first + 1; ++k, ++k_dst) {
-      double* dst = out_cps.data() + out_base + k_dst * out_s;
-      for (int32_t c = 0; c < coord_dim; ++c) {
-        dst[c] = temp_right[k * coord_dim + c];
+      // Right points: k = (last - first + 2 - half) ... (last - first + 1)
+      for (int32_t k = last - first + 2 - half; k <= last - first + 1;
+           ++k, ++k_dst) {
+        double* dst = out_cps.data() + out_base + k_dst * out_s;
+        for (int32_t c = 0; c < coord_dim; ++c) {
+          dst[c] = temp_right[k * coord_dim + c];
+        }
       }
     }
 
-    // 3. Copy unaffected right points: last ... n -> shift to last ... n - 1
+    // 3. Copy unaffected right points: last + 1 ... n -> shift to last ... n -
+    // 1
     for (int32_t k = last + 1; k <= n; ++k) {
       const double* src = in_cps.data() + in_base + k * in_s;
       double* dst = out_cps.data() + out_base + (k - 1) * out_s;

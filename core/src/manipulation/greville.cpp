@@ -7,24 +7,22 @@
 
 namespace splinepy::core {
 
-Buffer<double> GrevilleAbscissae(const SplineView& spline,
-                                 const Options& options) {
+std::vector<Buffer<double>> GrevilleAbscissaeList(const SplineView& spline,
+                                                  const Options& options) {
   if (options.validate) {
     ThrowIfInvalid(spline);
   }
 
   const int32_t para_dim = spline.para_dim;
   if (para_dim <= 0) {
-    return Buffer<double>();
+    return {};
   }
 
-  std::vector<int64_t> n(para_dim);
-  std::vector<std::vector<double>> xi(para_dim);
+  std::vector<Buffer<double>> xi(para_dim);
 
   for (int32_t d = 0; d < para_dim; ++d) {
     const int64_t n_d = spline.NumControlPointsPerAxis(d);
-    n[d] = n_d;
-    xi[d].resize(n_d);
+    xi[d] = Buffer<double>(n_d);
     const int32_t p_d = spline.degrees[d];
 
     if (!spline.HasKnotVectors()) {
@@ -68,6 +66,22 @@ Buffer<double> GrevilleAbscissae(const SplineView& spline,
         }
       }
     }
+  }
+
+  return xi;
+}
+
+Buffer<double> GrevilleAbscissae(const SplineView& spline,
+                                 const Options& options) {
+  auto xi = GrevilleAbscissaeList(spline, options);
+  const int32_t para_dim = spline.para_dim;
+  if (para_dim <= 0 || xi.empty()) {
+    return Buffer<double>();
+  }
+
+  std::vector<int64_t> n(para_dim);
+  for (int32_t d = 0; d < para_dim; ++d) {
+    n[d] = xi[d].size();
   }
 
   // Tensor product Cartesian assembly with Axis 0 varying fastest

@@ -57,6 +57,58 @@ struct SplineData {
 
     return v;
   }
+
+  /// True if knot vectors are present.
+  bool HasKnotVectors() const noexcept { return !knot_vectors.empty(); }
+
+  /// True if weights are present.
+  bool IsRational() const noexcept { return !weights.empty(); }
+
+  /// Number of control points.
+  int64_t NumControlPoints() const noexcept {
+    return (dim > 0) ? (control_points.size() / dim) : 0;
+  }
+
+  /// Alias for View().
+  SplineView ToView() const { return View(); }
+
+  /// Creates an owning SplineData deep copy from a SplineView.
+  static SplineData FromView(const SplineView& v) {
+    SplineData d;
+    d.para_dim = v.para_dim;
+    d.dim = v.dim;
+    d.degrees = Buffer<int32_t>(v.degrees.size());
+    for (std::size_t i = 0; i < v.degrees.size(); ++i) {
+      d.degrees[i] = v.degrees[i];
+    }
+
+    if (v.HasKnotVectors()) {
+      d.knot_vectors.resize(v.knot_vectors.size());
+      for (std::size_t i = 0; i < v.knot_vectors.size(); ++i) {
+        d.knot_vectors[i] = Buffer<double>(v.knot_vectors[i].size());
+        for (std::size_t j = 0; j < v.knot_vectors[i].size(); ++j) {
+          d.knot_vectors[i][j] = v.knot_vectors[i][j];
+        }
+      }
+    }
+
+    const int64_t n_cps = v.num_control_points;
+    d.control_points = Buffer<double>(n_cps * v.dim);
+    for (int64_t i = 0; i < n_cps; ++i) {
+      for (int32_t j = 0; j < v.dim; ++j) {
+        d.control_points[i * v.dim + j] = v.Point(i, j);
+      }
+    }
+
+    if (v.IsRational()) {
+      d.weights = Buffer<double>(n_cps);
+      for (int64_t i = 0; i < n_cps; ++i) {
+        d.weights[i] = v.Weight(i);
+      }
+    }
+
+    return d;
+  }
 };
 
 /// Batch of owning splines.

@@ -24,7 +24,9 @@ SOFTWARE.
 
 #include "splinepy/proximity/proximity.hpp"
 #include "splinepy/proximity/slsqp/slsqp.h"
-#include "splinepy/splines/helpers/properties.hpp"
+#include "splinepy/core/queries/evaluate.hpp"
+#include "splinepy/core/queries/derivative.hpp"
+#include "splinepy/core/multipatch/interfaces.hpp"
 #include "splinepy/utils/nthreads.hpp"
 #include "splinepy/utils/print.hpp"
 
@@ -143,12 +145,13 @@ void SearchData::Setup(const int para_dim_,
 }
 
 void Proximity::PlantNewKdTree(const int* resolutions, const int n_thread) {
-  const int para_dim = spline_.SplinepyParaDim();
-  const int dim = spline_.SplinepyDim();
+  const int para_dim = spline_.para_dim;
+  const int dim = spline_.dim;
 
   // get parametric bounds
   RealArray parametric_bounds(para_dim * 2);
-  spline_.SplinepyParametricBounds(parametric_bounds.data());
+  auto pb = splinepy::core::ParametricBounds(spline_);
+  std::copy(pb.begin(), pb.end(), parametric_bounds.data());
 
   // create grid_points
   grid_points_.SetUp(para_dim, parametric_bounds.data(), resolutions);
@@ -165,7 +168,10 @@ void Proximity::PlantNewKdTree(const int* resolutions, const int n_thread) {
 
     for (int i{begin}; i < end; ++i) {
       grid_points_.IdToGridPoint(i, query_data);
-      spline_.SplinepyEvaluate(query_data, &sampled_spline_[i * dim]);
+      splinepy::core::Evaluate(
+          spline_,
+          splinepy::core::Span<const double>(query_data, para_dim),
+          splinepy::core::Span<double>(&sampled_spline_[i * dim], dim));
     }
   };
 
@@ -188,9 +194,10 @@ void Proximity::PlantNewKdTree(const int* resolutions, const int n_thread) {
 void Proximity::GuessMinusQuery(const RealArray& guess,
                                 const ConstRealArray& query,
                                 RealArray& difference) const {
-  // evaluate guess and sett to difference
-  spline_.SplinepyEvaluate(guess.data(), difference.data());
-  // subtract query from evaluated guess
+  splinepy::core::Evaluate(
+      spline_,
+      splinepy::core::Span<const double>(guess.data(), spline_.para_dim),
+      splinepy::core::Span<double>(difference.data(), spline_.dim));
   difference.Subtract(query);
 }
 
@@ -198,7 +205,10 @@ void Proximity::GuessMinusQuery(const RealArray& guess,
                                 const ConstRealArray& query,
                                 RealArray& difference,
                                 RealArray& guess_phys) const {
-  spline_.SplinepyEvaluate(guess.data(), guess_phys.data());
+  splinepy::core::Evaluate(
+      spline_,
+      splinepy::core::Span<const double>(guess.data(), spline_.para_dim),
+      splinepy::core::Span<double>(guess_phys.data(), spline_.dim));
   splinepy::utils::Subtract(guess_phys, query, difference);
 }
 
@@ -258,9 +268,11 @@ void Proximity::dJdu(const RealArray& guess,
     gradient_row_view.SetData(&spline_gradient(i, 0));
 
     // derivative evaluation
-    spline_.SplinepyDerivative(guess.data(),
-                               derivative_query.data(),
-                               gradient_row_view.data());
+    splinepy::core::Derivative(
+        spline_,
+        splinepy::core::Span<const double>(guess.data(), para_dim),
+        splinepy::core::Span<const int32_t>(derivative_query.data(), para_dim),
+        splinepy::core::Span<double>(gradient_row_view.data(), dim));
 
     // note that there's no negative here, thus not rhs yet
     djdu[i] = difference.InnerProduct(gradient_row_view);
@@ -295,9 +307,11 @@ void Proximity::d2Jdu2(const RealArray& guess,
     derivative.SetData(&spline_hessian(i, j, 0));
 
     // compute
-    spline_.SplinepyDerivative(guess.data(),
-                               derivative_query.data(),
-                               derivative.data());
+    splinepy::core::Derivative(
+        spline_,
+        splinepy::core::Span<const double>(guess.data(), para_dim),
+        splinepy::core::Span<const int32_t>(derivative_query.data(), para_dim),
+        splinepy::core::Span<double>(derivative.data(), dim));
 
     // fill lhs_ij
     d2jdu2(i, j) =
@@ -359,7 +373,8 @@ void Proximity::ComputeStatus(SearchData& data,
 }
 
 void Proximity::FindSearchBound(SearchData& data, const bool tight) const {
-  spline_.SplinepyParametricBounds(data.search_bounds.data());
+  auto pb = splinepy::core::ParametricBounds(spline_);
+  std::copy(pb.begin(), pb.end(), data.search_bounds.data());
 
   // set search bounds to para bounds and early exit
   if (!tight) {
@@ -654,8 +669,8 @@ void Proximity::VerboseQuery(
     double* second_derivatives /* spline hessian */) const {
 
   // get dims
-  const int para_dim = spline_.SplinepyParaDim();
-  const int dim = spline_.SplinepyDim();
+  const int para_dim = spline_.para_dim;
+  const int dim = spline_.dim;
 
   // initialize aux data for the search
   SearchData data(para_dim,
@@ -744,7 +759,7 @@ void Proximity::VerboseQuery(
   fill_hessian_and_metrics(true);
 }
 
-void FillHessian(const splinepy::splines::SplinepyBase& spline,
+void FillHessian(splinepy::core::SplineView spline,
                  const RealArray& at,
                  RealArray3D& hess) {
   const int para_dim = hess.Shape()[1];
@@ -766,9 +781,11 @@ void FillHessian(const splinepy::splines::SplinepyBase& spline,
     derivative.SetData(&hess(i, j, 0));
 
     // compute
-    spline.SplinepyDerivative(at.data(),
-                              derivative_query.data(),
-                              derivative.data());
+    splinepy::core::Derivative(
+        spline,
+        splinepy::core::Span<const double>(at.data(), para_dim),
+        splinepy::core::Span<const int32_t>(derivative_query.data(), para_dim),
+        splinepy::core::Span<double>(derivative.data(), dim));
 
     // reset derivative query
     --derivative_query[i];

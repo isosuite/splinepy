@@ -14,24 +14,22 @@ all_2p2d_splines = (
 
 # often called function; no testfunction
 def cps_are_synced(spl):
-    assert np.allclose(
-        spl.cps, spl.current_core_properties()["control_points"]
-    )
+    """a fresh spline built from the current data must behave identically"""
+    fresh = type(spl)(**spl.todict())
+    queries = np.random.default_rng(0).random((10, spl.para_dim))
+    lo, hi = spl.parametric_bounds
+    queries = lo + queries * (hi - lo)
+    assert np.allclose(fresh.cps, spl.cps)
+    assert np.allclose(fresh.evaluate(queries), spl.evaluate(queries))
 
 
 @pytest.mark.parametrize("splinetype", all_2p2d_splines)
 def test_inplace_change_degrees_para(splinetype, request):
-    """inplace change of degrees should not be allowed if core spline is
-    initialized"""
+    """degrees can't be changed inplace, as they determine the number of
+    control points. Use the setter or elevate_degrees."""
     spline = request.getfixturevalue(splinetype)
 
-    spline_dict = spline.todict()
-    s = spline.__class__()
-    s.degrees = spline_dict["degrees"]
-    s.degrees += 1
-
-    # this shoundn't be fine
-    s._new_core(**spline_dict)
+    s = spline.copy()
     with pytest.raises(ValueError):
         s.degrees += 1
 
@@ -141,8 +139,8 @@ def test_inplace_change_weights(nurbs_2p2d):
     assert np.allclose(z.sample(res), n.sample(res))
 
 
-def test_physical_space_array(nurbs_2p2d):
-    """tests if physical space array is syncing correctly."""
+def test_inplace_cps_changes_are_used(nurbs_2p2d):
+    """tests if all kinds of inplace cps changes are used by the spline."""
     n = splinepy.NURBS(**nurbs_2p2d.todict())
 
     # all setitem cases
@@ -218,43 +216,32 @@ def test_physical_space_array(nurbs_2p2d):
     # copy should return a normal np.ndarray
     ndarr = n.cps.copy()
     assert isinstance(ndarr, np.ndarray)
-    assert not isinstance(ndarr, type(n.cps))
-    assert not isinstance(ndarr, splinepy.utils.data.PhysicalSpaceArray)
 
 
 @pytest.mark.parametrize("splinetype", all_2p2d_splines)
-def test_new_control_point_pointers_creation(splinetype, request):
-    """Test cp pointers are newly created if they change.
-    _sync_source_ptr compares len of cp pointers and PhysicalSpaceArray
-    before syncing.
-    """
+def test_cps_valid_after_manipulation(splinetype, request):
+    """Test control points stay valid after spline manipulations."""
     # get spline
     spline = request.getfixturevalue(splinetype)
 
     # initial check
-    spline.cps._sync_source_ptr()
     cps_are_synced(spline)
 
     # check after degree elevation
     spline.elevate_degrees([0, 1])
-    spline.cps._sync_source_ptr()
     cps_are_synced(spline)
 
     # and after knot vectors and reduce degree
     if spline.has_knot_vectors:
         spline.insert_knots(0, [0.2, 0.5, 0.7])
-        spline.cps._sync_source_ptr()
         cps_are_synced(spline)
 
         spline.insert_knots(1, [0.2, 0.5, 0.7])
-        spline.cps._sync_source_ptr()
         cps_are_synced(spline)
 
         spline.remove_knots(0, [0.7])
-        spline.cps._sync_source_ptr()
         cps_are_synced(spline)
 
         # reduce degree only available for bsplines
         spline.reduce_degrees([0])
-        spline.cps._sync_source_ptr()
         cps_are_synced(spline)

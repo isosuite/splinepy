@@ -26,7 +26,7 @@ SOFTWARE.
 
 #include <napf.hpp>
 
-#include "splinepy/splines/splinepy_base.hpp"
+#include "splinepy/core/model/spline_view.hpp"
 #include "splinepy/utils/arrays.hpp"
 #include "splinepy/utils/grid_points.hpp"
 
@@ -236,7 +236,7 @@ public:
 
 protected:
   // helpee spline
-  const splinepy::splines::SplinepyBase& spline_;
+  splinepy::core::SplineView spline_;
 
   // kdtree related variables
   splinepy::utils::GridPoints grid_points_;
@@ -246,7 +246,7 @@ protected:
 
 public:
   /// Constructor. As a spline helper class, always need a spline.
-  Proximity(const splinepy::splines::SplinepyBase& spline) : spline_(spline) {};
+  explicit Proximity(splinepy::core::SplineView spline) : spline_(spline) {}
 
   /*!
    * Plants a kdtree with given resolution.
@@ -406,7 +406,7 @@ public:
 /// @param spline
 /// @param at
 /// @param hess
-void FillHessian(const splinepy::splines::SplinepyBase& spline,
+void FillHessian(splinepy::core::SplineView spline,
                  const RealArray& at,
                  RealArray3D& hess);
 

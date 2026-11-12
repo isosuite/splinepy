@@ -447,7 +447,8 @@ SplineData ElevateDegree(const SplineView& spline,
 
   if (!knots_to_remove.empty()) {
     Options rem_options = options;
-    rem_options.tolerance = 1e-10;
+    rem_options.tolerance =
+        (options.tolerance > 0.0) ? options.tolerance : 1e-6;
     KnotRemovalResult rem_res = RemoveKnots(intermediate.View(),
                                             axis,
                                             Span<const double>(knots_to_remove),
