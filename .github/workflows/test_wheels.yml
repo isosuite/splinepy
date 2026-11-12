@@ -5,27 +5,6 @@ on:
 
 jobs:
   macos_wheel:
-    runs-on: macos-15-intel
-
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: recursive
-    - name: build wheels
-      uses: pypa/cibuildwheel@v2.23.2
-      env:
-        CIBW_ARCHS: native
-        CIBW_BUILD: "cp313-*"
-        SPLINEPY_GITHUB_ACTIONS_BUILD: True
-        SKBUILD_INSTALL_COMPONENTS: PythonModule
-
-    - uses: actions/upload-artifact@v4
-      with:
-        name: wheels-macos-15-intel
-        path: ./wheelhouse/*.whl
-        retention-days: 1
-
-  macos_wheel-m1:
     runs-on: macos-latest
 
     steps:
@@ -106,7 +85,7 @@ jobs:
 
 
   try_download_artifact:
-    needs: [macos_wheel, macos_wheel-m1, linux_wheel, windows_wheel, source_dist]
+    needs: [macos_wheel, linux_wheel, windows_wheel, source_dist]
     runs-on: ubuntu-latest
     permissions:
       id-token: write

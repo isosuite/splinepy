@@ -33,7 +33,7 @@ content-type = "text/markdown"
 
 [project.optional-dependencies]
 all = ["gustaf[all]>=0.0.25"]
-test = ["funi>=0.1.0", "pytest"]
+test = ["funi>=0.2.1", "pytest"]
 
 [project.scripts]
 splinepy = "splinepy.cli:entry"
@@ -63,7 +63,7 @@ test-command = "pytest {project}/tests"
 before-all = "python {project}/docs/source/handle_markdown.py -b"
 
 [tool.cibuildwheel.macos]
-archs = ["x86_64", "arm64"]
+archs = ["arm64"]
 build = ["cp*"]
 
 [tool.cibuildwheel.linux]
