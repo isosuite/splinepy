@@ -1,4 +1,4 @@
-from gustaf import show  # shortcut for frequently used module / func
+from splinepy.helpme.visualize import show  # shortcut for visualization
 
 from splinepy import (
     bezier,

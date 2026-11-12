@@ -33,6 +33,8 @@ content-type = "text/markdown"
 
 [project.optional-dependencies]
 all = ["gustaf[all]>=0.0.25"]
+viewer = ["anywidget"]
+viewer-export = ["playwright"]
 test = ["funi>=0.2.1", "pytest"]
 
 [project.scripts]
@@ -46,7 +48,9 @@ wheel.packages = [
     "splinepy.helpme",
     "splinepy.microstructure",
     "splinepy.microstructure.tiles",
+    "splinepy.viewer",
 ]
+wheel.exclude = ["splinepy/viewer/js/node_modules", "splinepy/viewer/js/package-lock.json"]
 
 build-dir = "build"
 

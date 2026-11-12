@@ -1,4 +1,5 @@
 import gustaf as gus
+import numpy as np
 
 import splinepy as sp
 
@@ -42,9 +43,17 @@ if __name__ == "__main__":
     # use multi_index to get mid slice ids
     z_slice_ids = spline_3d.multi_index[:, :, 1]
     # rotate
-    spline_3d.control_points[z_slice_ids] = gus.utils.arr.rotate(
-        spline_3d.control_points[z_slice_ids], [0, 0, 79]
-    )
+    try:
+        spline_3d.control_points[z_slice_ids] = gus.utils.arr.rotate(
+            spline_3d.control_points[z_slice_ids], [0, 0, 79]
+        )
+    except ImportError:
+        rad = np.radians(79)
+        c, s = np.cos(rad), np.sin(rad)
+        R = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
+        spline_3d.control_points[z_slice_ids] = np.matmul(
+            spline_3d.control_points[z_slice_ids], R
+        )
     # translate
     spline_3d.control_points[z_slice_ids] += [0, 0, 0]
 

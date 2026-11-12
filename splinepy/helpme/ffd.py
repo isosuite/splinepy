@@ -299,16 +299,25 @@ class FFD(_SplinepyBase):
                 "You've set both True."
             )
 
-        things_to_show = self.showable(**kwargs)
+        if return_gustaf:
+            return self.showable(return_gustaf=True)
+        if return_showable:
+            return self.showable(return_showable=True, **kwargs)
 
-        if return_gustaf or return_showable:
-            return things_to_show
+        things_to_show = self.showable(return_gustaf=True)
 
-        return _gus.show(
+        spline_items = (
+            list(things_to_show["spline"].values())
+            if isinstance(things_to_show["spline"], dict)
+            else [things_to_show["spline"]]
+        )
+        from splinepy.helpme import visualize as _visualize
+
+        return _visualize.show(
             ["Original Mesh", things_to_show["original_mesh"]],
             [
                 "Spline and Mesh",
-                *things_to_show["spline"].values(),
+                *spline_items,
                 things_to_show["mesh"],
             ],
             ["Deformed Mesh", things_to_show["mesh"]],

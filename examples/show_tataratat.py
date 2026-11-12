@@ -2,13 +2,8 @@ import argparse
 
 import gustaf as gus
 import numpy as np
-import vedo
 
 import splinepy
-
-# this will cause a deprecated warning for newer version of vedo.
-# for backward compatibility, we keep this one.
-vedo.settings.screenshot_transparent_background = 1
 
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser(
@@ -184,21 +179,7 @@ if __name__ == "__main__":
     fanfare.append(shaft)
     fanfare.append(lower_shaft)
 
-    # show fanfare - prepare only surface and full spline components
-    face_showables = []
-    spline_showables = []
+    # show fanfare
     for f in fanfare:
-        showables = f.showable(resolutions=500, c=(255, 215, 0))
-        faces = showables["spline"]
-        face_showables.append(faces)
-        spline_showables.extend(list(showables.values()))
-
-    cam = {
-        "pos": (-11.90193, 5.995478, 3.057389),
-        "focalPoint": (-2.817062, -0.6220471, -0.3948362),
-        "viewup": (0.3271027, 0.7493888, -0.5756911),
-        "distance": 11.75773,
-        "clippingRange": (6.030973, 19.21880),
-    }
-
-    gus.show(face_showables, spline_showables, cam=cam)
+        f.show_options["c"] = (255, 215, 0)
+    splinepy.show(fanfare)

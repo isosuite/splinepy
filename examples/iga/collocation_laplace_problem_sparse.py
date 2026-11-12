@@ -10,7 +10,14 @@ calculations more efficient
 """
 
 import numpy as np
-from scipy.sparse import linalg
+
+try:
+    from scipy.sparse import linalg
+except ImportError:
+    print("scipy is required for this sparse example. Skipping.")
+    import sys
+
+    sys.exit(0)
 
 import splinepy as sp
 

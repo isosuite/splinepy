@@ -1,0 +1,12 @@
+{
+  "name": "splinepy-viewer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild viewer.js --bundle --minify --format=esm --outfile=../static/viewer.bundle.js"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.0",
+    "three": "0.170.0"
+  }
+}

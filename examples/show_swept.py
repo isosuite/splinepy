@@ -169,7 +169,7 @@ if __name__ == "__main__":
     ### VISUALIZATION ###
 
     # first window: swept surface
-    gus.show(
+    splinepy.show(
         ["Trajectory", trajectory],
         ["1D Cross Section", cross_section_circle],
         ["Swept Surface", swept_surface_circle],
@@ -184,7 +184,7 @@ if __name__ == "__main__":
     trajectory.show_options["control_points"] = False
 
     # second window: swept solids (circular)
-    gus.show(
+    splinepy.show(
         ["2D Cross Section", cross_section_disk],
         ["Swept Solid - Crooked Sweeping", swept_solid_disk_1],
         [
@@ -203,7 +203,7 @@ if __name__ == "__main__":
     )
 
     # third window: swept solids (rectangular)
-    gus.show(
+    splinepy.show(
         ["New Cross Section", cross_section_plate],
         ["Swept Solid without Rotation", swept_solid_plate_1],
         ["Swept Solid with 45° Rotation", swept_solid_plate_2],
@@ -213,7 +213,7 @@ if __name__ == "__main__":
     )
 
     # fourth window: anchor placement for line cross-sections
-    gus.show(
+    splinepy.show(
         ["Rectangle Line Cross Section", cross_section_rectangle_line],
         [
             "Anchor: parametric",
