@@ -38,7 +38,7 @@ Buffer<double> MultiplyPolynomialCps(MemoryArena& arena,
     table_size += static_cast<std::size_t>(deg_a[d] + 1) * (deg_b[d] + 1);
   }
   Span<double> tables = arena.AllocateSpan<double>(table_size);
-  Span<int64_t> strides = arena.AllocateSpan<int64_t>(3 * P);  // a, b, result
+  Span<int64_t> strides = arena.AllocateSpan<int64_t>(3 * P); // a, b, result
   Span<int64_t> a_strides = strides.subspan(0, P);
   Span<int64_t> b_strides = strides.subspan(P, P);
   Span<int64_t> r_strides = strides.subspan(2 * P, P);
@@ -49,7 +49,8 @@ Buffer<double> MultiplyPolynomialCps(MemoryArena& arena,
   for (std::size_t d = 0; d < P; ++d) {
     const int32_t m = deg_a[d];
     const int32_t n = deg_b[d];
-    table(d) = tables.subspan(table_offset, static_cast<std::size_t>(m + 1) * (n + 1));
+    table(d) =
+        tables.subspan(table_offset, static_cast<std::size_t>(m + 1) * (n + 1));
     table_offset += static_cast<std::size_t>(m + 1) * (n + 1);
     for (int32_t i = 0; i <= m; ++i) {
       for (int32_t j = 0; j <= n; ++j) {
@@ -60,18 +61,22 @@ Buffer<double> MultiplyPolynomialCps(MemoryArena& arena,
     }
     a_strides[d] = a_total;
     b_strides[d] = b_total;
-    r_strides[d] = (d == 0) ? 1 : r_strides[d - 1] * (deg_a[d - 1] + deg_b[d - 1] + 1);
+    r_strides[d] =
+        (d == 0) ? 1 : r_strides[d - 1] * (deg_a[d - 1] + deg_b[d - 1] + 1);
     a_total *= m + 1;
     b_total *= n + 1;
   }
-  const int64_t total_out_cps = r_strides[P - 1] * (deg_a[P - 1] + deg_b[P - 1] + 1);
+  const int64_t total_out_cps =
+      r_strides[P - 1] * (deg_a[P - 1] + deg_b[P - 1] + 1);
   Buffer<double> out_cps(total_out_cps * res_dim, 0.0);
 
   // all index combinations of the dimensions 1 ... P - 1, for a and b
   const int64_t n_a_outer = a_total / (deg_a[0] + 1);
   const int64_t n_b_outer = b_total / (deg_b[0] + 1);
-  Span<int32_t> a_digits = arena.AllocateSpan<int32_t>(n_a_outer * n_outer_dims);
-  Span<int32_t> b_digits = arena.AllocateSpan<int32_t>(n_b_outer * n_outer_dims);
+  Span<int32_t> a_digits =
+      arena.AllocateSpan<int32_t>(n_a_outer * n_outer_dims);
+  Span<int32_t> b_digits =
+      arena.AllocateSpan<int32_t>(n_b_outer * n_outer_dims);
   Span<int64_t> a_offset = arena.AllocateSpan<int64_t>(n_a_outer);
   Span<int64_t> b_offset = arena.AllocateSpan<int64_t>(n_b_outer);
   auto enumerate = [&](Span<const int32_t> deg,
@@ -165,11 +170,10 @@ Buffer<double> MultiplyPolynomialCps(MemoryArena& arena,
   return out_cps;
 }
 
-}  // namespace detail
+} // namespace detail
 
-SplineData Multiply(const SplineView& a,
-                    const SplineView& b,
-                    const Options& options) {
+SplineData
+Multiply(const SplineView& a, const SplineView& b, const Options& options) {
   if (options.validate) {
     ThrowIfInvalid(a);
     ThrowIfInvalid(b);
@@ -231,30 +235,28 @@ SplineData Multiply(const SplineView& a,
   WorkspaceRef ws_ref(options, 16 * 1024, 1);
   MemoryArena& arena = ws_ref->GetThreadArena(0);
 
-  Buffer<double> num_cps =
-      detail::MultiplyPolynomialCps(arena,
-                                    para_dim,
-                                    a.degrees,
-                                    b.degrees,
-                                    a_weighted.data(),
-                                    a.dim,
-                                    b_weighted.data(),
-                                    b.dim,
-                                    res_dim,
-                                    is_dot_product);
+  Buffer<double> num_cps = detail::MultiplyPolynomialCps(arena,
+                                                         para_dim,
+                                                         a.degrees,
+                                                         b.degrees,
+                                                         a_weighted.data(),
+                                                         a.dim,
+                                                         b_weighted.data(),
+                                                         b.dim,
+                                                         res_dim,
+                                                         is_dot_product);
 
   if (is_rational) {
-    Buffer<double> den_cps =
-        detail::MultiplyPolynomialCps(arena,
-                                      para_dim,
-                                      a.degrees,
-                                      b.degrees,
-                                      a_weights.data(),
-                                      1,
-                                      b_weights.data(),
-                                      1,
-                                      1,
-                                      false);
+    Buffer<double> den_cps = detail::MultiplyPolynomialCps(arena,
+                                                           para_dim,
+                                                           a.degrees,
+                                                           b.degrees,
+                                                           a_weights.data(),
+                                                           1,
+                                                           b_weights.data(),
+                                                           1,
+                                                           1,
+                                                           false);
 
     const int64_t total_out_cps = den_cps.size();
     result.control_points.resize(total_out_cps * res_dim);
@@ -265,7 +267,8 @@ SplineData Multiply(const SplineView& a,
       const double inv_w = (w != 0.0) ? (1.0 / w) : 0.0;
       result.weights[i] = w;
       for (int32_t c = 0; c < res_dim; ++c) {
-        result.control_points[i * res_dim + c] = num_cps[i * res_dim + c] * inv_w;
+        result.control_points[i * res_dim + c] =
+            num_cps[i * res_dim + c] * inv_w;
       }
     }
   } else {
@@ -276,4 +279,4 @@ SplineData Multiply(const SplineView& a,
   return result;
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

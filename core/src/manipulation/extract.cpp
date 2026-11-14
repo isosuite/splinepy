@@ -215,7 +215,8 @@ SplineBatchData ExtractBezierPatches(const SplineView& spline,
       const int64_t mult = static_cast<int64_t>(end - first);
       const bool internal = first > 0 && end < kv.size();
       if (internal) {
-        element_start[d].push_back(element_start[d].back() + p + (mult > p ? 1 : 0));
+        element_start[d].push_back(element_start[d].back() + p
+                                   + (mult > p ? 1 : 0));
       }
       first = end;
     }

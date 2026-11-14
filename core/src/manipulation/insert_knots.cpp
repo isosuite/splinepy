@@ -24,7 +24,8 @@ SplineData InsertKnotsWithArena(MemoryArena& arena,
   if (options.validate) {
     ThrowIfInvalid(spline);
     if (axis < 0 || axis >= spline.para_dim) {
-      throw std::invalid_argument("InsertKnots: axis out of range [0, para_dim).");
+      throw std::invalid_argument(
+          "InsertKnots: axis out of range [0, para_dim).");
     }
   }
 
@@ -124,28 +125,30 @@ SplineData InsertKnotsWithArena(MemoryArena& arena,
   }
 
   // Sort knots to insert
-  std::vector<double> sorted_knots(knots_to_insert.begin(), knots_to_insert.end());
+  std::vector<double> sorted_knots(knots_to_insert.begin(),
+                                   knots_to_insert.end());
   std::sort(sorted_knots.begin(), sorted_knots.end());
 
   // Sequentially insert each knot
   std::vector<Span<const double>> kv_views(spline.para_dim);
   for (double u_new : sorted_knots) {
     for (int32_t d = 0; d < spline.para_dim; ++d) {
-      kv_views[d] = Span<const double>(current_kvs[d].data(), current_kvs[d].size());
+      kv_views[d] =
+          Span<const double>(current_kvs[d].data(), current_kvs[d].size());
     }
     std::vector<double> out_axis_knots;
     Buffer<double> out_cps;
 
     detail::InsertKnotAlongAxisND(arena,
-                                 spline.para_dim,
-                                 coord_dim,
-                                 spline.degrees,
-                                 kv_views,
-                                 working_cps.cspan(),
-                                 axis,
-                                 u_new,
-                                 out_axis_knots,
-                                 out_cps);
+                                  spline.para_dim,
+                                  coord_dim,
+                                  spline.degrees,
+                                  kv_views,
+                                  working_cps.cspan(),
+                                  axis,
+                                  u_new,
+                                  out_axis_knots,
+                                  out_cps);
 
     current_kvs[axis] = std::move(out_axis_knots);
     working_cps = std::move(out_cps);
@@ -182,14 +185,18 @@ SplineData InsertKnotsWithArena(MemoryArena& arena,
   return result;
 }
 
-}  // namespace
+} // namespace
 
 SplineData InsertKnots(const SplineView& spline,
                        int32_t axis,
                        Span<const double> knots_to_insert,
                        const Options& options) {
   detail::LocalArena local(options);
-  return InsertKnotsWithArena(local.arena(), spline, axis, knots_to_insert, options);
+  return InsertKnotsWithArena(local.arena(),
+                              spline,
+                              axis,
+                              knots_to_insert,
+                              options);
 }
 
 SplineBatchData InsertKnots(SplineBatchView batch,
@@ -201,20 +208,22 @@ SplineBatchData InsertKnots(SplineBatchView batch,
   // One arena per worker; created up front so workers never grow the pool.
   const int nthreads = std::max(options.nthreads, 1);
   Workspace local_workspace(16 * 1024, nthreads);
-  Workspace* ws = options.workspace != nullptr ? options.workspace : &local_workspace;
+  Workspace* ws =
+      options.workspace != nullptr ? options.workspace : &local_workspace;
   ws->GetThreadArena(nthreads - 1);
 
   ParallelForWithThreadId(static_cast<int64_t>(0),
                           static_cast<int64_t>(batch.size()),
                           nthreads,
                           [&](int64_t i, int thread_id) {
-                            result[i] = InsertKnotsWithArena(ws->GetThreadArena(thread_id),
-                                                             batch[i],
-                                                             axis,
-                                                             knots_to_insert,
-                                                             options);
+                            result[i] = InsertKnotsWithArena(
+                                ws->GetThreadArena(thread_id),
+                                batch[i],
+                                axis,
+                                knots_to_insert,
+                                options);
                           });
   return result;
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

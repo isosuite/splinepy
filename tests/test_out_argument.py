@@ -33,7 +33,7 @@ def _check(spline, name, args, queries):
     if isinstance(expected, tuple):
         out = tuple(np.empty(e.shape, dtype=e.dtype) for e in expected)
         res = getattr(spline, name)(queries, *args, out=out)
-        for r, o, e in zip(res, out, expected):
+        for r, o, e in zip(res, out, expected, strict=True):
             assert r is o
             assert np.array_equal(o, e)
     else:

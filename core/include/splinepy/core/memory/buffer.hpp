@@ -84,8 +84,9 @@ public:
   /// for scratch memory that is written before it is read.
   static Buffer Uninitialized(size_type size,
                               size_type alignment = kDefaultAlignment) {
-    static_assert(std::is_trivially_default_constructible_v<T>,
-                  "Uninitialized buffers need trivially constructible elements");
+    static_assert(
+        std::is_trivially_default_constructible_v<T>,
+        "Uninitialized buffers need trivially constructible elements");
     Buffer buffer;
     buffer.alignment_ = alignment;
     if (size > 0) {

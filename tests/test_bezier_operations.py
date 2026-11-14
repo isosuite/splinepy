@@ -295,7 +295,7 @@ def test_compose_batch_sensitivities_and_derivative_match_single():
                         )
                         assert np.allclose(composed[o][i].cps, exp_c.cps)
                         assert len(sens[o][i]) == len(exp_s)
-                        for got, exp in zip(sens[o][i], exp_s):
+                        for got, exp in zip(sens[o][i], exp_s, strict=True):
                             assert np.allclose(got.cps, exp.cps)
                         exp_d = outer.composition_derivative(
                             inner, inner_ders[i]

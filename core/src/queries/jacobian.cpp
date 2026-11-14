@@ -20,7 +20,8 @@ void Jacobian(const SplineView& spline,
   }
 
   if (spline.para_dim <= 0 || spline.dim <= 0) {
-    throw SplinepyException("Invalid spline dimensions", Status::kInvalidArgument);
+    throw SplinepyException("Invalid spline dimensions",
+                            Status::kInvalidArgument);
   }
 
   if (queries.size() % static_cast<std::size_t>(spline.para_dim) != 0) {
@@ -29,7 +30,8 @@ void Jacobian(const SplineView& spline,
         Status::kDimensionMismatch);
   }
 
-  const int64_t num_queries = static_cast<int64_t>(queries.size()) / spline.para_dim;
+  const int64_t num_queries =
+      static_cast<int64_t>(queries.size()) / spline.para_dim;
   if (num_queries == 0) {
     return;
   }
@@ -40,9 +42,9 @@ void Jacobian(const SplineView& spline,
   const int64_t expected_out_size = num_queries * jacobian_block_size;
 
   if (static_cast<int64_t>(out.size()) < expected_out_size) {
-    throw SplinepyException(
-        "Output span size is smaller than expected (num_queries * dim * para_dim)",
-        Status::kDimensionMismatch);
+    throw SplinepyException("Output span size is smaller than expected "
+                            "(num_queries * dim * para_dim)",
+                            Status::kDimensionMismatch);
   }
 
   const int64_t num_supports = spline.NumSupports();
@@ -63,7 +65,8 @@ void Jacobian(const SplineView& spline,
                              Span<int64_t>(cp_strides, para_dim),
                              Span<int64_t>(supp_strides, para_dim));
 
-  // Determine total 1D elements per axis with max_order = 1: 2 * (degrees[d] + 1)
+  // Determine total 1D elements per axis with max_order = 1: 2 * (degrees[d] +
+  // 1)
   int32_t total_1d_ders_elems = 0;
   for (int32_t d = 0; d < para_dim; ++d) {
     total_1d_ders_elems += 2 * (spline.degrees[d] + 1);
@@ -125,10 +128,13 @@ void Jacobian(const SplineView& spline,
     }
 
     // Lambda to get 1D basis value (order 0) or 1st derivative (order 1)
-    auto get_1d_der = [&](int32_t axis, int32_t order_k, int32_t basis_j) -> double {
+    auto get_1d_der =
+        [&](int32_t axis, int32_t order_k, int32_t basis_j) -> double {
       const int32_t p_d = spline.degrees[axis];
-      if (order_k > p_d) return 0.0;
-      return ders_1d_storage[p_axis_offsets[axis] + order_k * (p_d + 1) + basis_j];
+      if (order_k > p_d)
+        return 0.0;
+      return ders_1d_storage[p_axis_offsets[axis] + order_k * (p_d + 1)
+                             + basis_j];
     };
 
     // Precompute support CPs and weights
@@ -182,7 +188,8 @@ void Jacobian(const SplineView& spline,
             }
           } else {
             for (int32_t c = 0; c < dim; ++c) {
-              out_jac[c * para_dim + p_dim] += basis_der * spline.Point(cp_idx, c);
+              out_jac[c * para_dim + p_dim] +=
+                  basis_der * spline.Point(cp_idx, c);
             }
           }
         }
@@ -276,22 +283,28 @@ void Jacobian(const SplineView& spline,
         }
 
         for (int32_t c = 0; c < dim; ++c) {
-          out_jac[c * para_dim + p_dim] = (a_der_ptr[c] - w_der * c0_ptr[c]) * inv_w0;
+          out_jac[c * para_dim + p_dim] =
+              (a_der_ptr[c] - w_der * c0_ptr[c]) * inv_w0;
         }
       }
     }
   };
 
-  ParallelForWithThreadId(int64_t{0}, num_queries, options.nthreads, evaluate_single_jacobian);
+  ParallelForWithThreadId(int64_t{0},
+                          num_queries,
+                          options.nthreads,
+                          evaluate_single_jacobian);
 }
 
 Buffer<double> Jacobian(const SplineView& spline,
                         Span<const double> queries,
                         const Options& options) {
   if (spline.para_dim <= 0 || spline.dim <= 0) {
-    throw SplinepyException("Invalid spline dimensions", Status::kInvalidArgument);
+    throw SplinepyException("Invalid spline dimensions",
+                            Status::kInvalidArgument);
   }
-  const int64_t num_queries = static_cast<int64_t>(queries.size()) / spline.para_dim;
+  const int64_t num_queries =
+      static_cast<int64_t>(queries.size()) / spline.para_dim;
   Buffer<double> out(num_queries * spline.dim * spline.para_dim);
   Jacobian(spline, queries, out.span(), options);
   return out;
@@ -310,11 +323,12 @@ void Jacobian(SplineBatchView batch,
   }
 
   if (out_per_spline.size() != batch.size()) {
-    throw SplinepyException(
-        "out_per_spline size must match batch size", Status::kDimensionMismatch);
+    throw SplinepyException("out_per_spline size must match batch size",
+                            Status::kDimensionMismatch);
   }
 
-  const bool broadcast_queries = (queries_per_spline.size() == 1 && batch.size() > 1);
+  const bool broadcast_queries =
+      (queries_per_spline.size() == 1 && batch.size() > 1);
   if (!broadcast_queries && queries_per_spline.size() != batch.size()) {
     throw SplinepyException(
         "queries_per_spline size must match batch size (or be 1 for broadcast)",
@@ -325,9 +339,10 @@ void Jacobian(SplineBatchView batch,
   per_patch_opts.validate = false;
 
   for (std::size_t i = 0; i < batch.size(); ++i) {
-    const auto& q_span = broadcast_queries ? queries_per_spline[0] : queries_per_spline[i];
+    const auto& q_span =
+        broadcast_queries ? queries_per_spline[0] : queries_per_spline[i];
     Jacobian(batch[i], q_span, out_per_spline[i], per_patch_opts);
   }
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

@@ -1243,8 +1243,8 @@ class Spline(_SplinepyBase):
         queries: (n, para_dim) array-like
         n_threads: int
         out: optional
-          Preallocated, C-contiguous result array (a tuple of two arrays (basis float64, support int32) of the shape of
-          the result), filled in place and returned, like numpy's ``out``.
+          Preallocated, C-contiguous tuple of two result arrays (float64 basis
+          and int32 support), filled in place and returned like numpy's ``out``.
           A fresh array is created if it is not given.
 
         Returns
@@ -1317,8 +1317,8 @@ class Spline(_SplinepyBase):
         orders: (para_dim,) or (m, para_dim) array-like
         nthreads: int
         out: optional
-          Preallocated, C-contiguous result array (a tuple of two arrays (basis float64, support int32) of the shape of
-          the result), filled in place and returned, like numpy's ``out``.
+          Preallocated, C-contiguous tuple of two result arrays (float64 basis
+          and int32 support), filled in place and returned like numpy's ``out``.
           A fresh array is created if it is not given.
 
         Returns

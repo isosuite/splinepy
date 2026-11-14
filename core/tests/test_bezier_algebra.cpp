@@ -220,8 +220,13 @@ TEST(BezierAlgebraTest, MultiplyMatchesPointwiseProduct) {
     int dim_b;
     bool rational;
   };
-  const Kind kinds[] = {{1, 1, false}, {1, 3, false}, {3, 1, false}, {3, 3, false},
-                        {1, 1, true},  {1, 3, true},  {3, 3, true}};
+  const Kind kinds[] = {{1, 1, false},
+                        {1, 3, false},
+                        {3, 1, false},
+                        {3, 3, false},
+                        {1, 1, true},
+                        {1, 3, true},
+                        {3, 3, true}};
   const std::vector<std::vector<int32_t>> degree_pairs[] = {
       {{4}, {2}},
       {{3, 2}, {1, 4}},
@@ -234,38 +239,53 @@ TEST(BezierAlgebraTest, MultiplyMatchesPointwiseProduct) {
     const int pd = static_cast<int>(da.size());
     auto count = [&](const std::vector<int32_t>& d) {
       std::size_t n = 1;
-      for (const int32_t v : d) n *= v + 1;
+      for (const int32_t v : d)
+        n *= v + 1;
       return n;
     };
     for (const Kind& k : kinds) {
       std::vector<double> ca(count(da) * k.dim_a), cb(count(db) * k.dim_b);
       std::vector<double> wa(count(da)), wb(count(db));
-      for (std::size_t i = 0; i < ca.size(); ++i) ca[i] = std::sin(0.7 * i + 0.2);
-      for (std::size_t i = 0; i < cb.size(); ++i) cb[i] = std::cos(0.45 * i + 0.9);
-      for (std::size_t i = 0; i < wa.size(); ++i) wa[i] = 1.0 + 0.3 * std::sin(1.1 * i);
-      for (std::size_t i = 0; i < wb.size(); ++i) wb[i] = 1.0 + 0.3 * std::cos(0.8 * i);
+      for (std::size_t i = 0; i < ca.size(); ++i)
+        ca[i] = std::sin(0.7 * i + 0.2);
+      for (std::size_t i = 0; i < cb.size(); ++i)
+        cb[i] = std::cos(0.45 * i + 0.9);
+      for (std::size_t i = 0; i < wa.size(); ++i)
+        wa[i] = 1.0 + 0.3 * std::sin(1.1 * i);
+      for (std::size_t i = 0; i < wb.size(); ++i)
+        wb[i] = 1.0 + 0.3 * std::cos(0.8 * i);
 
-      SplineView a = MakeBezierView(Span<const int32_t>(da), Span<const double>(ca), k.dim_a,
-                                    k.rational ? Span<const double>(wa) : Span<const double>());
-      SplineView b = MakeBezierView(Span<const int32_t>(db), Span<const double>(cb), k.dim_b,
-                                    k.rational ? Span<const double>(wb) : Span<const double>());
+      SplineView a = MakeBezierView(Span<const int32_t>(da),
+                                    Span<const double>(ca),
+                                    k.dim_a,
+                                    k.rational ? Span<const double>(wa)
+                                               : Span<const double>());
+      SplineView b = MakeBezierView(Span<const int32_t>(db),
+                                    Span<const double>(cb),
+                                    k.dim_b,
+                                    k.rational ? Span<const double>(wb)
+                                               : Span<const double>());
       const auto product = Multiply(a, b);
 
       std::vector<double> u(pd);
       for (int sample = 0; sample < 5; ++sample) {
-        for (int d = 0; d < pd; ++d) u[d] = std::fmod(0.13 + 0.29 * sample + 0.37 * d, 1.0);
+        for (int d = 0; d < pd; ++d)
+          u[d] = std::fmod(0.13 + 0.29 * sample + 0.37 * d, 1.0);
         const auto va = Evaluate(a, Span<const double>(u));
         const auto vb = Evaluate(b, Span<const double>(u));
         const auto vp = Evaluate(product.View(), Span<const double>(u));
 
         std::vector<double> expected;
         if (k.dim_a == 1) {
-          for (int c = 0; c < k.dim_b; ++c) expected.push_back(va[0] * vb[c]);
+          for (int c = 0; c < k.dim_b; ++c)
+            expected.push_back(va[0] * vb[c]);
         } else if (k.dim_b == 1) {
-          for (int c = 0; c < k.dim_a; ++c) expected.push_back(va[c] * vb[0]);
+          for (int c = 0; c < k.dim_a; ++c)
+            expected.push_back(va[c] * vb[0]);
         } else {
           double dot = 0.0;
-          for (int c = 0; c < k.dim_a; ++c) dot += va[c] * vb[c];
+          for (int c = 0; c < k.dim_a; ++c)
+            dot += va[c] * vb[c];
           expected.push_back(dot);
         }
         ASSERT_EQ(vp.size(), expected.size());
@@ -447,9 +467,13 @@ TEST(BezierAlgebraTest, ComposeBatchMatchesSingleCompose) {
   for (const bool outer_rational : {false, true}) {
     for (const bool inner_rational : {false, true}) {
       std::vector<std::vector<double>> o_cps(kOuters, outer_cps);
-      std::vector<std::vector<double>> o_w(kOuters, std::vector<double>(n_outer_cps, 1.0));
+      std::vector<std::vector<double>> o_w(
+          kOuters,
+          std::vector<double>(n_outer_cps, 1.0));
       std::vector<std::vector<double>> i_cps(kInners, inner_cps);
-      std::vector<std::vector<double>> i_w(kInners, std::vector<double>(n_inner_cps, 1.0));
+      std::vector<std::vector<double>> i_w(
+          kInners,
+          std::vector<double>(n_inner_cps, 1.0));
       for (int o = 0; o < kOuters; ++o) {
         for (std::size_t k = 0; k < o_cps[o].size(); ++k) {
           o_cps[o][k] += 0.05 * o * std::sin(1.3 * k + o);
@@ -472,15 +496,17 @@ TEST(BezierAlgebraTest, ComposeBatchMatchesSingleCompose) {
         outers.push_back(MakeBezierView(Span<const int32_t>(outer_degrees),
                                         Span<const double>(o_cps[o]),
                                         2,
-                                        outer_rational ? Span<const double>(o_w[o])
-                                                       : Span<const double>()));
+                                        outer_rational
+                                            ? Span<const double>(o_w[o])
+                                            : Span<const double>()));
       }
       for (int i = 0; i < kInners; ++i) {
         inners.push_back(MakeBezierView(Span<const int32_t>(inner_degrees),
                                         Span<const double>(i_cps[i]),
                                         2,
-                                        inner_rational ? Span<const double>(i_w[i])
-                                                       : Span<const double>()));
+                                        inner_rational
+                                            ? Span<const double>(i_w[i])
+                                            : Span<const double>()));
       }
 
       for (const int nthreads : {1, 4}) {
@@ -500,11 +526,13 @@ TEST(BezierAlgebraTest, ComposeBatchMatchesSingleCompose) {
                                  expected.control_points.cspan()),
                       1e-13)
                 << "outer_rational=" << outer_rational
-                << " inner_rational=" << inner_rational << " nthreads=" << nthreads;
+                << " inner_rational=" << inner_rational
+                << " nthreads=" << nthreads;
             EXPECT_EQ(got.weights.size(), expected.weights.size());
             if (!expected.weights.empty()) {
-              EXPECT_LT(MaxAbsDiff(got.weights.cspan(), expected.weights.cspan()),
-                        1e-13);
+              EXPECT_LT(
+                  MaxAbsDiff(got.weights.cspan(), expected.weights.cspan()),
+                  1e-13);
             }
           }
         }
@@ -556,15 +584,17 @@ TEST(BezierAlgebraTest, ComposeBatchVariantsMatchSingle) {
         outers.push_back(MakeBezierView(Span<const int32_t>(outer_degrees),
                                         Span<const double>(o_cps[o]),
                                         2,
-                                        outer_rational ? Span<const double>(o_w[o])
-                                                       : Span<const double>()));
+                                        outer_rational
+                                            ? Span<const double>(o_w[o])
+                                            : Span<const double>()));
       }
       for (int i = 0; i < kInners; ++i) {
         inners.push_back(MakeBezierView(Span<const int32_t>(inner_degrees),
                                         Span<const double>(i_cps[i]),
                                         2,
-                                        inner_rational ? Span<const double>(i_w[i])
-                                                       : Span<const double>()));
+                                        inner_rational
+                                            ? Span<const double>(i_w[i])
+                                            : Span<const double>()));
         inner_der_data.push_back(
             DerivativeSpline(inners.back(), Span<const int32_t>(order, 2)));
       }
@@ -575,23 +605,26 @@ TEST(BezierAlgebraTest, ComposeBatchVariantsMatchSingle) {
       for (const int nthreads : {1, 4}) {
         Options options;
         options.nthreads = nthreads;
-        const std::string label = "outer_rational=" + std::to_string(outer_rational) +
-                                  " inner_rational=" + std::to_string(inner_rational) +
-                                  " nthreads=" + std::to_string(nthreads);
+        const std::string label =
+            "outer_rational=" + std::to_string(outer_rational)
+            + " inner_rational=" + std::to_string(inner_rational)
+            + " nthreads=" + std::to_string(nthreads);
 
         auto sens = ComposeSensitivitiesBatch(Span<const SplineView>(outers),
                                               Span<const SplineView>(inners),
                                               options);
-        auto ders = CompositionDerivativeBatch(Span<const SplineView>(outers),
-                                               Span<const SplineView>(inners),
-                                               Span<const SplineView>(inner_ders),
-                                               options);
+        auto ders =
+            CompositionDerivativeBatch(Span<const SplineView>(outers),
+                                       Span<const SplineView>(inners),
+                                       Span<const SplineView>(inner_ders),
+                                       options);
         ASSERT_EQ(sens.size(), static_cast<std::size_t>(kOuters * kInners));
         ASSERT_EQ(ders.size(), static_cast<std::size_t>(kOuters * kInners));
 
         for (int o = 0; o < kOuters; ++o) {
           for (int i = 0; i < kInners; ++i) {
-            const auto expected_sens = ComposeSensitivities(outers[o], inners[i]);
+            const auto expected_sens =
+                ComposeSensitivities(outers[o], inners[i]);
             const auto& got_sens = sens[o * kInners + i];
             ASSERT_EQ(got_sens.size(), expected_sens.size()) << label;
             for (std::size_t k = 0; k < expected_sens.size(); ++k) {
@@ -599,7 +632,8 @@ TEST(BezierAlgebraTest, ComposeBatchVariantsMatchSingle) {
                                    expected_sens[k].control_points.cspan()),
                         1e-13)
                   << label;
-              EXPECT_EQ(got_sens[k].weights.size(), expected_sens[k].weights.size());
+              EXPECT_EQ(got_sens[k].weights.size(),
+                        expected_sens[k].weights.size());
             }
 
             const auto expected_der =
@@ -625,11 +659,18 @@ TEST(BezierAlgebraTest, ComposeBatchRejectsMixedOuters) {
   int32_t other_degrees[2] = {1, 1};
   std::vector<double> other_cps(4 * 2, 0.5);
   std::vector<SplineView> outers{
-      MakeBezierView(Span<const int32_t>(outer_degrees), Span<const double>(outer_cps), 2),
-      MakeBezierView(Span<const int32_t>(other_degrees, 2), Span<const double>(other_cps), 2)};
+      MakeBezierView(Span<const int32_t>(outer_degrees),
+                     Span<const double>(outer_cps),
+                     2),
+      MakeBezierView(Span<const int32_t>(other_degrees, 2),
+                     Span<const double>(other_cps),
+                     2)};
   std::vector<SplineView> inners{
-      MakeBezierView(Span<const int32_t>(inner_degrees), Span<const double>(inner_cps), 2)};
-  EXPECT_THROW(ComposeBatch(Span<const SplineView>(outers), Span<const SplineView>(inners)),
+      MakeBezierView(Span<const int32_t>(inner_degrees),
+                     Span<const double>(inner_cps),
+                     2)};
+  EXPECT_THROW(ComposeBatch(Span<const SplineView>(outers),
+                            Span<const SplineView>(inners)),
                std::invalid_argument);
 }
 

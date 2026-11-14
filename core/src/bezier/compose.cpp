@@ -35,30 +35,30 @@ struct BasisSplinePrecomputation {
 };
 
 void ValidateCompose(const SplineView& outer, const SplineView& inner) {
-    if (outer.para_dim != inner.dim) {
-      throw std::invalid_argument(
-          "Compose: outer.para_dim must equal inner.dim. Got outer.para_dim="
-          + std::to_string(outer.para_dim)
-          + ", inner.dim=" + std::to_string(inner.dim));
-    }
-    if (outer.para_dim <= 0 || outer.dim <= 0 || inner.para_dim <= 0
-        || inner.dim <= 0) {
-      throw std::invalid_argument("Compose: dimensions must be positive.");
-    }
-    if (outer.control_points_data == nullptr
-        || inner.control_points_data == nullptr) {
-      throw std::invalid_argument(
-          "Compose: control points data cannot be null.");
-    }
+  if (outer.para_dim != inner.dim) {
+    throw std::invalid_argument(
+        "Compose: outer.para_dim must equal inner.dim. Got outer.para_dim="
+        + std::to_string(outer.para_dim)
+        + ", inner.dim=" + std::to_string(inner.dim));
+  }
+  if (outer.para_dim <= 0 || outer.dim <= 0 || inner.para_dim <= 0
+      || inner.dim <= 0) {
+    throw std::invalid_argument("Compose: dimensions must be positive.");
+  }
+  if (outer.control_points_data == nullptr
+      || inner.control_points_data == nullptr) {
+    throw std::invalid_argument("Compose: control points data cannot be null.");
+  }
 }
 
 /// Bernstein basis of the outer spline composed with the inner spline. It only
 /// depends on the outer degrees (and rationality), never on outer control
 /// points, so it can be reused for every outer spline of the same degrees.
-BasisSplinePrecomputation BuildCompositionBasis(Span<const int32_t> outer_degrees,
-                                                bool outer_rational,
-                                                const SplineView& inner,
-                                                const Options& options) {
+BasisSplinePrecomputation
+BuildCompositionBasis(Span<const int32_t> outer_degrees,
+                      bool outer_rational,
+                      const SplineView& inner,
+                      const Options& options) {
   const int32_t M = static_cast<int32_t>(outer_degrees.size());
   const int32_t N = inner.para_dim;
   const int64_t n_inner = inner.num_control_points;
@@ -151,8 +151,9 @@ BasisSplinePrecomputation BuildCompositionBasis(Span<const int32_t> outer_degree
       if (m == 1) {
         pow_W_minus_Q[1] = W_minus_Q_d;
       } else {
-        pow_W_minus_Q[m] =
-            Multiply(pow_W_minus_Q[m - 1].View(), W_minus_Q_d.View(), multiply_options);
+        pow_W_minus_Q[m] = Multiply(pow_W_minus_Q[m - 1].View(),
+                                    W_minus_Q_d.View(),
+                                    multiply_options);
       }
     }
 
@@ -163,7 +164,8 @@ BasisSplinePrecomputation BuildCompositionBasis(Span<const int32_t> outer_degree
         F[d][p_d] = pow_Q[p_d];
       } else {
         F[d][i_d] = Multiply(pow_Q[i_d].View(),
-                             pow_W_minus_Q[p_d - i_d].View(), multiply_options);
+                             pow_W_minus_Q[p_d - i_d].View(),
+                             multiply_options);
       }
       const double binom = Binomial(p_d, i_d);
       if (binom != 1.0) {
@@ -188,7 +190,8 @@ BasisSplinePrecomputation BuildCompositionBasis(Span<const int32_t> outer_degree
                   const int64_t i_d = k / prev_size;
                   const int64_t j = k % prev_size;
                   next_stage[k] = Multiply(prep.basis_splines[j].View(),
-                                           F[d][i_d].View(), multiply_options);
+                                           F[d][i_d].View(),
+                                           multiply_options);
                 });
     prep.basis_splines = std::move(next_stage);
   }
@@ -196,33 +199,36 @@ BasisSplinePrecomputation BuildCompositionBasis(Span<const int32_t> outer_degree
   // Denominator that only depends on the inner weights. With a rational outer
   // spline it depends on the outer weights too, see OuterDenominator().
   if (prep.is_rational_result && !outer_rational) {
-      SplineData W;
-      W.para_dim = N;
-      W.dim = 1;
-      W.degrees.assign(inner.degrees.begin(), inner.degrees.end());
-      W.control_points.resize(n_inner);
-      for (int64_t j = 0; j < n_inner; ++j) {
-        W.control_points[j] = inner.Weight(j);
-      }
-
-      SplineData W_pow = CreateConstantScalarSpline(N, 1.0);
-      for (int32_t s = 0; s < prep.sum_outer_degrees; ++s) {
-      W_pow = Multiply(W_pow.View(), W.View(), multiply_options);
-      }
-      prep.denominator_cps = std::move(W_pow.control_points);
+    SplineData W;
+    W.para_dim = N;
+    W.dim = 1;
+    W.degrees.assign(inner.degrees.begin(), inner.degrees.end());
+    W.control_points.resize(n_inner);
+    for (int64_t j = 0; j < n_inner; ++j) {
+      W.control_points[j] = inner.Weight(j);
     }
+
+    SplineData W_pow = CreateConstantScalarSpline(N, 1.0);
+    for (int32_t s = 0; s < prep.sum_outer_degrees; ++s) {
+      W_pow = Multiply(W_pow.View(), W.View(), multiply_options);
+    }
+    prep.denominator_cps = std::move(W_pow.control_points);
+  }
 
   return prep;
 }
 
 BasisSplinePrecomputation ComputeCompositionBasis(const SplineView& outer,
-                   const SplineView& inner,
-                   const Options& options) {
+                                                  const SplineView& inner,
+                                                  const Options& options) {
   if (options.validate) {
     ValidateCompose(outer, inner);
     ThrowIfInvalid(inner);
   }
-  return BuildCompositionBasis(outer.degrees, outer.IsRational(), inner, options);
+  return BuildCompositionBasis(outer.degrees,
+                               outer.IsRational(),
+                               inner,
+                               options);
 }
 
 /// Denominator sum_i w_i B_i of a rational outer spline.
@@ -340,7 +346,7 @@ SplineBatchData SensitivitiesFromBasis(const SplineView& outer,
 /// threads each worker owns one inner (and its basis, so memory stays at
 /// nthreads bases) and the body runs single threaded. Otherwise the inners go
 /// one after another and the body may use all threads for the outers.
-template <typename Body>
+template<typename Body>
 void ForEachInner(std::size_t n_inner, const Options& options, Body&& body) {
   const int nthreads = std::max(options.nthreads, 1);
   if (static_cast<int>(n_inner) >= nthreads) {
@@ -357,12 +363,14 @@ void ForEachInner(std::size_t n_inner, const Options& options, Body&& body) {
 
 /// The batch functions share their basis between outers of identical layout,
 /// e.g. the Bezier elements of one refined spline.
-void CheckSharedLayout(SplineBatchView outers, SplineBatchView inners, bool validate) {
+void CheckSharedLayout(SplineBatchView outers,
+                       SplineBatchView inners,
+                       bool validate) {
   const SplineView& ref = outers[0];
   for (std::size_t o = 0; o < outers.size(); ++o) {
     const SplineView& outer = outers[o];
-    bool same = outer.para_dim == ref.para_dim && outer.dim == ref.dim &&
-                outer.IsRational() == ref.IsRational();
+    bool same = outer.para_dim == ref.para_dim && outer.dim == ref.dim
+                && outer.IsRational() == ref.IsRational();
     for (int32_t d = 0; same && d < ref.para_dim; ++d) {
       same = outer.degrees[d] == ref.degrees[d];
     }
@@ -384,7 +392,7 @@ void CheckSharedLayout(SplineBatchView outers, SplineBatchView inners, bool vali
   }
 }
 
-}  // namespace
+} // namespace
 
 SplineData Compose(const SplineView& outer,
                    const SplineView& inner,
@@ -409,11 +417,17 @@ SplineBatchData ComposeBatch(SplineBatchView outers,
     Options local = options;
     local.validate = false;
     local.nthreads = threads;
-    const auto prep = BuildCompositionBasis(
-        outers[0].degrees, outers[0].IsRational(), inners[i], local);
-    ParallelFor(int64_t{0}, static_cast<int64_t>(n_outer), threads, [&](int64_t o) {
-      result[o * n_inner + i] = AccumulateComposition(outers[o], inners[i], prep);
-    });
+    const auto prep = BuildCompositionBasis(outers[0].degrees,
+                                            outers[0].IsRational(),
+                                            inners[i],
+                                            local);
+    ParallelFor(int64_t{0},
+                static_cast<int64_t>(n_outer),
+                threads,
+                [&](int64_t o) {
+                  result[o * n_inner + i] =
+                      AccumulateComposition(outers[o], inners[i], prep);
+                });
   });
   return result;
 }
@@ -434,12 +448,20 @@ std::vector<SplineBatchData> ComposeSensitivitiesBatch(SplineBatchView outers,
     Options local = options;
     local.validate = false;
     local.nthreads = threads;
-    auto prep = BuildCompositionBasis(
-        outers[0].degrees, outers[0].IsRational(), inners[i], local);
-    ParallelFor(int64_t{0}, static_cast<int64_t>(n_outer), threads, [&](int64_t o) {
-      result[o * n_inner + i] =
-          SensitivitiesFromBasis(outers[o], inners[i].para_dim, prep, false);
-    });
+    auto prep = BuildCompositionBasis(outers[0].degrees,
+                                      outers[0].IsRational(),
+                                      inners[i],
+                                      local);
+    ParallelFor(int64_t{0},
+                static_cast<int64_t>(n_outer),
+                threads,
+                [&](int64_t o) {
+                  result[o * n_inner + i] =
+                      SensitivitiesFromBasis(outers[o],
+                                             inners[i].para_dim,
+                                             prep,
+                                             false);
+                });
   });
   return result;
 }
@@ -451,8 +473,8 @@ SplineBatchData CompositionDerivativeBatch(SplineBatchView outers,
   const std::size_t n_outer = outers.size();
   const std::size_t n_inner = inners.size();
   if (inner_derivatives.size() != n_inner) {
-    throw std::invalid_argument(
-        "CompositionDerivativeBatch: one inner derivative per inner is needed.");
+    throw std::invalid_argument("CompositionDerivativeBatch: one inner "
+                                "derivative per inner is needed.");
   }
   SplineBatchData result(n_outer * n_inner);
   if (n_outer == 0 || n_inner == 0) {
@@ -461,11 +483,11 @@ SplineBatchData CompositionDerivativeBatch(SplineBatchView outers,
   CheckSharedLayout(outers, inners, options.validate);
   if (options.validate) {
     for (std::size_t i = 0; i < n_inner; ++i) {
-      if (inners[i].dim != inner_derivatives[i].dim ||
-          inners[i].para_dim != inner_derivatives[i].para_dim) {
-        throw std::invalid_argument(
-            "CompositionDerivativeBatch: inner derivative must have the dim and "
-            "para_dim of its inner.");
+      if (inners[i].dim != inner_derivatives[i].dim
+          || inners[i].para_dim != inner_derivatives[i].para_dim) {
+        throw std::invalid_argument("CompositionDerivativeBatch: inner "
+                                    "derivative must have the dim and "
+                                    "para_dim of its inner.");
       }
     }
   }
@@ -477,7 +499,9 @@ SplineBatchData CompositionDerivativeBatch(SplineBatchView outers,
   }
   auto derivative_of = [&](const SplineView& outer, int32_t d) {
     return DerivativeSpline(
-        outer, Span<const int32_t>(orders[d].data(), orders[d].size()), options);
+        outer,
+        Span<const int32_t>(orders[d].data(), orders[d].size()),
+        options);
   };
 
   // The derivative splines of all outers share their degrees, so one basis per
@@ -487,7 +511,8 @@ SplineBatchData CompositionDerivativeBatch(SplineBatchView outers,
     layout_der.push_back(derivative_of(outers[0], d));
   }
 
-  // result[o * n_inner + i] = CompositionDerivative(outers[o], inners[i], inner_derivatives[i])
+  // result[o * n_inner + i] = CompositionDerivative(outers[o], inners[i],
+  // inner_derivatives[i])
   ForEachInner(n_inner, options, [&](std::size_t i, int threads) {
     Options local = options;
     local.validate = false;
@@ -497,21 +522,30 @@ SplineBatchData CompositionDerivativeBatch(SplineBatchView outers,
     std::vector<SplineData> inner_der_d;
     for (int32_t d = 0; d < M; ++d) {
       const SplineView der_view = layout_der[d].View();
-      preps.push_back(BuildCompositionBasis(
-          der_view.degrees, der_view.IsRational(), inners[i], local));
+      preps.push_back(BuildCompositionBasis(der_view.degrees,
+                                            der_view.IsRational(),
+                                            inners[i],
+                                            local));
       inner_der_d.push_back(ExtractDim(inner_derivatives[i], d, local));
     }
 
-    ParallelFor(int64_t{0}, static_cast<int64_t>(n_outer), threads, [&](int64_t o) {
-      SplineData sum;
-      for (int32_t d = 0; d < M; ++d) {
-        SplineData outer_der = derivative_of(outers[o], d);
-        SplineData comp = AccumulateComposition(outer_der.View(), inners[i], preps[d]);
-        SplineData term = Multiply(comp.View(), inner_der_d[d].View(), local);
-        sum = (d == 0) ? std::move(term) : Add(sum.View(), term.View(), local);
-      }
-      result[o * n_inner + i] = std::move(sum);
-    });
+    ParallelFor(int64_t{0},
+                static_cast<int64_t>(n_outer),
+                threads,
+                [&](int64_t o) {
+                  SplineData sum;
+                  for (int32_t d = 0; d < M; ++d) {
+                    SplineData outer_der = derivative_of(outers[o], d);
+                    SplineData comp = AccumulateComposition(outer_der.View(),
+                                                            inners[i],
+                                                            preps[d]);
+                    SplineData term =
+                        Multiply(comp.View(), inner_der_d[d].View(), local);
+                    sum = (d == 0) ? std::move(term)
+                                   : Add(sum.View(), term.View(), local);
+                  }
+                  result[o * n_inner + i] = std::move(sum);
+                });
   });
   return result;
 }

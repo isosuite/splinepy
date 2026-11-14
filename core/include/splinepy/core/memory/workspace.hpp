@@ -98,7 +98,7 @@ private:
 /// scope on exit, so nested and repeated calls reuse the same memory instead of
 /// allocating a workspace per call.
 class WorkspaceRef {
- public:
+public:
   WorkspaceRef(const Options& options,
                std::size_t per_thread_bytes,
                std::size_t num_threads) {
@@ -119,7 +119,7 @@ class WorkspaceRef {
   Workspace* operator->() noexcept { return ws_; }
   Workspace& operator*() noexcept { return *ws_; }
 
- private:
+private:
   Workspace* ws_{nullptr};
 };
 

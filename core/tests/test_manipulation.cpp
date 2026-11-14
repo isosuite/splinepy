@@ -224,7 +224,8 @@ TEST(ManipulationKernelsTest, BatchElevateAndReduceMatchSingle) {
   auto kv_1 = LoadBin<double>("operations_bspline_orig_kv_1.bin");
   auto cps = LoadBin<double>("operations_bspline_orig_cps.bin");
 
-  Span<const double> kvs[2] = {Span<const double>(kv_0), Span<const double>(kv_1)};
+  Span<const double> kvs[2] = {Span<const double>(kv_0),
+                               Span<const double>(kv_1)};
   SplineView spline;
   spline.para_dim = 2;
   spline.dim = 2;
@@ -241,14 +242,19 @@ TEST(ManipulationKernelsTest, BatchElevateAndReduceMatchSingle) {
   Options options;
   options.nthreads = 3;
 
-  const SplineData expected = ElevateDegrees(spline, Span<const int32_t>(amounts, 2));
+  const SplineData expected =
+      ElevateDegrees(spline, Span<const int32_t>(amounts, 2));
   const SplineBatchData elevated =
-      ElevateDegrees(SplineBatchView(batch), Span<const int32_t>(amounts, 2), options);
+      ElevateDegrees(SplineBatchView(batch),
+                     Span<const int32_t>(amounts, 2),
+                     options);
   ASSERT_EQ(elevated.size(), batch.size());
   for (const auto& e : elevated) {
     EXPECT_EQ(e.degrees[0], expected.degrees[0]);
     EXPECT_EQ(e.degrees[1], expected.degrees[1]);
-    EXPECT_EQ(MaxAbsDiff(e.control_points.cspan(), expected.control_points.cspan()), 0.0);
+    EXPECT_EQ(
+        MaxAbsDiff(e.control_points.cspan(), expected.control_points.cspan()),
+        0.0);
   }
 
   std::vector<SplineView> elevated_views;
@@ -261,7 +267,8 @@ TEST(ManipulationKernelsTest, BatchElevateAndReduceMatchSingle) {
   ASSERT_EQ(reduced.size(), elevated_views.size());
   for (const auto& r : reduced) {
     EXPECT_EQ(r.degrees[1], reduced_expected.degrees[1]);
-    EXPECT_EQ(MaxAbsDiff(r.control_points.cspan(), reduced_expected.control_points.cspan()),
+    EXPECT_EQ(MaxAbsDiff(r.control_points.cspan(),
+                         reduced_expected.control_points.cspan()),
               0.0);
   }
 }
