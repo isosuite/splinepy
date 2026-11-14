@@ -1,29 +1,30 @@
 """Hierarchical B-splines with leaf-local tensor extraction."""
 
-from itertools import product
-from operator import index
+from itertools import product as _product
+from operator import index as _index
 
-import numpy as np
+import numpy as _np
 
-from splinepy import settings, splinepy_core
+from splinepy import settings as _settings
+from splinepy import splinepy_core as _splinepy_core
 
 
 def _immutable(array):
-    array = np.ascontiguousarray(array)
-    return np.frombuffer(array.tobytes(), dtype=array.dtype).reshape(array.shape)
+    array = _np.ascontiguousarray(array)
+    return _np.frombuffer(array.tobytes(), dtype=array.dtype).reshape(array.shape)
 
 
 def _integers(values, name):
-    array = np.asarray(values)
-    if array.dtype.kind not in "iu" or np.any(array < 0):
+    array = _np.asarray(values)
+    if array.dtype.kind not in "iu" or _np.any(array < 0):
         raise ValueError(f"{name} must contain nonnegative integers")
-    if np.any(array > np.iinfo(np.int32).max):
+    if _np.any(array > _np.iinfo(_np.int32).max):
         raise ValueError(f"{name} exceeds the int32 range")
-    return np.asarray(array, dtype=np.int32, order="C")
+    return _np.asarray(array, dtype=_np.int32, order="C")
 
 
 def _thread_count(nthreads):
-    return settings.NTHREADS if nthreads is None else nthreads
+    return _settings.NTHREADS if nthreads is None else nthreads
 
 
 class HBSpline:
@@ -39,7 +40,7 @@ class HBSpline:
 
     def __init__(self, degrees, knot_vectors, control_points, *, weights=None):
         degrees = _integers(degrees, "degrees")
-        knots = tuple(np.asarray(axis, dtype=np.float64) for axis in knot_vectors)
+        knots = tuple(_np.asarray(axis, dtype=_np.float64) for axis in knot_vectors)
         if degrees.ndim != 1 or not degrees.size or len(knots) != degrees.size:
             raise ValueError("expected one degree and knot vector per parametric axis")
         span_counts = []
@@ -48,22 +49,22 @@ class HBSpline:
             if axis.ndim != 1 or axis.size < 2 * (degree + 1):
                 raise ValueError("invalid knot vector length")
             domain_knots = axis[degree : axis.size - degree]
-            span_counts.append(np.count_nonzero(domain_knots[1:] > domain_knots[:-1]))
-        cells = np.asarray(
-            [(0, *index) for index in product(*(range(n) for n in span_counts))],
-            dtype=np.int32,
+            span_counts.append(_np.count_nonzero(domain_knots[1:] > domain_knots[:-1]))
+        cells = _np.asarray(
+            [(0, *index) for index in _product(*(range(n) for n in span_counts))],
+            dtype=_np.int32,
         ).reshape(-1, degrees.size + 1)
         self._initialize(degrees, (knots,), cells, control_points, weights)
 
     def _initialize(self, degrees, levels, leaf_cells, control_points, weights):
         degrees = _immutable(_integers(degrees, "degrees"))
         levels = tuple(
-            tuple(_immutable(np.asarray(axis, dtype=np.float64)) for axis in level)
+            tuple(_immutable(_np.asarray(axis, dtype=_np.float64)) for axis in level)
             for level in levels
         )
         cells = _integers(leaf_cells, "leaf cells")
-        leaves, active = splinepy_core._hierarchy_layout(degrees, levels, cells)
-        points = _immutable(np.asarray(control_points, dtype=np.float64))
+        leaves, active = _splinepy_core._hierarchy_layout(degrees, levels, cells)
+        points = _immutable(_np.asarray(control_points, dtype=_np.float64))
         if self._rational != (weights is not None):
             raise ValueError(
                 "weights are required for a rational hierarchy"
@@ -73,7 +74,7 @@ class HBSpline:
         weights = (
             None
             if weights is None
-            else _immutable(np.asarray(weights, dtype=np.float64))
+            else _immutable(_np.asarray(weights, dtype=_np.float64))
         )
         data = (
             degrees,
@@ -84,7 +85,7 @@ class HBSpline:
             weights,
             self._truncate,
         )
-        self._state = data, splinepy_core._HierarchyCache(data)
+        self._state = data, _splinepy_core._HierarchyCache(data)
 
     @property
     def _data(self):
@@ -145,7 +146,7 @@ class HBSpline:
         keys : numpy.ndarray
             Read-only packed keys in coefficient order.
         """
-        _, active = splinepy_core._hierarchy_layout(
+        _, active = _splinepy_core._hierarchy_layout(
             _integers(degrees, "degrees"),
             tuple(tuple(level) for level in levels),
             _integers(leaf_cells, "leaf cells"),
@@ -316,7 +317,7 @@ class HBSpline:
         -------
         bounds : (2, para_dim) numpy.ndarray
         """
-        return np.array(
+        return _np.array(
             [
                 [
                     axis[p]
@@ -417,15 +418,15 @@ class HBSpline:
     @staticmethod
     def _cells(degrees, knot_levels, extraction):
         levels = extraction["levels"]
-        cells = np.empty((levels.size, len(degrees) + 1), dtype=np.int32)
+        cells = _np.empty((levels.size, len(degrees) + 1), dtype=_np.int32)
         cells[:, 0] = levels
         for level, knots in enumerate(knot_levels):
             mask = levels == level
             pairs = zip(degrees, knots, strict=False)
             for axis, (raw_degree, vector) in enumerate(pairs):
                 degree = int(raw_degree)
-                breaks = np.unique(vector[degree : vector.size - degree])
-                cells[mask, axis + 1] = np.searchsorted(
+                breaks = _np.unique(vector[degree : vector.size - degree])
+                cells[mask, axis + 1] = _np.searchsorted(
                     breaks, extraction["bounds"][mask, 0, axis]
                 )
         return cells
@@ -447,21 +448,21 @@ class HBSpline:
 
     @staticmethod
     def _admissibility_class(m):
-        if isinstance(m, (bool, np.bool_)):
+        if isinstance(m, (bool, _np.bool_)):
             raise TypeError("admissibility class must be an integer")
-        value = index(m)
-        if not 0 < value <= np.iinfo(np.int32).max:
+        value = _index(m)
+        if not 0 < value <= _np.iinfo(_np.int32).max:
             raise ValueError("admissibility class must be a positive int32")
         return value
 
     @staticmethod
     def _leaf_indices(elements, count):
-        indices = np.asarray(elements)
+        indices = _np.asarray(elements)
         if indices.ndim != 1 or (indices.size and indices.dtype.kind not in "iu"):
             raise ValueError("elements must contain integer leaf indices")
-        if np.any(indices < 0) or np.any(indices >= count):
+        if _np.any(indices < 0) or _np.any(indices >= count):
             raise ValueError("leaf index out of bounds")
-        return np.unique(indices.astype(np.uintp, copy=False))
+        return _np.unique(indices.astype(_np.uintp, copy=False))
 
     def is_admissible(self, m=2):
         """Check whether nonzero functions span at most m consecutive levels.
@@ -509,15 +510,15 @@ class HBSpline:
         data, cache = state
         degrees, knot_levels, leaves = data[:3]
         extraction = cache.extraction()
-        candidates = np.arange(leaves.size, dtype=np.uintp)
+        candidates = _np.arange(leaves.size, dtype=_np.uintp)
         if level is not None:
-            level = index(level)
+            level = _index(level)
             if not 0 <= level < len(knot_levels):
                 raise ValueError("leaf level out of bounds")
             candidates = candidates[extraction["levels"] == level]
 
         if elements is not None:
-            elements = np.asarray(elements)
+            elements = _np.asarray(elements)
             if elements.ndim == 2 and level is not None:
                 coordinates = _integers(elements, "element coordinates")
                 if coordinates.shape[1] != self.para_dim:
@@ -530,10 +531,10 @@ class HBSpline:
                     for cell, leaf in zip(cells, candidates, strict=False)
                 }
                 try:
-                    return np.unique(
-                        np.asarray(
+                    return _np.unique(
+                        _np.asarray(
                             [lookup[tuple(cell)] for cell in coordinates],
-                            dtype=np.uintp,
+                            dtype=_np.uintp,
                         )
                     )
                 except KeyError as error:
@@ -544,11 +545,11 @@ class HBSpline:
 
         bounds = extraction["bounds"][candidates]
         if box is not None:
-            box = np.asarray(box, dtype=np.float64)
+            box = _np.asarray(box, dtype=_np.float64)
             if (
                 box.shape != (2, self.para_dim)
-                or not np.isfinite(box).all()
-                or not np.all(box[0] < box[1])
+                or not _np.isfinite(box).all()
+                or not _np.all(box[0] < box[1])
             ):
                 raise ValueError(
                     "box must contain finite, increasing lower and upper bounds"
@@ -556,7 +557,7 @@ class HBSpline:
             mask = ((bounds[:, 0] < box[1]) & (bounds[:, 1] > box[0])).all(axis=1)
         else:
             centers = 0.5 * bounds[:, 0] + 0.5 * bounds[:, 1]
-            mask = np.asarray(where(centers))
+            mask = _np.asarray(where(centers))
             if mask.dtype.kind != "b" or mask.shape != (candidates.size,):
                 raise ValueError("where must return one boolean per candidate leaf")
         return candidates[mask]
@@ -652,13 +653,13 @@ class HBSpline:
         """
         data, cache = self._state
         if initial_guess_sample_resolutions is None:
-            initial_guess_sample_resolutions = data[0].astype(np.int64) + 3
+            initial_guess_sample_resolutions = data[0].astype(_np.int64) + 3
         resolutions = _integers(initial_guess_sample_resolutions, "resolutions")
         return cache.proximities(
-            np.asarray(queries, dtype=np.float64, order="C"),
+            _np.asarray(queries, dtype=_np.float64, order="C"),
             resolutions,
             1e-14 if tolerance is None else tolerance,
-            -1 if max_iterations is None else index(max_iterations),
+            -1 if max_iterations is None else _index(max_iterations),
             bool(tight_search_bounds),
             _thread_count(nthreads),
             bool(return_verbose),
@@ -681,7 +682,7 @@ class HBSpline:
         points : (n, dim) numpy.ndarray
         """
         return self.derivative(
-            queries, np.zeros(self.para_dim, dtype=np.int32), nthreads, out
+            queries, _np.zeros(self.para_dim, dtype=_np.int32), nthreads, out
         )
 
     def _derivative_orders(self, orders):
@@ -711,12 +712,12 @@ class HBSpline:
         derivatives : numpy.ndarray
             Physical derivatives for each query and requested order.
         """
-        queries = np.asarray(queries, dtype=np.float64, order="C")
+        queries = _np.asarray(queries, dtype=_np.float64, order="C")
         orders = self._derivative_orders(orders)
-        if isinstance(out, np.ndarray):
-            if np.may_share_memory(queries, out):
+        if isinstance(out, _np.ndarray):
+            if _np.may_share_memory(queries, out):
                 queries = queries.copy()
-            if np.may_share_memory(orders, out):
+            if _np.may_share_memory(orders, out):
                 orders = orders.copy()
         return self._cache.evaluate(queries, orders, _thread_count(nthreads), out)
 
@@ -736,28 +737,28 @@ class HBSpline:
         -------
         jacobians : (n, dim, para_dim) numpy.ndarray
         """
-        queries = np.asarray(queries, dtype=np.float64, order="C")
-        if isinstance(out, np.ndarray) and np.may_share_memory(queries, out):
+        queries = _np.asarray(queries, dtype=_np.float64, order="C")
+        if isinstance(out, _np.ndarray) and _np.may_share_memory(queries, out):
             queries = queries.copy()
         return self._cache.jacobian(queries, _thread_count(nthreads), out)
 
     def _basis_query(
         self, queries, orders, nthreads, out_basis, out_support, *, return_support
     ):
-        queries = np.asarray(queries, dtype=np.float64, order="C")
+        queries = _np.asarray(queries, dtype=_np.float64, order="C")
         for out in (out_basis, out_support):
             if out is None:
                 continue
-            if not isinstance(out, np.ndarray):
+            if not isinstance(out, _np.ndarray):
                 raise ValueError("out must be a NumPy array")
-            if np.may_share_memory(queries, out):
+            if _np.may_share_memory(queries, out):
                 queries = queries.copy()
-            if orders is not None and np.may_share_memory(orders, out):
+            if orders is not None and _np.may_share_memory(orders, out):
                 orders = orders.copy()
         if (
             out_basis is not None
             and out_support is not None
-            and np.shares_memory(out_basis, out_support)
+            and _np.shares_memory(out_basis, out_support)
         ):
             raise ValueError("basis and support output arrays must not overlap")
         return self._cache.basis(
@@ -821,7 +822,7 @@ class HBSpline:
             Basis values and corresponding global indices.
         """
         return self.basis_derivative_and_support(
-            queries, np.zeros(self.para_dim, dtype=np.int32), nthreads, out
+            queries, _np.zeros(self.para_dim, dtype=_np.int32), nthreads, out
         )
 
     def basis(self, queries, nthreads=None, out=None):
@@ -842,7 +843,7 @@ class HBSpline:
             Basis values padded with zero.
         """
         return self.basis_derivative(
-            queries, np.zeros(self.para_dim, dtype=np.int32), nthreads, out
+            queries, _np.zeros(self.para_dim, dtype=_np.int32), nthreads, out
         )
 
     def support(self, queries, nthreads=None, out=None):
@@ -919,7 +920,7 @@ class THBSpline(HBSpline):
         spline : RationalTHBSpline
         """
         weights = (
-            self.weights if self.is_rational else np.ones(len(self.control_points))
+            self.weights if self.is_rational else _np.ones(len(self.control_points))
         )
         return RationalTHBSpline.from_hierarchy(
             self.degrees,
@@ -983,9 +984,9 @@ class THBSpline(HBSpline):
         """
         if method not in ("l2", "exact"):
             raise ValueError("method must be 'l2' or 'exact'")
-        if not np.isfinite(tolerance) or tolerance <= 0:
+        if not _np.isfinite(tolerance) or tolerance <= 0:
             raise ValueError("tolerance must be finite and positive")
-        max_iterations = -1 if max_iterations is None else index(max_iterations)
+        max_iterations = -1 if max_iterations is None else _index(max_iterations)
         if max_iterations != -1 and max_iterations < 1:
             raise ValueError("max_iterations must be positive, -1, or None")
         grade = 0 if admissible is None else self._admissibility_class(admissible)

@@ -39,7 +39,6 @@ jobs:
         CIBW_BUILD: ${{ join(matrix.build, ' ') }}
         CIBW_SKIP: ${{ matrix.skip || '' }}
         CIBW_TEST_SKIP: ${{ matrix.test_skip || '' }}
-        SPLINEPY_GITHUB_ACTIONS_BUILD: True
         SKBUILD_INSTALL_COMPONENTS: PythonModule
 
     - uses: actions/upload-artifact@v7

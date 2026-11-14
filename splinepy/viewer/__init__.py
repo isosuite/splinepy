@@ -1,19 +1,21 @@
 """Lightweight three.js based viewer for splines and meshes."""
 
-import inspect
+import inspect as _inspect
 
-import numpy as np
+import numpy as _np
 
 from splinepy.viewer import mesh
 from splinepy.viewer.camera import turntable
-from splinepy.viewer.compat import translate
+from splinepy.viewer.compat import translate as _translate
 from splinepy.viewer.html import Viewer, to_html
 from splinepy.viewer.scene import (
     _assemble,
-    grid_scene,
     scene_from_mesh,
     scene_from_splines,
     to_json,
+)
+from splinepy.viewer.scene import (
+    grid_scene as _grid_scene,
 )
 
 
@@ -24,7 +26,7 @@ def _is_spline(obj):
 def _is_showable(obj):
     return (
         _is_spline(obj)
-        or isinstance(obj, (dict, np.ndarray))
+        or isinstance(obj, (dict, _np.ndarray))
         or hasattr(obj, "vertices")
         or (
             isinstance(obj, (list, tuple))
@@ -45,10 +47,10 @@ def _is_group(obj):
 
 def _flatten_group(obj):
     out = []
-    if not isinstance(obj, (list, tuple)) or isinstance(obj, np.ndarray):
+    if not isinstance(obj, (list, tuple)) or isinstance(obj, _np.ndarray):
         return [obj]
     for x in obj:
-        if isinstance(x, (list, tuple)) and not isinstance(x, np.ndarray):
+        if isinstance(x, (list, tuple)) and not isinstance(x, _np.ndarray):
             out.extend(_flatten_group(x))
         else:
             out.append(x)
@@ -62,12 +64,12 @@ def _build(obj, kwargs):
     if hasattr(obj, "show_options"):
         try:
             opts = dict(obj.show_options.items())
-            opts = translate(opts)
+            opts = _translate(opts)
         except Exception:
             pass
     combined = {**opts, **kwargs}
     builder = scene_from_splines if _is_spline(obj) else scene_from_mesh
-    accepted = inspect.signature(builder).parameters
+    accepted = _inspect.signature(builder).parameters
     return builder(obj, **{k: v for k, v in combined.items() if k in accepted})
 
 
@@ -181,9 +183,9 @@ def show(
             titles = [title] if len(new_objs) == 1 else None
 
     objs = tuple(new_objs)
-    kwargs = translate(kwargs)
-    known = set(inspect.signature(scene_from_splines).parameters) | set(
-        inspect.signature(scene_from_mesh).parameters
+    kwargs = _translate(kwargs)
+    known = set(_inspect.signature(scene_from_splines).parameters) | set(
+        _inspect.signature(scene_from_mesh).parameters
     )
     unknown = set(kwargs) - known
     if unknown:
@@ -193,7 +195,7 @@ def show(
     scene = (
         scenes[0]
         if (len(scenes) == 1 and not titles)
-        else grid_scene(scenes, ncols, link_cameras, titles)
+        else _grid_scene(scenes, ncols, link_cameras, titles)
     )
     if widget:
         from splinepy.viewer.widget import ViewerWidget

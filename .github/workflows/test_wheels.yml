@@ -14,7 +14,6 @@ jobs:
       env:
         CIBW_ARCHS: native
         CIBW_BUILD: "cp313-*"
-        SPLINEPY_GITHUB_ACTIONS_BUILD: True
         SKBUILD_INSTALL_COMPONENTS: PythonModule
 
     - uses: actions/upload-artifact@v4
@@ -34,7 +33,6 @@ jobs:
         CIBW_ARCHS: native
         CIBW_BUILD: "cp313-*"
         CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
-        SPLINEPY_GITHUB_ACTIONS_BUILD: True
         SKBUILD_INSTALL_COMPONENTS: PythonModule
 
     - uses: actions/upload-artifact@v4
@@ -53,7 +51,6 @@ jobs:
       env:
         CIBW_ARCHS: native
         CIBW_BUILD: "cp313-*"
-        SPLINEPY_GITHUB_ACTIONS_BUILD: True
         SKBUILD_INSTALL_COMPONENTS: PythonModule
 
     - uses: actions/upload-artifact@v4
@@ -80,8 +77,6 @@ jobs:
   try_download_artifact:
     needs: [macos_wheel, linux_wheel, windows_wheel, source_dist]
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
     steps:
       - uses: actions/download-artifact@v4
         with:
