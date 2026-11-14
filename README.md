@@ -1,3 +1,5 @@
+# splinepy
+
 ![txt_logo](docs/source/_static/splinepy_name.png)
 **splinepy - Library for prototyping spline geometries of arbitrary dimensions and degrees, and IGA**
 
@@ -195,7 +197,7 @@ swept = splinepy.helpme.create.swept(
 ```
 ![show_swept](docs/source/_static/show_swept.png)
 
-### 4.2 Extract
+#### 4.2 Extract
 Using [splinepy.helpme.extract](https://isosuite.github.io/splinepy/_generated/splinepy.helpme.extract.html#module-splinepy.helpme.extract) module, you can extract meshes (as a [gustaf](https://isosuite.github.io/gustaf/index.html) object)
 ```python
 # extract meshes as gustaf objects

@@ -1,7 +1,8 @@
 .. toctree::
    :maxdepth: 2
 
-.. mdinclude:: ../md/README.md
+.. include:: ../md/README.md
+   :parser: myst_parser.sphinx_
 
 Table of Contents
 -----------------

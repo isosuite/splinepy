@@ -30,14 +30,14 @@ jobs:
         python-version: "3.10"
 
     - name: build splinepy linux
-      run: pip install ".[gustaf]" -v
+      run: pip install ".[gustaf,viewer]" -v
 
     - name: sphinx
       run: |
         pip install -r ./docs/requirements.txt
         python docs/source/handle_markdown.py
         python docs/markdown/extra_docs.py
-        sphinx-build -b html docs/source docs/build
+        sphinx-build -W --keep-going -b html docs/source docs/build
 
     - name: Upload built docs
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'

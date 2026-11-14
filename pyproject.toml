@@ -32,8 +32,8 @@ file = "README.md"
 content-type = "text/markdown"
 
 [project.optional-dependencies]
-all = ["gustaf[all]>=0.0.25"]
-gustaf = ["gustaf>=0.0.25"]
+all = ["gustaf[all]>=0.0.25", "anywidget", "playwright"]
+gustaf = ["gustaf[all]>=0.0.25"]
 viewer = ["anywidget"]
 viewer-export = ["playwright"]
 test = ["funi>=0.2.1", "pytest", "gustaf>=0.0.25"]
