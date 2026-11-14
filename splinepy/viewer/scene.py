@@ -41,7 +41,7 @@ def _query_grid(bounds, res, fixed=None):
     axes = [_np.linspace(lb[d], ub[d], res[d]) for d in free]
     grids = _np.meshgrid(*axes, indexing="ij")
     q = _np.empty((grids[0].size, len(lb)))
-    for d, g in zip(free, grids):
+    for d, g in zip(free, grids, strict=False):
         q[:, d] = g.ravel(order="F")
     for d, v in fixed.items():
         q[:, d] = v
@@ -145,12 +145,13 @@ def _knot_lines(spline, res):
         others = [o for o in range(pdim) if o != d]
         for vals in _itertools.product(*(uks[o] for o in others)):
             if pdim == 3 and not any(
-                v in (bounds[0][o], bounds[1][o]) for o, v in zip(others, vals)
+                v in (bounds[0][o], bounds[1][o])
+                for o, v in zip(others, vals, strict=False)
             ):
                 continue
             if pdim == 1:
                 continue
-            q, shape = _query_grid(bounds, res, dict(zip(others, vals)))
+            q, shape = _query_grid(bounds, res, dict(zip(others, vals, strict=False)))
             pts.append(spline.evaluate(q))
             seg = _mesh.grid_edges(shape) + off
             edges.append(seg)
@@ -257,17 +258,15 @@ def scene_from_splines(
         multi = s.name.startswith("Multi")
         for p in sub:
             if (p.para_dim, p.dim) not in _SHOWABLE:
-                raise ValueError(
-                    f"Can't show para_dim={p.para_dim}, dim={p.dim}"
-                )
+                raise ValueError(f"Can't show para_dim={p.para_dim}, dim={p.dim}")
         defaults = {1: 100, 2: 50, 3: 50}
         rows = []
         for p in sub:
             n = p.para_dim
-            res = _enforce_len(
-                resolutions or (10 if multi else defaults[n]), n
+            res = _enforce_len(resolutions or (10 if multi else defaults[n]), n)
+            surf = _mesh.merge(
+                _surface_meshes(p, res, scalars, texture is not None, parent=s)
             )
-            surf = _mesh.merge(_surface_meshes(p, res, scalars, texture is not None, parent=s))
             rows.append((p, res, surf))
 
         surface = _mesh.merge([r[2] for r in rows])
@@ -315,13 +314,14 @@ def scene_from_splines(
         )
 
         if knots:
-            kn = [_knot_lines(p, r[1]) for p, r in zip(sub, rows)]
+            kn = [_knot_lines(p, r[1]) for p, r in zip(sub, rows, strict=False)]
             kn = [k for k in kn if len(k["vertices"])]
             if kn and kn[0]["element_type"] == "line":
                 k = _mesh.merge(kn)
                 layers.append(
                     _layer("lines", "knots", k["vertices"],
-                           indices=k["connectivity"], color=_color(knot_color, "#000000"),
+                           indices=k["connectivity"],
+                           color=_color(knot_color, "#000000"),
                            width=1.5)
                 )  # fmt: skip
             elif kn:
@@ -333,7 +333,9 @@ def scene_from_splines(
 
         if arrows is not None:
             ap, av = [], []
-            if multi and (arrow_on is not None or _arrow_locations(s, arrows) is not None):
+            if multi and (
+                arrow_on is not None or _arrow_locations(s, arrows) is not None
+            ):
                 locs = _arrow_locations(s, arrows)
                 if locs is not None:
                     q = locs
@@ -342,7 +344,13 @@ def scene_from_splines(
                 else:
                     q = _np.asarray(arrow_on, dtype=float)
                     ap.append(s.evaluate(q))
-                    av.append(_pad3(s.spline_data.as_arrow(arrows, on=q) if not callable(arrows) else arrows(q)))
+                    av.append(
+                        _pad3(
+                            s.spline_data.as_arrow(arrows, on=q)
+                            if not callable(arrows)
+                            else arrows(q)
+                        )
+                    )
             else:
                 for p in sub:
                     fixed = _arrow_locations(p, arrows)
@@ -369,9 +377,13 @@ def scene_from_splines(
         if control_points:
             cp = _np.vstack([p.control_points for p in sub])
             layers.append(
-                _layer("points", "control_points", cp,
-                       color=_color(control_point_color, "#d62728"),
-                       size=control_point_size or 8)
+                _layer(
+                    "points",
+                    "control_points",
+                    cp,
+                    color=_color(control_point_color, "#d62728"),
+                    size=control_point_size or 8,
+                )
             )
         n_cp = sum(len(p.control_points) for p in sub)
         if control_point_ids or (control_point_ids is None and n_cp <= 200):
@@ -406,8 +418,8 @@ def scene_from_splines(
 
 
 def _assemble(layers, axes=True, background=None, camera=None):
-    pts = [l["positions"] for l in layers if l["kind"] != "arrows"]
-    allp = _np.vstack(pts or [l["positions"] for l in layers])
+    pts = [layer["positions"] for layer in layers if layer["kind"] != "arrows"]
+    allp = _np.vstack(pts or [layer["positions"] for layer in layers])
     return {
         "layers": layers,
         "options": {
@@ -443,7 +455,7 @@ def _gustaf_to_mesh(obj):
         connectivity = None
     vdata = {}
     if hasattr(obj, "vertex_data"):
-        for k in obj.vertex_data.keys():
+        for k in obj.vertex_data:
             vdata[k] = obj.vertex_data[k]
     return _mesh.make_mesh(etype, vertices, connectivity, vertex_data=vdata)
 

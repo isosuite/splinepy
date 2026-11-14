@@ -8,14 +8,14 @@ from splinepy.viewer import mesh
 
 @pytest.fixture(autouse=True)
 def _no_browser(monkeypatch):
-    monkeypatch.setattr(viewer.Viewer, "open", lambda self, **kw: None)
+    monkeypatch.setattr(viewer.Viewer, "open", lambda _self, **_kw: None)
 
 
 def _hex_grid(n):
     """n x n x n unit cell hexa mesh, first axis fastest."""
-    pts = np.stack(
-        np.meshgrid(*[np.arange(n + 1)] * 3, indexing="ij"), -1
-    ).reshape(-1, 3, order="F")
+    pts = np.stack(np.meshgrid(*[np.arange(n + 1)] * 3, indexing="ij"), -1).reshape(
+        -1, 3, order="F"
+    )
     ids = mesh.grid_ids((n + 1,) * 3)
     conn = np.stack(
         [
@@ -48,9 +48,7 @@ def test_grid_edges_and_quads_counts():
 
 
 def test_vertex_normals_flat_quad():
-    m = mesh.make_mesh(
-        "quad", [[0, 0], [1, 0], [1, 1], [0, 1]], [[0, 1, 2, 3]]
-    )
+    m = mesh.make_mesh("quad", [[0, 0], [1, 0], [1, 1], [0, 1]], [[0, 1, 2, 3]])
     assert np.allclose(mesh.vertex_normals(m), [[0, 0, 1]] * 4)
 
 
@@ -72,9 +70,9 @@ def test_query_grid_matches_spline_sample():
 
 @pytest.mark.parametrize("pdim", [1, 2, 3])
 def test_scene_and_html_for_each_para_dim(pdim):
-    g = np.stack(
-        np.meshgrid(*[[0, 0.5, 1]] * pdim, indexing="ij"), -1
-    ).reshape(-1, pdim, order="F")
+    g = np.stack(np.meshgrid(*[[0, 0.5, 1]] * pdim, indexing="ij"), -1).reshape(
+        -1, pdim, order="F"
+    )
     cps = np.hstack([g, np.zeros((len(g), 3 - pdim))]) if pdim < 3 else g
     s = splinepy.Bezier(degrees=[2] * pdim, control_points=cps)
     v = viewer.show(
@@ -91,9 +89,7 @@ def test_scene_and_html_for_each_para_dim(pdim):
 
 
 def test_multipatch_scene():
-    a = splinepy.Bezier(
-        degrees=[1, 1], control_points=[[0, 0], [1, 0], [0, 1], [1, 1]]
-    )
+    a = splinepy.Bezier(degrees=[1, 1], control_points=[[0, 0], [1, 0], [0, 1], [1, 1]])
     b = a.copy()
     b.control_points[:, 0] += 1
     s = viewer.scene_from_splines(splinepy.Multipatch([a, b]), resolutions=4)
@@ -102,7 +98,7 @@ def test_multipatch_scene():
 
 
 def test_show_bare_vertices_as_points():
-    v = viewer.show(np.random.rand(10, 3))
+    v = viewer.show(np.random.default_rng(42).random((10, 3)))
     assert [layer["kind"] for layer in v.scene["layers"]] == ["points"]
 
 
@@ -120,14 +116,14 @@ def test_show_mesh_defaults_to_edges_and_faces_on_request():
 
 
 def test_html_is_self_contained():
-    page = viewer.show(np.random.rand(4, 2)).to_html()
+    page = viewer.show(np.random.default_rng(42).random((4, 2))).to_html()
     assert "cdn.jsdelivr" not in page
     assert "importmap" not in page
 
 
 def test_widget():
     pytest.importorskip("anywidget")
-    w = viewer.show(np.random.rand(4, 3), widget=True)
+    w = viewer.show(np.random.default_rng(42).random((4, 3)), widget=True)
     assert w.scene_json.startswith("{")
 
 
@@ -171,7 +167,7 @@ def test_headless_screenshot(tmp_path):
 def test_show_groups_overlay_and_positional_args_make_panels():
     a = splinepy.Bezier(degrees=[1], control_points=[[0, 0], [1, 1]])
     m = _hex_grid(1)
-    pts = np.random.rand(5, 3)
+    pts = np.random.default_rng(42).random((5, 3))
     assert "panels" not in viewer.show(a).scene
     v = viewer.show([a, m, pts], a)
     assert len(v.scene["panels"]) == 2
@@ -182,7 +178,7 @@ def test_show_groups_overlay_and_positional_args_make_panels():
 
 def test_show_rejects_unknown_kwargs():
     with pytest.raises(TypeError):
-        viewer.show(np.random.rand(3, 3), bogus=1)
+        viewer.show(np.random.default_rng(42).random((3, 3)), bogus=1)
 
 
 def _surface():
@@ -224,9 +220,7 @@ def test_show_backend_reads_show_options_and_spline_data():
     s.spline_data["f"] = s
     s.show_options["control_points"] = False
     s.show_options["data"] = "f"
-    names = [
-        layer["name"] for layer in s.show(backend="viewer").scene["layers"]
-    ]
+    names = [layer["name"] for layer in s.show(backend="viewer").scene["layers"]]
     assert "control_points" not in names
     assert s.show(backend="viewer").scene["layers"][0]["scalars"] is not None
 
@@ -243,13 +237,13 @@ def test_arrows_at_fixed_locations_and_to_origin():
     s = _surface()
     loc = np.array([[0.1, 0.1], [0.5, 0.5], [0.9, 0.2]])
     s.spline_data["v"] = splinepy.utils.data.SplineDataAdaptor(
-        data=s, locations=loc, function=lambda data, q: np.ones((len(q), 3))
+        data=s, locations=loc, function=lambda _data, q: np.ones((len(q), 3))
     )
     layer = next(
         layer
-        for layer in viewer.show(
-            s, arrows="v", arrow_data_to_origin=True
-        ).scene["layers"]
+        for layer in viewer.show(s, arrows="v", arrow_data_to_origin=True).scene[
+            "layers"
+        ]
         if layer["kind"] == "arrows"
     )
     assert len(layer["positions"]) == 3 and layer["to_origin"] is True
@@ -257,7 +251,7 @@ def test_arrows_at_fixed_locations_and_to_origin():
 
 def test_lighting_and_texture_in_scene():
     s = _surface()
-    img = np.random.rand(4, 4, 3)
+    img = np.random.default_rng(42).random((4, 4, 3))
     layer = viewer.show(s, lighting="metallic", texture=img).scene["layers"][0]
     assert layer["lighting"] == "metallic"
     assert layer["texture"].startswith("data:image/png;base64,")
@@ -272,15 +266,11 @@ def test_lighting_and_texture_in_scene():
 
 
 def test_texture_on_mesh_needs_uv():
-    m = mesh.make_mesh(
-        "quad", [[0, 0], [1, 0], [1, 1], [0, 1]], [[0, 1, 2, 3]]
-    )
+    m = mesh.make_mesh("quad", [[0, 0], [1, 0], [1, 1], [0, 1]], [[0, 1, 2, 3]])
     with pytest.raises(ValueError):
         viewer.show(m, mode="faces", texture=np.zeros((2, 2)))
     m["vertex_data"]["uv"] = m["vertices"]
-    layer = viewer.show(
-        m, mode="faces", texture=np.zeros((2, 2))
-    ).scene["layers"][0]
+    layer = viewer.show(m, mode="faces", texture=np.zeros((2, 2))).scene["layers"][0]
     assert layer["uv"].shape == (4, 2)
 
 
@@ -292,7 +282,7 @@ def test_png_encoder_roundtrip():
 
     from splinepy.viewer.texture import _png
 
-    arr = (np.random.rand(5, 7, 3) * 255).astype(np.uint8)
+    arr = (np.random.default_rng(42).random((5, 7, 3)) * 255).astype(np.uint8)
     assert np.array_equal(np.asarray(Image.open(io.BytesIO(_png(arr)))), arr)
 
 
@@ -310,7 +300,7 @@ def test_headless_render_with_texture_and_lighting(tmp_path):
 
 def test_show_opens_browser_outside_notebooks(monkeypatch):
     opened = []
-    monkeypatch.setattr(viewer.Viewer, "open", lambda self, **kw: opened.append(1))
+    monkeypatch.setattr(viewer.Viewer, "open", lambda _self, **_kw: opened.append(1))
     _surface().show()
     _surface().show(open=False)
     assert opened == [1]

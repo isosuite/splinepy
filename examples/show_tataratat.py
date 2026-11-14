@@ -1,6 +1,5 @@
 import argparse
 
-import gustaf as gus
 import numpy as np
 
 import splinepy

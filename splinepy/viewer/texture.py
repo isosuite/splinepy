@@ -22,9 +22,7 @@ def _png(arr):
     def chunk(tag, data):
         body = tag + data
         return (
-            _struct.pack(">I", len(data))
-            + body
-            + _struct.pack(">I", _zlib.crc32(body))
+            _struct.pack(">I", len(data)) + body + _struct.pack(">I", _zlib.crc32(body))
         )
 
     return (
@@ -48,7 +46,7 @@ def to_data_url(texture):
         mime = _MIME.get(path.suffix.lower())
         if mime is None:
             raise ValueError(f"Texture must be png or jpg, got {path.suffix}")
-        data, mime = path.read_bytes(), mime
+        data = path.read_bytes()
     elif isinstance(texture, (bytes, bytearray)):
         data, mime = bytes(texture), "image/png"
     else:

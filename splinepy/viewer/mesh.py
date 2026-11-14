@@ -73,7 +73,9 @@ def merge(meshes):
     return make_mesh(
         etype,
         _np.vstack([m["vertices"] for m in meshes]),
-        _np.vstack([m["connectivity"] + o for m, o in zip(meshes, offsets)]),
+        _np.vstack(
+            [m["connectivity"] + o for m, o in zip(meshes, offsets, strict=False)]
+        ),
         {k: _np.concatenate([m["vertex_data"][k] for m in meshes]) for k in keys},
     )
 
@@ -99,9 +101,9 @@ def grid_quads(shape):
     if len(shape) != 2:
         raise ValueError("grid_quads needs a 2D shape")
     i = grid_ids(shape)
-    return _np.stack(
-        [i[:-1, :-1], i[1:, :-1], i[1:, 1:], i[:-1, 1:]], axis=-1
-    ).reshape(-1, 4, order="F")
+    return _np.stack([i[:-1, :-1], i[1:, :-1], i[1:, 1:], i[:-1, 1:]], axis=-1).reshape(
+        -1, 4, order="F"
+    )
 
 
 def to_triangles(mesh):
@@ -113,9 +115,7 @@ def to_triangles(mesh):
         raise ValueError(f"Can't triangulate {etype}")
     c = mesh["connectivity"]
     tris = _np.vstack([c[:, [0, 1, 2]], c[:, [0, 2, 3]]])
-    return make_mesh(
-        "triangle", mesh["vertices"], tris, mesh["vertex_data"]
-    )
+    return make_mesh("triangle", mesh["vertices"], tris, mesh["vertex_data"])
 
 
 def unique_edges(mesh):

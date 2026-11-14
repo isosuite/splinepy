@@ -5,8 +5,8 @@ import inspect
 import numpy as np
 
 from splinepy.viewer import mesh
-from splinepy.viewer.compat import translate
 from splinepy.viewer.camera import turntable
+from splinepy.viewer.compat import translate
 from splinepy.viewer.html import Viewer, to_html
 from splinepy.viewer.scene import (
     _assemble,
@@ -26,13 +26,21 @@ def _is_showable(obj):
         _is_spline(obj)
         or isinstance(obj, (dict, np.ndarray))
         or hasattr(obj, "vertices")
-        or (isinstance(obj, (list, tuple)) and len(obj) > 0 and all(_is_showable(x) for x in obj))
+        or (
+            isinstance(obj, (list, tuple))
+            and len(obj) > 0
+            and all(_is_showable(x) for x in obj)
+        )
     )
 
 
 def _is_group(obj):
     """A list/tuple of showable objects (not a plain list of numbers)."""
-    return isinstance(obj, (list, tuple)) and len(obj) > 0 and all(_is_showable(o) for o in obj)
+    return (
+        isinstance(obj, (list, tuple))
+        and len(obj) > 0
+        and all(_is_showable(o) for o in obj)
+    )
 
 
 def _flatten_group(obj):
@@ -53,7 +61,7 @@ def _build(obj, kwargs):
     opts = {}
     if hasattr(obj, "show_options"):
         try:
-            opts = {k: obj.show_options[k] for k in obj.show_options.keys()}
+            opts = {k: obj.show_options[k] for k in obj.show_options}
             opts = translate(opts)
         except Exception:
             pass
@@ -73,7 +81,8 @@ def _panel_scene(obj, kwargs):
     scenes = [_build(o, kwargs) for o in items]
     layers = []
     for i, sc in enumerate(scenes):
-        for layer in sc["layers"]:
+        for original_layer in sc["layers"]:
+            layer = original_layer
             if i:
                 layer = {**layer, "name": f"{layer['name']} [{i}]"}
             layers.append(layer)

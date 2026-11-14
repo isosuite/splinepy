@@ -7,14 +7,22 @@ argument, else by ``splinepy.settings.SHOW_BACKEND``.
 
 from splinepy import settings as _settings
 from splinepy.helpme.visualize.gustaf_backend import (
-    _sample_arrow_data,
-    _sample_spline,
-    make_showable,
+    _sample_arrow_data as _sample_arrow_data,
+)
+from splinepy.helpme.visualize.gustaf_backend import (
+    _sample_spline as _sample_spline,
+)
+from splinepy.helpme.visualize.gustaf_backend import (
+    make_showable as make_showable,
+)
+from splinepy.helpme.visualize.gustaf_backend import (
     show_vedo,
 )
 from splinepy.helpme.visualize.options import (
-    MultipatchShowOption,
-    SplineShowOption,
+    MultipatchShowOption as MultipatchShowOption,
+)
+from splinepy.helpme.visualize.options import (
+    SplineShowOption as SplineShowOption,
 )
 from splinepy.helpme.visualize.viewer_backend import show_viewer
 
@@ -85,9 +93,7 @@ def show(*objs, backend=None, **kwargs):
         open_browser = kwargs.pop("open", None)
         block = kwargs.pop("block", True)
         new_window = kwargs.pop("new_window", False)
-        return _finish(
-            viewer.show(*objs, **kwargs), open_browser, block, new_window
-        )
+        return _finish(viewer.show(*objs, **kwargs), open_browser, block, new_window)
 
     if len(objs) == 1 and hasattr(objs[0], "para_dim"):
         spline = objs[0]

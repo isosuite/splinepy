@@ -116,6 +116,7 @@ lint.ignore = [
 "benchmarks/*.py" = ["T201"]
 "splinepy/cli.py" = ["T201"]
 "splinepy/io/**" = ["A001"]
+"splinepy/viewer/html.py" = ["E501"]  # Embedded HTML and JavaScript.
 
 [tool.codespell]
 ignore-words-list = "connec,tye,ned"

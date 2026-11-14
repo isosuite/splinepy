@@ -1,3 +1,5 @@
+import contextlib
+
 import gustaf as gus
 import numpy as np
 
@@ -332,7 +334,5 @@ splinepy.io.mfem.export("quarter_circle.mesh", nurbs)
 quarter_circle = splinepy.io.mfem.load("quarter_circle.mesh")
 
 # svg export (requires optional vedo)
-try:
+with contextlib.suppress(ImportError):
     splinepy.io.svg.export("nurbs.svg", nurbs, background=bg)
-except ImportError:
-    pass

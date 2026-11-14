@@ -9,7 +9,9 @@ def _bounds(scene):
     return _np.asarray(scene["options"]["bounds"], dtype=float)
 
 
-def turntable(scene, n=60, elevation=25.0, distance=None, up_axis="y", turns=1.0, start=45.0):
+def turntable(
+    scene, n=60, elevation=25.0, distance=None, up_axis="y", turns=1.0, start=45.0
+):
     """Cameras orbiting the scene center, e.g. for a rotating video.
 
     Parameters

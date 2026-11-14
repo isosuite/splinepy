@@ -91,9 +91,7 @@ class _Session:
                 path, _, query = self.path.partition("?")
                 if path == "/poll":
                     seen = int(query.split("=")[-1] or 0)
-                    self._reply(
-                        200, session._poll(seen), "application/json"
-                    )
+                    self._reply(200, session._poll(seen), "application/json")
                 elif path == "/done":
                     session.done.set()
                     self._reply(204)
@@ -123,11 +121,15 @@ class _Session:
             self.cond.wait_for(lambda: self.version != seen, timeout=wait)
             self.last_poll = time.monotonic()
             scene = self.scene_json if self.version != seen else None
-            return json.dumps(
-                {"v": self.version, "scene": None}
-                if scene is None
-                else {"v": self.version, "scene": "@SCENE@"}
-            ).replace('"@SCENE@"', scene or "null").encode()
+            return (
+                json.dumps(
+                    {"v": self.version, "scene": None}
+                    if scene is None
+                    else {"v": self.version, "scene": "@SCENE@"}
+                )
+                .replace('"@SCENE@"', scene or "null")
+                .encode()
+            )
 
     @property
     def alive(self):
@@ -156,9 +158,11 @@ class _Session:
         started = time.monotonic()
         try:
             while not self.done.is_set():
-                if self.last_poll is None or not self.alive:
-                    if time.monotonic() - started > first_timeout:
-                        break  # no browser answered
+                if (
+                    (self.last_poll is None or not self.alive)
+                    and time.monotonic() - started > first_timeout
+                ):
+                    break  # no browser answered
                 time.sleep(0.05)
         except KeyboardInterrupt:
             pass
@@ -168,7 +172,7 @@ _session = None
 
 
 def _get_session():
-    global _session
+    global _session  # noqa: PLW0603
     if _session is None:
         _session = _Session()
     return _session
@@ -208,9 +212,7 @@ class Viewer:
         """Context manager yielding a headless playwright page of the scene."""
         return _HeadlessPage(self.to_html(), width, height, scale)
 
-    def screenshot(
-        self, path, width=800, height=600, camera=None, ui=False, scale=1
-    ):
+    def screenshot(self, path, width=800, height=600, camera=None, ui=False, scale=1):
         """Renders a PNG headlessly (needs ``pip install playwright``).
 
         Overlays like the colorbar and control point labels are included;

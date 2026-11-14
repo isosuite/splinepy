@@ -20,9 +20,7 @@ class ViewerWidget(_anywidget.AnyWidget):
     height = _traitlets.Int(480).tag(sync=True)
 
     def __init__(self, scene, height=480, **kwargs):
-        super().__init__(
-            scene_json=_scene.to_json(scene), height=height, **kwargs
-        )
+        super().__init__(scene_json=_scene.to_json(scene), height=height, **kwargs)
 
     def set_scene(self, scene):
         """Replaces the displayed scene without recreating the widget."""

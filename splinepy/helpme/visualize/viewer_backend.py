@@ -33,13 +33,14 @@ def show_viewer(spline, **kwargs):
     the parametric view of the spline. Outside of notebooks the viewer is
     opened in the web browser and the call waits until the tab is closed or
     ``q`` / Esc is pressed, like the vedo window; later calls reuse the same
-    tab unless ``new_window=True``. ``block=False`` returns right away, ``open=False`` only returns the ``Viewer`` (``.save(path)``,
+    tab unless ``new_window=True``. ``block=False`` returns right away.
+    ``open=False`` only returns the ``Viewer`` (``.save(path)``,
     ``.screenshot(...)``).
     """
     from splinepy import viewer
 
     show_options = spline.show_options
-    options = {key: show_options[key] for key in show_options.keys()}
+    options = {key: show_options[key] for key in show_options}
     options.update(kwargs)
     para_space = options.pop("parametric_space", False)
     open_browser = options.pop("open", None)
@@ -51,7 +52,9 @@ def show_viewer(spline, **kwargs):
     if not para_space:
         return _finish(
             viewer.show(spline, **layout, **options),
-            open_browser, block, new_window,
+            open_browser,
+            block,
+            new_window,
         )
 
     p_options = {k: options[k] for k in _PARAMETRIC_KEYS if k in options}

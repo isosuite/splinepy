@@ -1,4 +1,3 @@
-import gustaf as _gus
 import numpy as _np
 
 from splinepy._base import SplinepyBase as _SplinepyBase

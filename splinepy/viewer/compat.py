@@ -30,15 +30,16 @@ ALIASES = {
     "r": "control_point_size",
     "cam": "camera",
 }
-"""vedo name -> viewer name. ``None``: accepted, but has no equivalent."""
+# None marks an accepted vedo option with no viewer equivalent.
 
 IGNORED = {
     "vertex_ids", "element_ids", "scalarbar", "scalarbar3d", "cmap_alpha",
     "cmap_n_colors", "labels", "label_options", "parametric_space",
-    "return_gustaf", "return_showable", "backend", "open", "block", "new_window", "interactive", "title",
+    "return_gustaf", "return_showable", "backend", "open", "block", "new_window",
+    "interactive", "title",
     "close", "N", "sz", "size", "camera_options",
 }  # fmt: skip
-"""Options of the gustaf / vedo show that the viewer has no use for."""
+# These Gustaf and vedo options do not affect the viewer.
 
 
 def to_css(c):
@@ -61,7 +62,8 @@ def translate(kwargs):
     else is passed through unchanged, so typos still raise in ``show``.
     """
     out = {}
-    for key, value in kwargs.items():
+    for original_key, original_value in kwargs.items():
+        key, value = original_key, original_value
         if key in ALIASES:
             new = ALIASES[key]
             if new is None:
@@ -88,9 +90,8 @@ def translate(kwargs):
             value = "viridis"
         elif key == "axes" and not isinstance(value, bool):
             value = True  # vedo axes dict
-        elif key in ("lighting",) and value not in (None, *_LIGHTING):
+        elif key == "lighting" and value not in (None, *_LIGHTING):
             _log.warning(f"Viewer: lighting '{value}' unknown, using default.")
             value = "default"
         out[key] = value
     return out
-
