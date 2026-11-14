@@ -61,7 +61,7 @@ def _build(obj, kwargs):
     opts = {}
     if hasattr(obj, "show_options"):
         try:
-            opts = {k: obj.show_options[k] for k in obj.show_options}
+            opts = dict(obj.show_options.items())
             opts = translate(opts)
         except Exception:
             pass

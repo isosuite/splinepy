@@ -40,7 +40,7 @@ def show_viewer(spline, **kwargs):
     from splinepy import viewer
 
     show_options = spline.show_options
-    options = {key: show_options[key] for key in show_options}
+    options = dict(show_options.items())
     options.update(kwargs)
     para_space = options.pop("parametric_space", False)
     open_browser = options.pop("open", None)
