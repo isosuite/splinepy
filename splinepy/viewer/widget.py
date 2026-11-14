@@ -23,5 +23,15 @@ class ViewerWidget(_anywidget.AnyWidget):
         super().__init__(scene_json=_scene.to_json(scene), height=height, **kwargs)
 
     def set_scene(self, scene):
-        """Replaces the displayed scene without recreating the widget."""
+        """Replaces the displayed scene without recreating the widget.
+
+        Parameters
+        ----------
+        scene : dict
+            Replacement viewer scene.
+
+        Returns
+        -------
+        None
+        """
         self.scene_json = _scene.to_json(scene)

@@ -116,37 +116,66 @@ class Multipatch(_SplinepyBase):
 
     @property
     def name(self):
-        """Name of the object"""
+        """Name of the object
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        name : str
+        """
         return "Multipatch"
 
     @property
     def whatami(self):
-        """Short description of the object"""
+        """Short description of the object
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        description : str
+        """
         return f"Multipatch with {len(self._patches)} patches."
 
     @property
     def patches(self):
-        """
-        List of splines in splinepy format
+        """List of splines in splinepy format
+
+        Parameters
+        ----------
+        None
 
         Returns
         -------
         patches : list
          list of splines that are stored in the multipatch system
-
-
         """
         return self._patches
 
     @patches.setter
     def patches(self, list_of_splines):
+        """Replace the patches in this multipatch.
+
+        Parameters
+        ----------
+        list_of_splines : sequence of Spline
+            Replacement patches.
+
+        Returns
+        -------
+        None
+        """
         self.clear()
         self._patches = list(list_of_splines)
 
     @property
     def interfaces(self):
-        """
-        Determine the interfaces of a given multipatch system
+        """Determine the interfaces of a given multipatch system
 
         Returns its interfaces in the form as an array of size
         n_patches x n_sides_per_patch
@@ -176,6 +205,10 @@ class Multipatch(_SplinepyBase):
             [1, -1, -1, -1]
           ]
 
+        Parameters
+        ----------
+        None
+
         Returns
         -------
         interfaces : np.ndarray
@@ -187,7 +220,17 @@ class Multipatch(_SplinepyBase):
 
     @interfaces.setter
     def interfaces(self, con):
-        """Sets interfaces"""
+        """Sets interfaces
+
+        Parameters
+        ----------
+        con : array-like
+            Neighbor face indices with negative entries for boundaries.
+
+        Returns
+        -------
+        None
+        """
         self._interfaces = _np.ascontiguousarray(con, dtype="int32")
         self._interface_orientations = None
         self._control_point_seams = None
@@ -254,11 +297,14 @@ class Multipatch(_SplinepyBase):
 
     @property
     def boundaries(self):
-        """
-        Boundaries are stored within the interfaces array as negative entries
+        """Boundaries are stored within the interfaces array as negative entries
 
         Negative entries mean, that there is a boundary, the absolute value
         holds the boundary ID
+
+        Parameters
+        ----------
+        None
 
         Returns
         -------
@@ -422,8 +468,11 @@ class Multipatch(_SplinepyBase):
 
     @property
     def para_dim(self):
-        """
-        Parametric dimension of the splineset
+        """Parametric dimension of the splineset
+
+        Parameters
+        ----------
+        None
 
         Returns
         -------
@@ -434,8 +483,11 @@ class Multipatch(_SplinepyBase):
 
     @property
     def dim(self):
-        """
-        Physical dimension of the splineset
+        """Physical dimension of the splineset
+        Parameters
+        ----------
+        None
+
         Returns
         -------
         dim : int
@@ -601,13 +653,36 @@ class Multipatch(_SplinepyBase):
             self._invalidate_boundary_caches()
 
     def update_patch_control_points(self, patch_id, control_points):
-        """Update coordinates in local order and propagate shared seam points."""
+        """Update coordinates in local order and propagate shared seam points.
+
+        Parameters
+        ----------
+        patch_id : int
+            Index of the patch to update.
+        control_points : array-like
+            Replacement coordinates in local control point order.
+
+        Returns
+        -------
+        None
+        """
         index = range(len(self._patches))[patch_id]
         self._update_patch_cps({index: control_points})
 
     @_contextmanager
     def edit_patches_control_points(self, patch_ids):
-        """Yield working copies in patch order and commit together on clean exit."""
+        """Yield working copies in patch order and commit together on clean exit.
+
+        Parameters
+        ----------
+        patch_ids : iterable of int
+            Indices of patches to edit.
+
+        Returns
+        -------
+        editor : context manager
+            Context manager yielding one writable array per patch.
+        """
         indices = range(len(self._patches))
         ids = [indices[i] for i in patch_ids]
         if len(set(ids)) != len(ids):
@@ -618,7 +693,18 @@ class Multipatch(_SplinepyBase):
 
     @_contextmanager
     def edit_patch_control_points(self, patch_id):
-        """Yield a working copy of one patch's control points."""
+        """Yield a working copy of one patch's control points.
+
+        Parameters
+        ----------
+        patch_id : int
+            Index of the patch to edit.
+
+        Returns
+        -------
+        editor : context manager
+            Context manager yielding a writable control point array.
+        """
         with self.edit_patches_control_points([patch_id]) as (points,):
             yield points
 
@@ -640,9 +726,12 @@ class Multipatch(_SplinepyBase):
 
     @property
     def sub_patch_centers(self):
-        """
-        Evaluated centers of the individual patches, used to determine
+        """Evaluated centers of the individual patches, used to determine
         connectivity and identify boundaries based on position
+
+        Parameters
+        ----------
+        None
 
         Returns
         -------
@@ -828,6 +917,18 @@ class Multipatch(_SplinepyBase):
         return _visualize.show(self, return_showable=True, **kwargs)
 
     def show(self, **kwargs):
+        """Show the multipatch with the selected backend.
+
+        Parameters
+        ----------
+        **kwargs
+            Options forwarded to splinepy.show.
+
+        Returns
+        -------
+        viewer : Viewer, vedo.Plotter, dict or None
+            Visualization result for the selected backend.
+        """
         return _visualize.show(self, **kwargs)
 
     def boundaries_from_continuity(

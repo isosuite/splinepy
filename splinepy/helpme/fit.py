@@ -465,6 +465,34 @@ def tensor(
     Endpoint constraints require endpoint rows that select a single coefficient.
     Returns the fitted spline and the Euclidean residual over all samples.
     With verbose_output=True, returns a dictionary with the fit details.
+
+    Parameters
+    ----------
+    fitting_points : array-like
+        Flattened sample coordinates, with the first axis varying fastest.
+    size : sequence of int
+        Sample count along each parametric axis.
+    degrees : sequence of int, optional
+        Spline degree along each axis.
+    n_control_points : sequence of int, optional
+        Control point count along each axis.
+    knot_vectors : sequence of array-like, optional
+        Knot vector along each axis.
+    fitting_spline : Spline, optional
+        Spline defining a fixed fitting basis.
+    associated_queries : sequence of array-like, optional
+        Parameter values along each axis.
+    centripetal : bool, optional
+        Use centripetal parameterization when deriving sample parameters.
+    interpolate_endpoints : bool, optional
+        Constrain endpoint coefficients as described above.
+    verbose_output : bool, optional
+        Return a dictionary with fitting details.
+
+    Returns
+    -------
+    result : tuple or dict
+        Fitted spline and residual, or the verbose result dictionary.
     """
     points = _np.asarray(fitting_points, dtype=float)
     counts = _np.asarray(size)
@@ -481,6 +509,7 @@ def tensor(
     para_dim, dim = len(size), points.shape[1]
 
     def per_axis(values, name):
+        """Expand an omitted option or validate one entry per axis."""
         if values is None:
             return [None] * para_dim
         if len(values) != para_dim:

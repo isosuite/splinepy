@@ -128,6 +128,30 @@ def show(
     Returns a :class:`Viewer` that displays itself in notebooks (offline,
     through an iframe) and can ``.save(path)`` / ``.open()``. With
     ``widget=True`` an anywidget based ``ViewerWidget`` is returned instead.
+
+    Parameters
+    ----------
+    *objs
+        Splines, meshes, vertex arrays, or groups as described above.
+    height : int, optional
+        Viewer height in pixels.
+    widget : bool, optional
+        Return a notebook widget when true.
+    ncols : int, optional
+        Number of columns in the panel grid.
+    titles : sequence of str, optional
+        Panel titles.
+    title : str, optional
+        Viewer title.
+    link_cameras : bool, optional
+        Synchronize panel cameras.
+    **kwargs
+        Styling and sampling options forwarded to the scene builders.
+
+    Returns
+    -------
+    viewer : Viewer or ViewerWidget
+        Renderable view of the supplied objects.
     """
     if not objs:
         raise TypeError("show() needs at least one object")

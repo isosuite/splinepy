@@ -167,6 +167,7 @@ class BSplineBase(_spline.Spline):
             )
 
         def determine_new_knots(kv_unique, n_knots):
+            """Generate candidate knots for the requested split."""
             if n_knots == 0:
                 return []
             kv_diffs = _np.diff(kv_unique) / (n_knots + 1)
@@ -460,20 +461,48 @@ class BSpline(BSplineBase):
 
     @property
     def thb(self):
-        """Return a single-level THB spline with the same geometry."""
+        """Return a single-level THB spline with the same geometry.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        spline : THBSpline
+        """
         from splinepy.hierarchy import THBSpline
 
         return THBSpline.from_bspline(self)
 
     @property
     def rationalthb(self):
-        """Return a single-level rational THB spline with the same geometry."""
+        """Return a single-level rational THB spline with the same geometry.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        spline : RationalTHBSpline
+        """
         from splinepy.hierarchy import RationalTHBSpline
 
         return RationalTHBSpline.from_bspline(self.nurbs)
 
     @property
     def bspline(self):
+        """Return a BSpline with the same geometry.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        spline : BSpline
+        """
         return self.copy(saved_data=False)
 
     @property

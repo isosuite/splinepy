@@ -37,6 +37,18 @@ def show_viewer(spline, **kwargs):
     ``open=False`` only returns the ``Viewer`` (``.save(path)``,
     ``.screenshot(...)``). With ``widget=True``, the widget is returned for
     inline display. Passing ``open=True`` with a widget raises ``ValueError``.
+
+    Parameters
+    ----------
+    spline : Spline or Multipatch
+        Geometry to display.
+    **kwargs
+        Sampling, styling, and display options for the viewer.
+
+    Returns
+    -------
+    viewer : Viewer or ViewerWidget
+        Renderable view of the spline.
     """
     from splinepy import viewer
 

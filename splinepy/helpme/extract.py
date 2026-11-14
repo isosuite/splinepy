@@ -796,7 +796,18 @@ class HierarchyExtractor:
         self._spline = spline
 
     def beziers(self, nthreads=None):
-        """Return one unit-box Bezier patch per leaf, in packed leaf order."""
+        """Return one unit-box Bezier patch per leaf, in packed leaf order.
+
+        Parameters
+        ----------
+        nthreads : int, optional
+            Number of worker threads.
+
+        Returns
+        -------
+        patches : list of Bezier or RationalBezier
+            One patch per leaf.
+        """
         from splinepy import Bezier, RationalBezier
 
         data, cache = self._spline._state
@@ -818,21 +829,69 @@ class HierarchyExtractor:
         ]
 
     def multipatch(self, nthreads=None):
-        """Return the leaf Beziers as a potentially nonconforming multipatch."""
+        """Return the leaf Beziers as a potentially nonconforming multipatch.
+
+        Parameters
+        ----------
+        nthreads : int, optional
+            Number of worker threads.
+
+        Returns
+        -------
+        mesh : Multipatch
+            Collection of leaf geometry patches.
+        """
         from splinepy import Multipatch
 
         return Multipatch(splines=self.beziers(nthreads))
 
     def boundaries(self, boundary_ids=None):
-        """Extract exact outer boundaries as tensor splines."""
+        """Extract exact outer boundaries as tensor splines.
+
+        Parameters
+        ----------
+        boundary_ids : array-like, optional
+            IDs of boundaries to extract.
+
+        Returns
+        -------
+        boundaries : list of Spline
+            Boundary splines.
+        """
         return self._spline.create.converted().extract.boundaries(boundary_ids)
 
     def spline(self, splitting_plane=None, interval=None):
-        """Extract an exact slice or interval as a tensor spline."""
+        """Extract an exact slice or interval as a tensor spline.
+
+        Parameters
+        ----------
+        splitting_plane : int or dict, optional
+            Axis to split or mapping from axes to intervals.
+        interval : float or pair of float, optional
+            Parameter value for a slice or bounds for a restriction.
+
+        Returns
+        -------
+        spline : Spline
+            Tensor representation of the requested geometry.
+        """
         return self._spline.create.converted().extract.spline(splitting_plane, interval)
 
     def bases(self, ids=None, parametric_view=True):
-        """Extract graphs of active hierarchical basis functions."""
+        """Extract graphs of active hierarchical basis functions.
+
+        Parameters
+        ----------
+        ids : array-like, optional
+            Active basis indices. Defaults to all active functions.
+        parametric_view : bool, optional
+            Plot the basis over the parametric domain when true.
+
+        Returns
+        -------
+        graphs : list of Spline
+            Spline graphs of the requested basis functions.
+        """
         hierarchy = self._spline
         if ids is None:
             ids = range(len(hierarchy.control_points))
@@ -870,6 +929,18 @@ class HierarchyExtractor:
         Degrees, level knots, and weights are available on the parent spline.
         For rational geometry, multiply each row by its global weight and
         normalize by the sum of the weighted basis functions.
+
+        Parameters
+        ----------
+        basis : {"bspline", "bernstein"}, optional
+            Tensor basis used by each leaf block.
+        nthreads : int, optional
+            Number of worker threads.
+
+        Returns
+        -------
+        extraction : dict
+            Extraction blocks, offsets, indices and leaf bounds.
         """
         if basis not in ("bspline", "bernstein"):
             raise ValueError("basis must be 'bspline' or 'bernstein'")

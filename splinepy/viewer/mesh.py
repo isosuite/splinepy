@@ -40,7 +40,24 @@ NODES_PER_ELEMENT = {
 
 
 def make_mesh(element_type, vertices, connectivity=None, vertex_data=None):
-    """Creates and validates a mesh dict."""
+    """Creates and validates a mesh dict.
+
+    Parameters
+    ----------
+    element_type : str
+        Element type: vertex, line, triangle, quad, tet, or hexa.
+    vertices : (n, dim) array-like
+        Vertex coordinates.
+    connectivity : array-like, optional
+        Vertex indices per element. Optional for a vertex mesh.
+    vertex_data : dict, optional
+        Named data arrays indexed by vertex.
+
+    Returns
+    -------
+    mesh : dict
+        Mesh with contiguous vertices and connectivity.
+    """
     if element_type not in NODES_PER_ELEMENT:
         raise ValueError(f"Unknown element_type: {element_type}")
     vertices = _np.ascontiguousarray(vertices, dtype=_np.float64)
@@ -63,7 +80,18 @@ def make_mesh(element_type, vertices, connectivity=None, vertex_data=None):
 
 
 def merge(meshes):
-    """Concatenates meshes of the same element_type."""
+    """Concatenates meshes of the same element_type.
+
+    Parameters
+    ----------
+    meshes : iterable of dict
+        Nonempty collection of meshes of the same element type.
+
+    Returns
+    -------
+    mesh : dict
+        Combined mesh with vertex data shared by all inputs.
+    """
     meshes = list(meshes)
     etype = meshes[0]["element_type"]
     if any(m["element_type"] != etype for m in meshes):
@@ -81,12 +109,34 @@ def merge(meshes):
 
 
 def grid_ids(shape):
-    """Vertex ids of a structured grid, first axis running fastest."""
+    """Vertex ids of a structured grid, first axis running fastest.
+
+    Parameters
+    ----------
+    shape : sequence of int
+        Number of vertices along each grid axis.
+
+    Returns
+    -------
+    ids : numpy.ndarray
+        Vertex indices in the requested grid shape.
+    """
     return _np.arange(int(_np.prod(shape))).reshape(shape, order="F")
 
 
 def grid_edges(shape):
-    """(m, 2) edges between neighbors of a structured grid."""
+    """(m, 2) edges between neighbors of a structured grid.
+
+    Parameters
+    ----------
+    shape : sequence of int
+        Number of vertices along each grid axis.
+
+    Returns
+    -------
+    edges : (m, 2) numpy.ndarray
+        Endpoint indices per edge.
+    """
     ids = grid_ids(shape)
     edges = []
     for d, n in enumerate(shape):
@@ -97,7 +147,18 @@ def grid_edges(shape):
 
 
 def grid_quads(shape):
-    """(m, 4) quads of a 2D structured grid."""
+    """(m, 4) quads of a 2D structured grid.
+
+    Parameters
+    ----------
+    shape : sequence of int
+        Number of vertices along each grid axis.
+
+    Returns
+    -------
+    quads : (m, 4) numpy.ndarray
+        Vertex indices per quadrilateral.
+    """
     if len(shape) != 2:
         raise ValueError("grid_quads needs a 2D shape")
     i = grid_ids(shape)
@@ -107,7 +168,18 @@ def grid_quads(shape):
 
 
 def to_triangles(mesh):
-    """Splits quads into triangles; triangles pass through."""
+    """Splits quads into triangles; triangles pass through.
+
+    Parameters
+    ----------
+    mesh : dict
+        Mesh dictionary as returned by make_mesh.
+
+    Returns
+    -------
+    triangles : dict
+        Triangle mesh with the input vertex data.
+    """
     etype = mesh["element_type"]
     if etype == "triangle":
         return mesh
@@ -119,7 +191,18 @@ def to_triangles(mesh):
 
 
 def unique_edges(mesh):
-    """Edges of any element mesh as a "line" mesh, duplicates removed."""
+    """Edges of any element mesh as a "line" mesh, duplicates removed.
+
+    Parameters
+    ----------
+    mesh : dict
+        Mesh dictionary as returned by make_mesh.
+
+    Returns
+    -------
+    edges : dict
+        Line mesh with one element per distinct edge.
+    """
     etype = mesh["element_type"]
     local = _np.asarray(ELEMENT_EDGES[etype])
     e = mesh["connectivity"][:, local].reshape(-1, 2)
@@ -128,7 +211,18 @@ def unique_edges(mesh):
 
 
 def boundary_faces(mesh):
-    """Faces that belong to exactly one volume element (tet/hexa)."""
+    """Faces that belong to exactly one volume element (tet/hexa).
+
+    Parameters
+    ----------
+    mesh : dict
+        Mesh dictionary as returned by make_mesh.
+
+    Returns
+    -------
+    boundary : dict
+        Triangle or quadrilateral boundary mesh.
+    """
     etype = mesh["element_type"]
     if etype not in ELEMENT_FACES:
         raise ValueError(f"{etype} has no faces to extract")
@@ -144,7 +238,18 @@ def boundary_faces(mesh):
 
 
 def vertex_normals(mesh):
-    """Area weighted vertex normals of a triangle/quad mesh, (n, 3)."""
+    """Area weighted vertex normals of a triangle/quad mesh, (n, 3).
+
+    Parameters
+    ----------
+    mesh : dict
+        Mesh dictionary as returned by make_mesh.
+
+    Returns
+    -------
+    normals : (n, 3) numpy.ndarray
+        Unit normals, with zero vectors at degenerate vertices.
+    """
     tri = to_triangles(mesh)
     v = _np.zeros((len(tri["vertices"]), 3))
     v[:, : tri["vertices"].shape[1]] = tri["vertices"]

@@ -665,6 +665,7 @@ def swept(
     if cross_section.is_rational or trajectory.is_rational:
 
         def weights(spline):
+            """Compute homogeneous control weights for this parameter."""
             if spline.is_rational:
                 return spline.weights
             return _np.ones(spline.control_points.shape[0])
@@ -1400,6 +1401,20 @@ def converted(spline, target=None, *, nthreads=None):
     Targets "bezier" and "rationalbezier" always return a Multipatch of
     elements. Hierarchical inputs use leaf elements. Each element has its
     own local parameter domain.
+
+    Parameters
+    ----------
+    spline : Spline or HBSpline
+        Geometry to convert.
+    target : {"bspline", "nurbs", "bezier", "rationalbezier"}, optional
+        Target representation.
+    nthreads : int, optional
+        Number of worker threads.
+
+    Returns
+    -------
+    geometry : BSpline, NURBS or Multipatch
+        Tensor spline or collection of Bezier elements.
     """
     from splinepy import NURBS, BSpline, Multipatch
     from splinepy.hierarchy import HBSpline

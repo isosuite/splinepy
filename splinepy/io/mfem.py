@@ -346,6 +346,7 @@ def export_cartesian(
         n_vertex_per_boundary = 2
 
         def _corner_vertex_ids(spline):
+            """Find the vertex IDs at the patch corners."""
             cmr = spline.control_mesh_resolutions
             return _np.array(
                 [
@@ -369,6 +370,7 @@ def export_cartesian(
         n_vertex_per_boundary = 4
 
         def _corner_vertex_ids(spline):
+            """Find the vertex IDs at the patch corners."""
             cmr = spline.control_mesh_resolutions
             return _np.array(
                 [
@@ -641,6 +643,7 @@ def export(fname, nurbs, precision=10):
 
     # This is reusable
     def kv_sec(spline):
+        """Read the knot vectors from the mesh section."""
         kvs = _form_lines(
             "knotvectors",
             str(len(spline.knot_vectors)),

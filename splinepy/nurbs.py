@@ -159,11 +159,30 @@ class NURBS(_BSplineBase):
 
     @property
     def rationalthb(self):
-        """Return a single-level rational THB spline with the same geometry."""
+        """Return a single-level rational THB spline with the same geometry.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        spline : RationalTHBSpline
+        """
         from splinepy.hierarchy import RationalTHBSpline
 
         return RationalTHBSpline.from_bspline(self)
 
     @property
     def nurbs(self):
+        """Return a NURBS with the same geometry.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        spline : NURBS
+        """
         return self.copy(saved_data=False)

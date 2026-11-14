@@ -1340,6 +1340,20 @@ class Spline(_SplinepyBase):
         The search structure is built at preparation using the given resolutions
         and strategy ("bvh" or "grid"). Prepare a new search to use later
         geometry edits. nthreads controls preparation of the grid strategy.
+
+        Parameters
+        ----------
+        initial_guess_sample_resolutions : array-like, optional
+            Sampling resolution along each parametric axis.
+        guess : {"bvh", "grid"}, optional
+            Strategy for finding initial guesses.
+        nthreads : int, optional
+            Number of worker threads.
+
+        Returns
+        -------
+        search : _PreparedProximity
+            Reusable search with a query method.
         """
         if guess not in ("bvh", "grid"):
             raise ValueError("Initial guess must be 'bvh' or 'grid'")

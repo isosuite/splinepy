@@ -20,6 +20,7 @@ def _png(arr):
     ).tobytes()
 
     def chunk(tag, data):
+        """Pack a PNG chunk with its length and checksum."""
         body = tag + data
         return (
             _struct.pack(">I", len(data)) + body + _struct.pack(">I", _zlib.crc32(body))
@@ -38,6 +39,16 @@ def to_data_url(texture):
 
     Arrays are (h, w), (h, w, 3) or (h, w, 4); floats are read as [0, 1],
     integers as [0, 255]. Row 0 is the top of the image.
+
+    Parameters
+    ----------
+    texture : str, os.PathLike, bytes or array-like
+        Image source or existing data URL.
+
+    Returns
+    -------
+    url : str
+        Image data URL.
     """
     if isinstance(texture, str) and texture.startswith("data:"):
         return texture

@@ -23,7 +23,20 @@ window.viewer = await splinepyViewer.renderScene(document.getElementById("v"), s
 
 
 def to_html(scene, title="splinepy viewer"):
-    """Returns a self-contained HTML page (three.js is inlined, works offline)."""
+    """Returns a self-contained HTML page (three.js is inlined, works offline).
+
+    Parameters
+    ----------
+    scene : dict
+        Scene to embed in the page.
+    title : str, optional
+        Page title.
+
+    Returns
+    -------
+    html : str
+        Standalone viewer HTML.
+    """
     return _PAGE.format(
         title=_html.escape(title),
         js=_JS.read_text(encoding="utf-8"),
@@ -82,6 +95,7 @@ class _Session:
 
         class Handler(http.server.BaseHTTPRequestHandler):
             def _reply(self, code, body=b"", ctype="text/plain"):
+                """Send an HTTP response for the viewer session."""
                 self.send_response(code)
                 self.send_header("Content-Type", ctype)
                 self.send_header("Content-Length", str(len(body)))
@@ -89,6 +103,7 @@ class _Session:
                 self.wfile.write(body)
 
             def do_GET(self):
+                """Handle viewer requests for the page and session state."""
                 path, _, query = self.path.partition("?")
                 if path == "/poll":
                     seen = int(query.split("=")[-1] or 0)
@@ -107,6 +122,7 @@ class _Session:
             do_POST = do_GET
 
             def log_message(self, *args):
+                """Suppress the default HTTP request log."""
                 pass
 
         self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -189,10 +205,32 @@ class Viewer:
         self.title = title
 
     def to_html(self):
+        """Render the scene as standalone HTML.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        html : str
+            Standalone viewer HTML.
+        """
         return to_html(self.scene, title=self.title)
 
     def save(self, path):
-        """Writes a standalone HTML file."""
+        """Writes a standalone HTML file.
+
+        Parameters
+        ----------
+        path : str or os.PathLike
+            Output file path.
+
+        Returns
+        -------
+        path : str or os.PathLike
+            The supplied output path.
+        """
         _pathlib.Path(path).write_text(self.to_html(), encoding="utf-8")
         return path
 
@@ -204,6 +242,17 @@ class Viewer:
         a fresh tab. With ``block=True`` this returns when ``q`` / Esc is
         pressed in the page (it is then cleared, the tab stays), the tab is
         closed or on Ctrl-C, like the vedo window.
+
+        Parameters
+        ----------
+        block : bool, optional
+            Wait for the browser interaction to finish.
+        new_window : bool, optional
+            Open a fresh browser tab.
+
+        Returns
+        -------
+        None
         """
         _get_session().show(
             _scene.to_json(self.scene), block=block, new_window=new_window
@@ -218,6 +267,24 @@ class Viewer:
 
         Overlays like the colorbar and control point labels are included;
         the toggle panel and PNG button are hidden unless ``ui=True``.
+
+        Parameters
+        ----------
+        path : str or os.PathLike
+            Output file path.
+        width, height : int, optional
+            Viewport dimensions in pixels.
+        camera : dict, optional
+            Override the scene camera.
+        scale : float, optional
+            Device scale factor.
+        ui : bool, optional
+            Include the viewer controls in the image.
+
+        Returns
+        -------
+        path : str or os.PathLike
+            The supplied output path.
         """
         with self._page(width, height, scale) as page:
             if camera is not None:
@@ -234,6 +301,24 @@ class Viewer:
         ``frames`` is a list of camera dicts (see
         :func:`splinepy.viewer.turntable`) and/or scenes, for example the
         deformed state of each step. Returns the written paths.
+
+        Parameters
+        ----------
+        directory : str or os.PathLike
+            Output directory for PNG frames.
+        frames : iterable of dict
+            Camera configurations or complete scenes in frame order.
+        width, height : int, optional
+            Viewport dimensions in pixels.
+        scale : float, optional
+            Device scale factor.
+        ui : bool, optional
+            Include the viewer controls in the image.
+
+        Returns
+        -------
+        paths : list of pathlib.Path
+            Written frames in rendering order.
         """
         directory = _pathlib.Path(directory)
         directory.mkdir(parents=True, exist_ok=True)
@@ -255,7 +340,26 @@ class Viewer:
         return paths
 
     def video(self, path, frames, fps=30, width=800, height=600, crf=18):
-        """Renders frames and encodes them with ffmpeg (must be on PATH)."""
+        """Renders frames and encodes them with ffmpeg (must be on PATH).
+
+        Parameters
+        ----------
+        path : str or os.PathLike
+            Output file path.
+        frames : iterable of dict
+            Camera configurations or complete scenes in frame order.
+        fps : int, optional
+            Frames per second.
+        width, height : int, optional
+            Viewport dimensions in pixels.
+        crf : int, optional
+            Encoder quality factor. Lower values give higher quality.
+
+        Returns
+        -------
+        path : str or os.PathLike
+            The supplied output path.
+        """
         import shutil
         import subprocess
         import tempfile
