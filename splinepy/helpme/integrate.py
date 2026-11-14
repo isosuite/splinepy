@@ -138,7 +138,7 @@ def _get_quadrature_information(spline, orders=None):
 def volume(spline, orders=None):
     r"""Compute volume of a given spline
 
-    Uses quadrature to compute volume. Can handle patches with multiple elements.
+    Uses quadrature over each knot span. Square Jacobians retain their sign.
 
     Parameters
     ----------
@@ -153,152 +153,48 @@ def volume(spline, orders=None):
     volume : float
       The computed volume of the spline
     """
-    from splinepy.spline import Spline as _Spline
-
-    # Check input type
-    if not isinstance(spline, _Spline):
-        raise NotImplementedError("integration only works for splines")
-
-    # Retrieve aux info
-    meas = _get_integral_measure(spline)
-    positions, weights = _get_quadrature_information(spline, orders)
-
-    # Calculate Volume
-    if spline.has_knot_vectors:
-        volume = _np.sum(
-            [
-                _np.sum(meas(b, positions) * weights)
-                for b in spline.extract.beziers()
-            ]
-        )
-    else:
-        volume = _np.sum(meas(spline, positions) * weights)
-    return volume
+    return _integrate(spline, orders)
 
 
-def parametric_function(
-    spline,
-    function,
-    orders=None,
-):
-    """Integrate a function defined within the parametric domain
+def parametric_function(spline, function, orders=None):
+    """Integrate callback values evaluated at parametric quadrature points.
 
-    Parameters
-    ----------
-    spline : Spline
-        The geometry over which the function is integrated
-    function : Callable
-        The user-defined function to integrate. It takes points in the parametric
-        dimension as input and outputs a scalar or an array of scalars.
-    orders : optional
-        Quadrature orders for numerical integration
-
-    Returns
-    -------
-    integral : np.ndarray
+    The callback receives an array of shape (n, para_dim). Return one value
+    per point, with optional trailing component dimensions.
     """
-    from splinepy.spline import Spline as _Spline
-
-    # Check input type
-    if not isinstance(spline, _Spline):
-        raise NotImplementedError("integration only works for splines")
-
-    # Retrieve aux info
-    meas = _get_integral_measure(spline)
-    positions, weights = _get_quadrature_information(spline, orders)
-
-    # Calculate Volume
-    if spline.has_knot_vectors:
-        # positions must be mapped into each knot-element
-        para_view = spline.create.parametric_view(axes=False)
-
-        # get initial shape
-        initial = function([positions[0]])
-        result = _np.zeros(initial.shape[1])
-        for bezier_element in para_view.extract.beziers():
-            quad_positions = bezier_element.evaluate(positions)
-            result += _np.einsum(
-                "i...,i,i->...",
-                function(quad_positions),
-                meas(spline, quad_positions),
-                weights,
-                optimize=True,
-            )
-
-    else:
-        result = _np.einsum(
-            "i...,i,i->...",
-            function(positions),
-            meas(spline, positions),
-            weights,
-        )
-    return result
+    return _integrate(spline, orders, function)
 
 
-def physical_function(
-    spline,
-    function,
-    orders=None,
-):
-    """Integrate a function defined within the selected domain
+def physical_function(spline, function, orders=None):
+    """Integrate callback values evaluated at physical quadrature points.
 
-    Parameters
-    ----------
-    spline : Spline
-        The geometry over which the function is integrated
-    function : Callable
-        The user-defined function to integrate.
-    orders : optional
-        Quadrature order in parametric domain for numerical integration
-
-    Returns
-    -------
-    integral : np.ndarray
+    The callback receives an array of shape (n, dim). Return one value per
+    point, with optional trailing component dimensions.
     """
+    return _integrate(spline, orders, function, physical=True)
+
+
+def _integrate(spline, orders, function=None, *, physical=False):
     from splinepy.spline import Spline as _Spline
 
-    # Check input type
     if not isinstance(spline, _Spline):
         raise NotImplementedError("integration only works for splines")
 
-    # Retrieve aux info
-    meas = _get_integral_measure(spline)
+    measure = _get_integral_measure(spline)
     positions, weights = _get_quadrature_information(spline, orders)
-
-    # define function to integrate
-    def _function(position):
-        return function(spline.evaluate(position))
-
-    # Calculate Volume
-    if spline.has_knot_vectors:
-        # positions must be mapped into each knot-element
-        para_view = spline.create.parametric_view(axes=False)
-
-        # get initial shape
-        initial = function([positions[0]])
-        result = _np.zeros(initial.shape[1])
-        for bezier_element in para_view.extract.beziers():
-            # Get the bezier element scaling factor to get the correct
-            # element size from original knot element
-            knot_element_scaling_factor = _np.prod(
-                _np.diff(bezier_element.control_point_bounds, axis=0)
-            )
-            quad_positions = bezier_element.evaluate(positions)
-            result += _np.einsum(
-                "i...,i,i->...",
-                _function(quad_positions),
-                meas(spline, quad_positions) * knot_element_scaling_factor,
-                weights,
-                optimize=True,
-            )
-    else:
-        result = _np.einsum(
-            "i...,i,i->...",
-            _function(positions),
-            meas(spline, positions),
-            weights,
-            optimize=True,
-        )
+    knots = spline.unique_knots
+    lower = _cartesian_product([axis[:-1] for axis in knots])
+    lengths = _cartesian_product([_np.diff(axis) for axis in knots])
+    result = None
+    for start, length in zip(lower, lengths, strict=True):
+        queries = start + positions * length
+        weighted_measure = measure(spline, queries) * weights * length.prod()
+        if function is None:
+            contribution = weighted_measure.sum()
+        else:
+            values = function(spline.evaluate(queries) if physical else queries)
+            contribution = _np.einsum("i...,i->...", values, weighted_measure)
+        result = contribution if result is None else result + contribution
     return result
 
 
@@ -770,7 +666,9 @@ class FieldIntegrator:
     Class for the numerical evaluation of a PDE on a single-patch geometry.
 
     On initialization it sets up solution field, its mapper, precomputes the
-    transformation and calculate the number of DoFs.
+    transformation and calculate the number of DoFs. Assembly callbacks receive
+    quadrature weights scaled to each parametric element and signed geometry
+    determinants.
 
 
 
@@ -845,6 +743,7 @@ class FieldIntegrator:
         of all elements in spline"""
         self._trafo.compute_all_supports()
         self._trafo.compute_all_element_jacobian_determinants()
+        self._trafo.compute_all_element_measures()
 
     @property
     def supports(self):
@@ -897,16 +796,17 @@ class FieldIntegrator:
         quad_weights = self._trafo.quadrature_weights
 
         # Element loop
-        for element_jacobian_det, element_support, element_quad_points in zip(
+        for element_jacobian_det, element_support, element_quad_points, measure in zip(
             self._trafo.all_jacobian_determinants,
             self._trafo.all_supports,
             self._trafo.all_quad_points,
+            self._trafo._all_element_measures,
             strict=True,
         ):
             element_matrix = function(
                 mapper=self._mapper,
                 quad_points=element_quad_points,
-                quad_weights=quad_weights,
+                quad_weights=quad_weights * measure,
                 jacobian_det=element_jacobian_det,
             )
             matrix_element_support = _cartesian_product(
@@ -946,17 +846,18 @@ class FieldIntegrator:
         # Prepare function arguments, which stay the same for all elements
         function_args = {
             "mapper": self._mapper,
-            "quad_weights": self._trafo.quadrature_weights,
         }
 
         # Element loop
-        for element_jacobian_det, element_support, element_quad_points in zip(
+        for element_jacobian_det, element_support, element_quad_points, measure in zip(
             self._trafo.all_jacobian_determinants,
             self._trafo.all_supports,
             self._trafo.all_quad_points,
+            self._trafo._all_element_measures,
             strict=True,
         ):
             # Assemble element vector
+            function_args["quad_weights"] = self._trafo.quadrature_weights * measure
             function_args["quad_points"] = element_quad_points
             function_args["jacobian_det"] = element_jacobian_det
             if current_sol is not None:
@@ -1025,17 +926,18 @@ class FieldIntegrator:
         # Prepare function arguments, which stay the same for all elements
         function_args = {
             "mapper": self._mapper,
-            "quad_weights": self._trafo.quadrature_weights,
         }
 
         # Element loop
-        for element_jacobian_det, element_support, element_quad_points in zip(
+        for element_jacobian_det, element_support, element_quad_points, measure in zip(
             self._trafo.all_jacobian_determinants,
             self._trafo.all_supports,
             self._trafo.all_quad_points,
+            self._trafo._all_element_measures,
             strict=True,
         ):
             # Assemble element matrix and vector
+            function_args["quad_weights"] = self._trafo.quadrature_weights * measure
             function_args["quad_points"] = element_quad_points
             function_args["jacobian_det"] = element_jacobian_det
             if current_sol is not None:
