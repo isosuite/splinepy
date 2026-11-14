@@ -58,8 +58,12 @@ message(
   "          \\__|                                  \\__|       \\______/")
 message("")
 
-set(SPLINEPY_CORE_BUILD_TESTS OFF CACHE BOOL "Build splinepy core tests")
-set(SPLINEPY_CORE_BUILD_BENCHMARKS OFF CACHE BOOL "Build splinepy core benchmarks")
+set(SPLINEPY_CORE_BUILD_TESTS
+    OFF
+    CACHE BOOL "Build splinepy core tests")
+set(SPLINEPY_CORE_BUILD_BENCHMARKS
+    OFF
+    CACHE BOOL "Build splinepy core benchmarks")
 
 add_subdirectory(core)
 add_subdirectory(src)

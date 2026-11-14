@@ -17,7 +17,8 @@ constexpr double kSpanTolerance = 1e-12;
 } // namespace
 
 ElementBvh::ElementBvh(const SplineView& spline)
-    : para_dim_(spline.para_dim), dim_(spline.dim) {
+    : para_dim_(spline.para_dim),
+      dim_(spline.dim) {
   if (para_dim_ <= 0 || dim_ <= 0 || spline.control_points_data == nullptr) {
     return;
   }
@@ -68,7 +69,8 @@ ElementBvh::ElementBvh(const SplineView& spline)
     // element id -> span ids (first dim fastest)
     int64_t rest = e;
     for (int32_t d{}; d < para_dim_; ++d) {
-      const int32_t span_id = static_cast<int32_t>(rest % elements_per_axis_[d]);
+      const int32_t span_id =
+          static_cast<int32_t>(rest % elements_per_axis_[d]);
       rest /= elements_per_axis_[d];
       param_lower_[e * para_dim_ + d] = span_lo[d][span_id];
       param_upper_[e * para_dim_ + d] = span_hi[d][span_id];
@@ -86,7 +88,8 @@ ElementBvh::ElementBvh(const SplineView& spline)
   }
 
   box_lower_.assign(num_elements_ * dim_, std::numeric_limits<double>::max());
-  box_upper_.assign(num_elements_ * dim_, std::numeric_limits<double>::lowest());
+  box_upper_.assign(num_elements_ * dim_,
+                    std::numeric_limits<double>::lowest());
   for (int64_t e{}; e < num_elements_; ++e) {
     const auto& cps = patches[e].control_points;
     const int64_t n = static_cast<int64_t>(cps.size()) / dim_;
@@ -140,7 +143,8 @@ int64_t ElementBvh::BuildNode(const int64_t begin, const int64_t end) {
     double hi = std::numeric_limits<double>::lowest();
     for (int64_t i{begin}; i < end; ++i) {
       const int64_t e = element_order_[i];
-      const double c = .5 * (box_lower_[e * dim_ + k] + box_upper_[e * dim_ + k]);
+      const double c =
+          .5 * (box_lower_[e * dim_ + k] + box_upper_[e * dim_ + k]);
       lo = std::min(lo, c);
       hi = std::max(hi, c);
     }
@@ -151,13 +155,14 @@ int64_t ElementBvh::BuildNode(const int64_t begin, const int64_t end) {
   }
 
   const int64_t mid = begin + (end - begin) / 2;
-  std::nth_element(element_order_.begin() + begin,
-                   element_order_.begin() + mid,
-                   element_order_.begin() + end,
-                   [&](const int64_t a, const int64_t b) {
-                     return box_lower_[a * dim_ + axis] + box_upper_[a * dim_ + axis]
-                            < box_lower_[b * dim_ + axis] + box_upper_[b * dim_ + axis];
-                   });
+  std::nth_element(
+      element_order_.begin() + begin,
+      element_order_.begin() + mid,
+      element_order_.begin() + end,
+      [&](const int64_t a, const int64_t b) {
+        return box_lower_[a * dim_ + axis] + box_upper_[a * dim_ + axis]
+               < box_lower_[b * dim_ + axis] + box_upper_[b * dim_ + axis];
+      });
 
   // note: BuildNode may reallocate nodes_, so don't keep references
   const int64_t left = BuildNode(begin, mid);

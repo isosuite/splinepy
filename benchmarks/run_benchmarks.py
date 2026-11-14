@@ -16,6 +16,7 @@ def benchmark(fn, n_warmup=2, n_runs=5):
         times.append(time.perf_counter() - start)
     return float(np.min(times)), float(np.mean(times)), float(np.std(times))
 
+
 def run_all_benchmarks():
     results = {}
     print(f"Running benchmarks on splinepy {splinepy.__version__}...")
@@ -24,17 +25,23 @@ def run_all_benchmarks():
     b2 = splinepy.Bezier(
         degrees=[2, 2],
         control_points=[
-            [0.0, 0.0], [1.0, 0.0], [2.0, 0.0],
-            [0.0, 1.0], [1.2, 1.2], [2.0, 1.0],
-            [0.0, 2.0], [1.0, 2.0], [2.0, 2.0],
-        ]
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [2.0, 0.0],
+            [0.0, 1.0],
+            [1.2, 1.2],
+            [2.0, 1.0],
+            [0.0, 2.0],
+            [1.0, 2.0],
+            [2.0, 2.0],
+        ],
     )
     rng = np.random.default_rng(42)
     q_100k = rng.uniform(0.0, 1.0, size=(100_000, 2))
 
     t_min, t_mean, _ = benchmark(lambda: b2.evaluate(q_100k))
     results["bezier_2d_eval_100k"] = {"min_s": t_min, "mean_s": t_mean}
-    print(f"Bezier 2D evaluate 100k: {t_min*1000:.2f} ms")
+    print(f"Bezier 2D evaluate 100k: {t_min * 1000:.2f} ms")
 
     # 2. BSpline 2D->2D evaluate
     bs2 = splinepy.BSpline(
@@ -44,15 +51,27 @@ def run_all_benchmarks():
             [0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 1.0],
         ],
         control_points=[
-            [0, 0], [1, 0], [2, 0], [3, 0],
-            [0, 1], [1, 1], [2, 1], [3, 1],
-            [0, 2], [1, 2], [2, 2], [3, 2],
-            [0, 3], [1, 3], [2, 3], [3, 3],
-        ]
+            [0, 0],
+            [1, 0],
+            [2, 0],
+            [3, 0],
+            [0, 1],
+            [1, 1],
+            [2, 1],
+            [3, 1],
+            [0, 2],
+            [1, 2],
+            [2, 2],
+            [3, 2],
+            [0, 3],
+            [1, 3],
+            [2, 3],
+            [3, 3],
+        ],
     )
     t_min, t_mean, _ = benchmark(lambda: bs2.evaluate(q_100k))
     results["bspline_2d_eval_100k"] = {"min_s": t_min, "mean_s": t_mean}
-    print(f"BSpline 2D evaluate 100k: {t_min*1000:.2f} ms")
+    print(f"BSpline 2D evaluate 100k: {t_min * 1000:.2f} ms")
 
     # 3. NURBS 2D->2D evaluate
     nurbs2 = splinepy.NURBS(
@@ -66,7 +85,7 @@ def run_all_benchmarks():
     )
     t_min, t_mean, _ = benchmark(lambda: nurbs2.evaluate(q_100k))
     results["nurbs_2d_eval_100k"] = {"min_s": t_min, "mean_s": t_mean}
-    print(f"NURBS 2D evaluate 100k: {t_min*1000:.2f} ms")
+    print(f"NURBS 2D evaluate 100k: {t_min * 1000:.2f} ms")
 
     # 4. BSpline 3D->3D evaluate
     bs3 = splinepy.BSpline(
@@ -81,33 +100,36 @@ def run_all_benchmarks():
     q3_100k = rng.uniform(0.0, 1.0, size=(100_000, 3))
     t_min, t_mean, _ = benchmark(lambda: bs3.evaluate(q3_100k))
     results["bspline_3d_eval_100k"] = {"min_s": t_min, "mean_s": t_mean}
-    print(f"BSpline 3D evaluate 100k: {t_min*1000:.2f} ms")
+    print(f"BSpline 3D evaluate 100k: {t_min * 1000:.2f} ms")
 
     # 5. BSpline 2D basis
     t_min, t_mean, _ = benchmark(lambda: bs2.basis(q_100k))
     results["bspline_2d_basis_100k"] = {"min_s": t_min, "mean_s": t_mean}
-    print(f"BSpline 2D basis 100k: {t_min*1000:.2f} ms")
+    print(f"BSpline 2D basis 100k: {t_min * 1000:.2f} ms")
 
     # 6. BSpline 2D jacobian
     t_min, t_mean, _ = benchmark(lambda: bs2.jacobian(q_100k))
     results["bspline_2d_jacobian_100k"] = {"min_s": t_min, "mean_s": t_mean}
-    print(f"BSpline 2D jacobian 100k: {t_min*1000:.2f} ms")
+    print(f"BSpline 2D jacobian 100k: {t_min * 1000:.2f} ms")
 
     # 7. Proximity query (1000 queries)
     q_1k = rng.uniform(-0.5, 3.5, size=(1_000, 2))
     t_min, t_mean, _ = benchmark(lambda: bs2.proximities(q_1k, [10, 10]), n_runs=3)
     results["bspline_2d_proximity_1k"] = {"min_s": t_min, "mean_s": t_mean}
-    print(f"BSpline 2D proximity 1k: {t_min*1000:.2f} ms")
+    print(f"BSpline 2D proximity 1k: {t_min * 1000:.2f} ms")
 
     # 8. Bezier composition
-    inner_bez = splinepy.Bezier(degrees=[1, 1], control_points=[[0.2, 0.2], [0.8, 0.2], [0.2, 0.8], [0.8, 0.8]])
+    inner_bez = splinepy.Bezier(
+        degrees=[1, 1], control_points=[[0.2, 0.2], [0.8, 0.2], [0.2, 0.8], [0.8, 0.8]]
+    )
     t_min, t_mean, _ = benchmark(lambda: b2.compose(inner_bez), n_runs=10)
     results["bezier_compose"] = {"min_s": t_min, "mean_s": t_mean}
-    print(f"Bezier 2D compose: {t_min*1000:.4f} ms")
+    print(f"Bezier 2D compose: {t_min * 1000:.4f} ms")
 
     with open("benchmarks/baseline_results.json", "w") as f:
         json.dump(results, f, indent=2)
     print("Saved benchmarks/baseline_results.json")
+
 
 if __name__ == "__main__":
     run_all_benchmarks()

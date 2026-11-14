@@ -29,7 +29,8 @@ struct Cone {
     v.degrees = splinepy::core::Span<const int32_t>(degrees);
     v.knot_vectors =
         splinepy::core::Span<const splinepy::core::Span<const double>>(
-            kv_spans.data(), 2);
+            kv_spans.data(),
+            2);
     v.control_points_data = cps.data();
     v.num_control_points = 4;
     v.cp_stride = 3;
@@ -64,8 +65,17 @@ TEST(Proximity, BvhFindsClosestPointNextToCollapsedEdge) {
   for (int n = 0; n < 30; ++n) {
     const double query[3] = {ux(gen), uy(gen), uz(gen)};
     double guess[2], nearest[3], diff[3], dist{}, conv{}, first[6], second[12];
-    proximity.VerboseQuery(query, 1e-10, 100, false, guess, nearest, diff,
-                           dist, conv, first, second);
+    proximity.VerboseQuery(query,
+                           1e-10,
+                           100,
+                           false,
+                           guess,
+                           nearest,
+                           diff,
+                           dist,
+                           conv,
+                           first,
+                           second);
 
     // brute force reference
     double best = 1e100;

@@ -480,8 +480,8 @@ public:
                  double* second_derivatives) const;
 
   /// @brief Given physical coordinate, finds closest parametric coordinate.
-  /// Takes initial guess from the initial guess source, or starts from several promising
-  /// elements if a bvh was planted.
+  /// Takes initial guess from the initial guess source, or starts from several
+  /// promising elements if a bvh was planted.
   ///
   /// @param[in] query
   /// @param[in] tolerance

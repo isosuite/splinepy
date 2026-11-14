@@ -182,5 +182,5 @@ TEST(ElementBvhTest, BezierIsOneElementAndNonPositiveWeightsAreRejected) {
   EXPECT_FALSE(ElementBvh(v).IsValid());
 }
 
-}  // namespace
-}  // namespace splinepy::core
+} // namespace
+} // namespace splinepy::core

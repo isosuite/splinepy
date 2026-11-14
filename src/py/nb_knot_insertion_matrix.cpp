@@ -7,8 +7,8 @@
 #include <vector>
 
 #include "nb_common.hpp"
-#include <numeric>
 #include "splinepy/utils/print.hpp"
+#include <numeric>
 
 namespace splinepy::py {
 
@@ -107,12 +107,13 @@ ExtractBezierPatchIDs(const std::vector<std::vector<int>>& knot_multiplicities,
 
 } // namespace
 
-
 namespace {
 
-std::vector<int> DetermineMultiplicities(const double* kv, size_t n, double tol) {
+std::vector<int>
+DetermineMultiplicities(const double* kv, size_t n, double tol) {
   std::vector<int> mults;
-  if (n == 0) return mults;
+  if (n == 0)
+    return mults;
   int count = 1;
   for (size_t i = 1; i < n; ++i) {
     if (std::abs(kv[i] - kv[i - 1]) <= tol) {
@@ -146,15 +147,26 @@ ComputeKnotInsertionMatrixAndKnotSpan(const double* old_kv_ptr,
     if (i >= deg || j > deg) {
       splinepy::utils::PrintAndThrowError(
           "Requested index outside matrix definition.",
-          "Requested query: \nt :", t, "\nmu : ", mu, "\ndeg : ", deg, "\ni : ", i, "\nj : ", j);
+          "Requested query: \nt :",
+          t,
+          "\nmu : ",
+          mu,
+          "\ndeg : ",
+          deg,
+          "\ni : ",
+          i,
+          "\nj : ",
+          j);
     }
     if (i > j || j > i + 1) {
       return 0.0;
     }
     if (j == i) {
-      return (old_kv_ptr[mu + 1 + i] - t) / (old_kv_ptr[mu + 1 + i] - old_kv_ptr[mu + 1 + i - deg]);
+      return (old_kv_ptr[mu + 1 + i] - t)
+             / (old_kv_ptr[mu + 1 + i] - old_kv_ptr[mu + 1 + i - deg]);
     } else {
-      return (t - old_kv_ptr[mu + 1 + i - deg]) / (old_kv_ptr[mu + 1 + i] - old_kv_ptr[mu + 1 + i - deg]);
+      return (t - old_kv_ptr[mu + 1 + i - deg])
+             / (old_kv_ptr[mu + 1 + i] - old_kv_ptr[mu + 1 + i - deg]);
     }
   };
 
@@ -184,7 +196,8 @@ ComputeKnotInsertionMatrixAndKnotSpan(const double* old_kv_ptr,
         }
         old_s << "]";
         splinepy::utils::PrintAndThrowError(
-            "New knot spans is not subset of old knot-span. \nOld knot vector : ",
+            "New knot spans is not subset of old knot-span. \nOld knot vector "
+            ": ",
             old_s.str(),
             "\nNew knot vector : ",
             new_s.str());
@@ -215,34 +228,45 @@ ComputeKnotInsertionMatrixAndKnotSpan(const double* old_kv_ptr,
     matrix(i, j + 1) = R_matrix(new_kv_ptr[i + 1], mu, 1, 0, 1);
 
     for (int d = 2; d <= degree; ++d) {
-      matrix(i, j + d) = (R_matrix(new_kv_ptr[i + d], mu, d, d - 1, d) * matrix(i, j + d - 1));
+      matrix(i, j + d) =
+          (R_matrix(new_kv_ptr[i + d], mu, d, d - 1, d) * matrix(i, j + d - 1));
       for (int q = d - 1; q > 0; --q) {
-        matrix(i, j + q) = matrix(i, j + q - 1) * R_matrix(new_kv_ptr[i + d], mu, d, q - 1, q)
-                           + matrix(i, j + q) * R_matrix(new_kv_ptr[i + d], mu, d, q, q);
+        matrix(i, j + q) =
+            matrix(i, j + q - 1) * R_matrix(new_kv_ptr[i + d], mu, d, q - 1, q)
+            + matrix(i, j + q) * R_matrix(new_kv_ptr[i + d], mu, d, q, q);
       }
       matrix(i, j) = R_matrix(new_kv_ptr[i + d], mu, d, 0, 0) * matrix(i, j);
     }
   }
 
-  return {std::move(return_matrix), std::move(index_of_knot_span_base), n_cps_new, n_cps_old};
+  return {std::move(return_matrix),
+          std::move(index_of_knot_span_base),
+          n_cps_new,
+          n_cps_old};
 }
 
 } // namespace
 
-nb::object ComputeKnotInsertionMatrix(nb::ndarray<const double, nb::c_contig> old_kv,
-                                     nb::ndarray<const double, nb::c_contig> new_kv,
-                                     int degree,
-                                     double tolerance) {
+nb::object
+ComputeKnotInsertionMatrix(nb::ndarray<const double, nb::c_contig> old_kv,
+                           nb::ndarray<const double, nb::c_contig> new_kv,
+                           int degree,
+                           double tolerance) {
   auto [matrix_data, knot_span_base, n_cps_new, n_cps_old] =
-      ComputeKnotInsertionMatrixAndKnotSpan(old_kv.data(), old_kv.size(), new_kv.data(), new_kv.size(), degree, tolerance);
+      ComputeKnotInsertionMatrixAndKnotSpan(old_kv.data(),
+                                            old_kv.size(),
+                                            new_kv.data(),
+                                            new_kv.size(),
+                                            degree,
+                                            tolerance);
   return MakeNumPyArray2D<double>(matrix_data.data(), n_cps_new, n_cps_old);
 }
 
 nb::tuple ComputeGlobalKnotInsertionMatrix(nb::handle old_kvs_obj,
-                                          nb::object degrees,
-                                          int parametric_dimension,
-                                          nb::object new_knots,
-                                          double tolerance) {
+                                           nb::object degrees,
+                                           int parametric_dimension,
+                                           nb::object new_knots,
+                                           double tolerance) {
   auto np = nb::module_::import_("numpy");
   std::vector<std::vector<double>> old_kvs;
 
@@ -254,7 +278,8 @@ nb::tuple ComputeGlobalKnotInsertionMatrix(nb::handle old_kvs_obj,
   old_kvs.reserve(n_para_dims);
   for (size_t i = 0; i < n_para_dims; ++i) {
     nb::object item = kvs_seq[nb::int_(i)];
-    if (nb::hasattr(item, "numpy")) item = item.attr("numpy")();
+    if (nb::hasattr(item, "numpy"))
+      item = item.attr("numpy")();
     auto arr = nb::cast<nb::ndarray<const double, nb::c_contig>>(
         np.attr("ascontiguousarray")(item, np.attr("float64")));
     old_kvs.emplace_back(arr.data(), arr.data() + arr.size());
@@ -263,7 +288,9 @@ nb::tuple ComputeGlobalKnotInsertionMatrix(nb::handle old_kvs_obj,
   ContiguousAdapter<int32_t> degrees_adapter(degrees, "int32");
   ContiguousAdapter<double> new_knots_adapter(new_knots, "float64");
   const int32_t* degrees_ptr = degrees_adapter.data();
-  std::vector<double> new_knots_vec(new_knots_adapter.data(), new_knots_adapter.data() + new_knots_adapter.size());
+  std::vector<double> new_knots_vec(new_knots_adapter.data(),
+                                    new_knots_adapter.data()
+                                        + new_knots_adapter.size());
   std::sort(new_knots_vec.begin(), new_knots_vec.end());
 
   std::vector<int> n_cp_old(n_para_dims), n_cp_new(n_para_dims);
@@ -274,15 +301,18 @@ nb::tuple ComputeGlobalKnotInsertionMatrix(nb::handle old_kvs_obj,
     n_cps_old *= n_cp_old[i];
   }
   n_cp_new[parametric_dimension] += static_cast<int>(new_knots_vec.size());
-  const int n_cps_new = n_cps_old / n_cp_old[parametric_dimension] * n_cp_new[parametric_dimension];
+  const int n_cps_new = n_cps_old / n_cp_old[parametric_dimension]
+                        * n_cp_new[parametric_dimension];
 
   const auto& knot_vector_old = old_kvs[parametric_dimension];
-  std::vector<double> knot_vector_new(knot_vector_old.size() + new_knots_vec.size());
+  std::vector<double> knot_vector_new(knot_vector_old.size()
+                                      + new_knots_vec.size());
 
   size_t i_old = 0, j_new = 0;
   while (i_old + j_new < knot_vector_new.size()) {
-    if (j_new >= new_knots_vec.size() ||
-        (i_old < knot_vector_old.size() && knot_vector_old[i_old] < new_knots_vec[j_new])) {
+    if (j_new >= new_knots_vec.size()
+        || (i_old < knot_vector_old.size()
+            && knot_vector_old[i_old] < new_knots_vec[j_new])) {
       knot_vector_new[i_old + j_new] = knot_vector_old[i_old];
       i_old++;
     } else {
@@ -309,8 +339,8 @@ nb::tuple ComputeGlobalKnotInsertionMatrix(nb::handle old_kvs_obj,
     return global_id;
   };
 
-  auto global_to_local_id = [&](int global_id,
-                                const std::vector<int>& n_cps) -> std::vector<int> {
+  auto global_to_local_id =
+      [&](int global_id, const std::vector<int>& n_cps) -> std::vector<int> {
     std::vector<int> local_ids;
     int copy = global_id;
     local_ids.reserve(n_para_dims);
@@ -331,7 +361,8 @@ nb::tuple ComputeGlobalKnotInsertionMatrix(nb::handle old_kvs_obj,
   for (int j_ctps = 0; j_ctps < n_cps_new; ++j_ctps) {
     std::vector<int> local_id_new = global_to_local_id(j_ctps, n_cp_new);
     const int i_row = local_id_new[parametric_dimension];
-    const int knot_span_base_id = knot_span_ids[local_id_new[parametric_dimension]];
+    const int knot_span_base_id =
+        knot_span_ids[local_id_new[parametric_dimension]];
 
     for (int k_deg = knot_span_base_id - degrees_ptr[parametric_dimension];
          k_deg <= knot_span_base_id;
@@ -340,14 +371,18 @@ nb::tuple ComputeGlobalKnotInsertionMatrix(nb::handle old_kvs_obj,
       const int col_id = local_to_global_id(local_id_new, n_cp_old);
       rows[counter] = j_ctps;
       cols[counter] = col_id;
-      values[counter] = dimensionwise_matrix[i_row * n_cp_old[parametric_dimension] + k_deg];
+      values[counter] =
+          dimensionwise_matrix[i_row * n_cp_old[parametric_dimension] + k_deg];
       counter++;
     }
   }
 
-  nb::object val_arr = MakeNumPyArray1D<double>(splinepy::core::Span<const double>(values.data(), values.size()));
-  nb::object row_arr = MakeNumPyArray1D<int32_t>(splinepy::core::Span<const int32_t>(rows.data(), rows.size()));
-  nb::object col_arr = MakeNumPyArray1D<int32_t>(splinepy::core::Span<const int32_t>(cols.data(), cols.size()));
+  nb::object val_arr = MakeNumPyArray1D<double>(
+      splinepy::core::Span<const double>(values.data(), values.size()));
+  nb::object row_arr = MakeNumPyArray1D<int32_t>(
+      splinepy::core::Span<const int32_t>(rows.data(), rows.size()));
+  nb::object col_arr = MakeNumPyArray1D<int32_t>(
+      splinepy::core::Span<const int32_t>(cols.data(), cols.size()));
 
   return nb::make_tuple(
       nb::make_tuple(val_arr, nb::make_tuple(row_arr, col_arr)),
@@ -365,11 +400,13 @@ nb::tuple BezierExtractionMatrices(nb::handle spline, double tolerance) {
     old_kvs[i].assign(kv_span.begin(), kv_span.end());
   }
 
-  auto create_new_knot_vector = [&](const std::vector<double>& old_kv,
-                                    int deg,
-                                    std::vector<double>& new_knots) -> std::vector<double> {
+  auto create_new_knot_vector =
+      [&](const std::vector<double>& old_kv,
+          int deg,
+          std::vector<double>& new_knots) -> std::vector<double> {
     const size_t old_kv_size = old_kv.size();
-    const size_t max_kv_size = (old_kv_size - (deg + 1) * 2) * deg + (deg + 1) * 2;
+    const size_t max_kv_size =
+        (old_kv_size - (deg + 1) * 2) * deg + (deg + 1) * 2;
     std::vector<double> return_kv(max_kv_size);
     new_knots.resize(max_kv_size);
 
@@ -400,21 +437,30 @@ nb::tuple BezierExtractionMatrices(nb::handle spline, double tolerance) {
   nb::list list_of_tuples;
   std::vector<std::vector<double>> tmp_kvs = old_kvs;
 
-  nb::object np_degrees = MakeNumPyArray1D<int32_t>(splinepy::core::Span<const int32_t>(degrees.data(), degrees.size()));
+  nb::object np_degrees = MakeNumPyArray1D<int32_t>(
+      splinepy::core::Span<const int32_t>(degrees.data(), degrees.size()));
 
-  for (int parametric_dimension = 0; parametric_dimension < n_para_dims; ++parametric_dimension) {
+  for (int parametric_dimension = 0; parametric_dimension < n_para_dims;
+       ++parametric_dimension) {
     const auto& tmp_kv = tmp_kvs[parametric_dimension];
     std::vector<double> new_knots;
-    auto new_kv = create_new_knot_vector(tmp_kv, degrees[parametric_dimension], new_knots);
+    auto new_kv = create_new_knot_vector(tmp_kv,
+                                         degrees[parametric_dimension],
+                                         new_knots);
 
     nb::list tmp_kvs_list;
     for (const auto& kv : tmp_kvs) {
-      tmp_kvs_list.append(MakeNumPyArray1D<double>(splinepy::core::Span<const double>(kv.data(), kv.size())));
+      tmp_kvs_list.append(MakeNumPyArray1D<double>(
+          splinepy::core::Span<const double>(kv.data(), kv.size())));
     }
-    nb::object new_knots_obj = MakeNumPyArray1D<double>(splinepy::core::Span<const double>(new_knots.data(), new_knots.size()));
+    nb::object new_knots_obj = MakeNumPyArray1D<double>(
+        splinepy::core::Span<const double>(new_knots.data(), new_knots.size()));
 
-    list_of_tuples.append(ComputeGlobalKnotInsertionMatrix(
-        tmp_kvs_list, np_degrees, parametric_dimension, new_knots_obj, tolerance));
+    list_of_tuples.append(ComputeGlobalKnotInsertionMatrix(tmp_kvs_list,
+                                                           np_degrees,
+                                                           parametric_dimension,
+                                                           new_knots_obj,
+                                                           tolerance));
 
     tmp_kvs[parametric_dimension] = std::move(new_kv);
   }
@@ -422,22 +468,27 @@ nb::tuple BezierExtractionMatrices(nb::handle spline, double tolerance) {
   std::vector<std::vector<int>> knot_multiplicities;
   knot_multiplicities.reserve(n_para_dims);
   for (const auto& kv : tmp_kvs) {
-    knot_multiplicities.emplace_back(DetermineMultiplicities(kv.data(), kv.size(), tolerance));
+    knot_multiplicities.emplace_back(
+        DetermineMultiplicities(kv.data(), kv.size(), tolerance));
   }
 
-  const auto& list_of_ids = ExtractBezierPatchIDs(knot_multiplicities, degrees.data());
+  const auto& list_of_ids =
+      ExtractBezierPatchIDs(knot_multiplicities, degrees.data());
   const size_t n_patches = list_of_ids.size();
-  const size_t n_ctps_per_patch = list_of_ids.empty() ? 0 : list_of_ids[0].size();
+  const size_t n_ctps_per_patch =
+      list_of_ids.empty() ? 0 : list_of_ids[0].size();
 
   std::vector<int32_t> bezier_ctps_ids(n_ctps_per_patch * n_patches);
   for (size_t i_patch = 0; i_patch < n_patches; ++i_patch) {
     for (size_t j_id = 0; j_id < n_ctps_per_patch; ++j_id) {
-      bezier_ctps_ids[i_patch * n_ctps_per_patch + j_id] = list_of_ids[i_patch][j_id];
+      bezier_ctps_ids[i_patch * n_ctps_per_patch + j_id] =
+          list_of_ids[i_patch][j_id];
     }
   }
 
-  nb::object bezier_ids_obj = MakeNumPyArray2D<int32_t>(
-      bezier_ctps_ids.data(), n_patches, n_ctps_per_patch);
+  nb::object bezier_ids_obj = MakeNumPyArray2D<int32_t>(bezier_ctps_ids.data(),
+                                                        n_patches,
+                                                        n_ctps_per_patch);
 
   return nb::make_tuple(bezier_ids_obj, list_of_tuples);
 }

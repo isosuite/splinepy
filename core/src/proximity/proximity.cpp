@@ -26,12 +26,12 @@ SOFTWARE.
 #include <cmath>
 #include <limits>
 
+#include "splinepy/core/multipatch/interfaces.hpp"
+#include "splinepy/core/queries/derivative.hpp"
+#include "splinepy/core/queries/evaluate.hpp"
+#include "splinepy/core/validate/validator.hpp"
 #include "splinepy/proximity/proximity.hpp"
 #include "splinepy/proximity/slsqp/slsqp.h"
-#include "splinepy/core/queries/evaluate.hpp"
-#include "splinepy/core/queries/derivative.hpp"
-#include "splinepy/core/multipatch/interfaces.hpp"
-#include "splinepy/core/validate/validator.hpp"
 #include "splinepy/utils/nthreads.hpp"
 #include "splinepy/utils/print.hpp"
 
@@ -325,7 +325,7 @@ void Proximity::GuessMinusQuery(const RealArray& guess,
       spline_,
       splinepy::core::Span<const double>(guess.data(), spline_.para_dim),
       splinepy::core::Span<double>(difference.data(), spline_.dim),
-          kNoValidation);
+      kNoValidation);
   difference.Subtract(query);
 }
 
@@ -337,7 +337,7 @@ void Proximity::GuessMinusQuery(const RealArray& guess,
       spline_,
       splinepy::core::Span<const double>(guess.data(), spline_.para_dim),
       splinepy::core::Span<double>(guess_phys.data(), spline_.dim),
-          kNoValidation);
+      kNoValidation);
   splinepy::utils::Subtract(guess_phys, query, difference);
 }
 
@@ -395,7 +395,7 @@ void Proximity::dJdu(const RealArray& guess,
         splinepy::core::Span<const double>(guess.data(), para_dim),
         splinepy::core::Span<const int32_t>(derivative_query.data(), para_dim),
         splinepy::core::Span<double>(gradient_row_view.data(), dim),
-          kNoValidation);
+        kNoValidation);
 
     // note that there's no negative here, thus not rhs yet
     djdu[i] = difference.InnerProduct(gradient_row_view);
@@ -435,7 +435,7 @@ void Proximity::d2Jdu2(const RealArray& guess,
         splinepy::core::Span<const double>(guess.data(), para_dim),
         splinepy::core::Span<const int32_t>(derivative_query.data(), para_dim),
         splinepy::core::Span<double>(derivative.data(), dim),
-          kNoValidation);
+        kNoValidation);
 
     // fill lhs_ij
     d2jdu2(i, j) =
@@ -647,8 +647,8 @@ void Proximity::Dogleg(SearchData& d) const {
     step.assign(m, 0.0);
     double taken_norm{};
     for (int i{}; i < m; ++i) {
-      step[i] = (d.current_guess[free[i]] - previous_guess[free[i]])
-                / range[free[i]];
+      step[i] =
+          (d.current_guess[free[i]] - previous_guess[free[i]]) / range[free[i]];
       taken_norm += step[i] * step[i];
     }
     taken_norm = std::sqrt(taken_norm);
@@ -694,19 +694,18 @@ void Proximity::FindSearchBound(SearchData& data, const bool tight) const {
   }
 
   // you need to be sure that you have sampled your spline fine enough
-  const double* step_size = initial_guess_ ? initial_guess_->StepSize() : nullptr;
+  const double* step_size =
+      initial_guess_ ? initial_guess_->StepSize() : nullptr;
   if (step_size == nullptr) {
     return;
   }
   for (int i{}; i < data.para_dim; ++i) {
     // adjust lower (0) and upper (1) bounds aggressively
     // but of course, not so aggressive that it is out of bound.
-    data.search_bounds(0, i) =
-        std::max(data.search_bounds(0, i),
-                 data.current_guess[i] - step_size[i]);
-    data.search_bounds(1, i) =
-        std::min(data.search_bounds(1, i),
-                 data.current_guess[i] + step_size[i]);
+    data.search_bounds(0, i) = std::max(data.search_bounds(0, i),
+                                        data.current_guess[i] - step_size[i]);
+    data.search_bounds(1, i) = std::min(data.search_bounds(1, i),
+                                        data.current_guess[i] + step_size[i]);
   }
 }
 
@@ -1166,7 +1165,7 @@ std::vector<Proximity::Start> Proximity::BvhStarts(const double* query) const {
               spline_,
               splinepy::core::Span<const double>(u.data(), para_dim),
               splinepy::core::Span<double>(xs, dim),
-          kNoValidation);
+              kNoValidation);
           double d2{};
           for (int i{}; i < dim; ++i) {
             d2 += (xs[i] - query[i]) * (xs[i] - query[i]);
@@ -1207,8 +1206,7 @@ std::vector<Proximity::Start> Proximity::BvhStarts(const double* query) const {
             start.distance_squared = d2;
             // the closest point of the basin is at most half a sampling
             // step closer than the sample
-            const double reach =
-                std::max(std::sqrt(d2) - .5 * spacing, 0.0);
+            const double reach = std::max(std::sqrt(d2) - .5 * spacing, 0.0);
             start.lower_bound_squared =
                 std::max(lower_bound_squared, reach * reach);
             start.guess.resize(para_dim);
@@ -1238,7 +1236,9 @@ namespace {
 /// True if the rows of the jacobian (one derivative vector per parametric
 /// axis) are close to linearly dependent. Hadamard ratio of the gram matrix:
 /// det(G) / prod(G_ii) is 1 for orthogonal and 0 for dependent rows.
-bool IsRankDeficient(const double* jacobian, const int para_dim, const int dim) {
+bool IsRankDeficient(const double* jacobian,
+                     const int para_dim,
+                     const int dim) {
   if (para_dim > 3) {
     return false;
   }
@@ -1294,9 +1294,18 @@ void Proximity::VerboseQuery(
     goal.SetData(query, dim);
     RealArray guess(para_dim);
     MakeInitialGuess(goal, guess);
-    SolveFrom(query, tolerance, max_iterations, tight_bounds, guess.data(),
-              final_guess, nearest, nearest_minus_query, distance,
-              convergence_norm, first_derivatives, second_derivatives);
+    SolveFrom(query,
+              tolerance,
+              max_iterations,
+              tight_bounds,
+              guess.data(),
+              final_guess,
+              nearest,
+              nearest_minus_query,
+              distance,
+              convergence_norm,
+              first_derivatives,
+              second_derivatives);
     return;
   }
 
@@ -1305,9 +1314,18 @@ void Proximity::VerboseQuery(
     splinepy::utils::PrintAndThrowError("bvh did not find any element");
   }
 
-  SolveFrom(query, tolerance, max_iterations, tight_bounds,
-            starts[0].guess.data(), final_guess, nearest, nearest_minus_query,
-            distance, convergence_norm, first_derivatives, second_derivatives);
+  SolveFrom(query,
+            tolerance,
+            max_iterations,
+            tight_bounds,
+            starts[0].guess.data(),
+            final_guess,
+            nearest,
+            nearest_minus_query,
+            distance,
+            convergence_norm,
+            first_derivatives,
+            second_derivatives);
 
   // more starts, only from basins that can hold a closer point and that were
   // not found by a previous start
@@ -1341,9 +1359,17 @@ void Proximity::VerboseQuery(
     ++n_starts;
 
     double t_distance{}, t_convergence{};
-    SolveFrom(query, tolerance, max_iterations, tight_bounds,
-              starts[i].guess.data(), t_guess.data(), t_nearest.data(),
-              t_diff.data(), t_distance, t_convergence, t_first.data(),
+    SolveFrom(query,
+              tolerance,
+              max_iterations,
+              tight_bounds,
+              starts[i].guess.data(),
+              t_guess.data(),
+              t_nearest.data(),
+              t_diff.data(),
+              t_distance,
+              t_convergence,
+              t_first.data(),
               t_second.data());
     found.push_back(t_guess);
 
@@ -1376,7 +1402,8 @@ void Proximity::VerboseQuery(
   double largest_norm{};
   for (int i{}; i < para_dim; ++i) {
     for (int k{}; k < dim; ++k) {
-      axis_norm[i] += first_derivatives[i * dim + k] * first_derivatives[i * dim + k];
+      axis_norm[i] +=
+          first_derivatives[i * dim + k] * first_derivatives[i * dim + k];
     }
     axis_norm[i] = std::sqrt(axis_norm[i]);
     largest_norm = std::max(largest_norm, axis_norm[i]);
@@ -1384,9 +1411,11 @@ void Proximity::VerboseQuery(
   for (int i{}; i < para_dim; ++i) {
     const double radius = 2.0 * (*final_step)[i];
     const bool collapsed = axis_norm[i] <= 1e-6 * largest_norm;
-    lower[i] = collapsed ? bounds[i] : std::max(bounds[i], final_guess[i] - radius);
-    upper[i] = collapsed ? bounds[para_dim + i]
-                         : std::min(bounds[para_dim + i], final_guess[i] + radius);
+    lower[i] =
+        collapsed ? bounds[i] : std::max(bounds[i], final_guess[i] - radius);
+    upper[i] = collapsed
+                   ? bounds[para_dim + i]
+                   : std::min(bounds[para_dim + i], final_guess[i] + radius);
     n_candidates *= kPerAxis;
   }
 
@@ -1431,9 +1460,17 @@ void Proximity::VerboseQuery(
   constexpr std::size_t kMaxRestarts{2};
   for (std::size_t i{}; i < std::min(kMaxRestarts, candidates.size()); ++i) {
     double t_distance{}, t_convergence{};
-    SolveFrom(query, tolerance, max_iterations, tight_bounds,
-              candidates[i].u.data(), t_guess.data(), t_nearest.data(),
-              t_diff.data(), t_distance, t_convergence, t_first.data(),
+    SolveFrom(query,
+              tolerance,
+              max_iterations,
+              tight_bounds,
+              candidates[i].u.data(),
+              t_guess.data(),
+              t_nearest.data(),
+              t_diff.data(),
+              t_distance,
+              t_convergence,
+              t_first.data(),
               t_second.data());
     if (t_distance < distance) {
       distance = t_distance;
@@ -1474,7 +1511,7 @@ void FillHessian(splinepy::core::SplineView spline,
         splinepy::core::Span<const double>(at.data(), para_dim),
         splinepy::core::Span<const int32_t>(derivative_query.data(), para_dim),
         splinepy::core::Span<double>(derivative.data(), dim),
-          kNoValidation);
+        kNoValidation);
 
     // reset derivative query
     --derivative_query[i];

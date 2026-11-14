@@ -306,8 +306,14 @@ def run(
 
                 if failed_call:
                     rows.append(
-                        dict(case=name, group=group, variant=vname, chain=f"{cname}/{gname}",
-                             n=len(q), error=err)
+                        {
+                            "case": name,
+                            "group": group,
+                            "variant": vname,
+                            "chain": f"{cname}/{gname}",
+                            "n": len(q),
+                            "error": err,
+                        }
                     )
                     continue
 
@@ -322,20 +328,20 @@ def run(
                 gap = (dist - ref_dist) / diag
                 good = gap <= GLOBAL_TOL
                 rows.append(
-                    dict(
-                        case=name,
-                        group=group,
-                        variant=vname,
-                        chain=f"{cname}/{gname}",
-                        n=len(q),
-                        global_ok=float(good.mean()),
-                        n_fail=int((~good).sum()),
-                        n_nonfinite=int((~finite).sum()),
-                        n_outside_bounds=int((~inside).sum()),
-                        worst_gap=float(np.max(gap)),
-                        median_gap=float(np.median(gap)),
-                        us_per_query=1e6 * elapsed / len(q),
-                    )
+                    {
+                        "case": name,
+                        "group": group,
+                        "variant": vname,
+                        "chain": f"{cname}/{gname}",
+                        "n": len(q),
+                        "global_ok": float(good.mean()),
+                        "n_fail": int((~good).sum()),
+                        "n_nonfinite": int((~finite).sum()),
+                        "n_outside_bounds": int((~inside).sum()),
+                        "worst_gap": float(np.max(gap)),
+                        "median_gap": float(np.median(gap)),
+                        "us_per_query": 1e6 * elapsed / len(q),
+                    }
                 )
     return rows
 
@@ -349,7 +355,10 @@ def print_table(rows):
     print("-" * len(header))
     for r in rows:
         if "error" in r:
-            print(f"{r['case']:<22}{r['group']:<7}{r['variant']:<15}{r.get('chain', ''):<24}  ERROR {r['error']}")
+            print(
+                f"{r['case']:<22}{r['group']:<7}{r['variant']:<15}"
+                f"{r.get('chain', ''):<24}  ERROR {r['error']}"
+            )
             continue
         print(
             f"{r['case']:<22}{r['group']:<7}{r['variant']:<15}{r['chain']:<24}"
@@ -376,10 +385,7 @@ def print_summary(rows):
         a[2] += r["us_per_query"] * r["n"]
     print(f"{'chain':<24}{'queries':<7}{'variant':<15}{'fail':>10}{'us/q':>10}")
     for (chain, group, variant), (n, fail, t) in sorted(agg.items()):
-        print(
-            f"{chain:<24}{group:<7}{variant:<15}"
-            f"{fail:>5}/{n:<4}{t / n:>10.1f}"
-        )
+        print(f"{chain:<24}{group:<7}{variant:<15}{fail:>5}/{n:<4}{t / n:>10.1f}")
 
 
 def main():
@@ -390,13 +396,20 @@ def main():
     parser.add_argument("--n", type=int, default=50, help="queries per group")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--cases", nargs="*", default=None, choices=list(CASES))
-    parser.add_argument("--chains", nargs="*", default=["default"], choices=list(CHAINS))
+    parser.add_argument(
+        "--chains", nargs="*", default=["default"], choices=list(CHAINS)
+    )
     parser.add_argument("--guesses", nargs="*", default=["bvh4"], choices=list(GUESSES))
     parser.add_argument("--summary", action="store_true", help="aggregate only")
     parser.add_argument("--json", default=None, help="write rows to this file")
     args = parser.parse_args()
 
-    rows = run(n=args.n, seed=args.seed, cases=args.cases, chains=args.chains, guesses=args.guesses
+    rows = run(
+        n=args.n,
+        seed=args.seed,
+        cases=args.cases,
+        chains=args.chains,
+        guesses=args.guesses,
     )
     if args.summary:
         print_summary(rows)

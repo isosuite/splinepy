@@ -13,12 +13,12 @@ from splinepy import settings as _settings
 from splinepy import splinepy_core as _core
 from splinepy import utils as _utils
 from splinepy._base import SplinepyBase as _SplinepyBase
-from splinepy.knot_vector import KnotVector as _KnotVector
 from splinepy.helpme import visualize as _visualize
 from splinepy.helpme.check import Checker as _Checker
 from splinepy.helpme.create import Creator as _Creator
 from splinepy.helpme.extract import Extractor as _Extractor
 from splinepy.helpme.integrate import Integrator as _Integrator
+from splinepy.knot_vector import KnotVector as _KnotVector
 from splinepy.utils.data import SplineData as _SplineData
 from splinepy.utils.data import cartesian_product as _cartesian_product
 
@@ -341,7 +341,7 @@ class Spline(_SplinepyBase):
         """
         new = {}
         for key in _PROPERTY_KEYS:
-            value = kwargs.get(key, None)
+            value = kwargs.get(key)
             if value is None:
                 continue
             if key == "degrees":
@@ -416,7 +416,8 @@ class Spline(_SplinepyBase):
             other = others["knot_vectors" if key == "degrees" else "degrees"]
             if other is not None and len(other) != len(new_value):
                 raise ValueError(
-                    f"len(knot_vectors) ({len(new_value if key == 'knot_vectors' else other)}) "
+                    "len(knot_vectors) "
+                    f"({len(new_value if key == 'knot_vectors' else other)}) "
                     f"should match len(self.degrees) "
                     f"({len(other if key == 'knot_vectors' else new_value)})."
                 )
@@ -804,7 +805,7 @@ class Spline(_SplinepyBase):
             self._logd("Retrieving unique knots")
             return [
                 kv[d : len(kv) - d].unique()
-                for kv, d in zip(self.knot_vectors, self.degrees)
+                for kv, d in zip(self.knot_vectors, self.degrees, strict=True)
             ]
 
     @property
@@ -853,8 +854,8 @@ class Spline(_SplinepyBase):
         degrees = self._data["degrees"]
         return _np.array(
             [
-                [kv[d] for kv, d in zip(kvs, degrees)],
-                [kv[-d - 1] for kv, d in zip(kvs, degrees)],
+                [kv[d] for kv, d in zip(kvs, degrees, strict=True)],
+                [kv[-d - 1] for kv, d in zip(kvs, degrees, strict=True)],
             ],
             dtype="float64",
         )
@@ -928,7 +929,7 @@ class Spline(_SplinepyBase):
             return _np.array(
                 [
                     len(kv) - d - 1
-                    for kv, d in zip(self._data["knot_vectors"], degrees)
+                    for kv, d in zip(self._data["knot_vectors"], degrees, strict=True)
                 ],
                 dtype="int32",
             )

@@ -106,6 +106,8 @@ lint.ignore = [
 "setup.py" = ["T201"]
 "examples/*.py" = ["T201"]
 "tests/common.py" = ["T201"]
+"tests/generate_golden_data.py" = ["T201"]
+"benchmarks/*.py" = ["T201"]
 "splinepy/cli.py" = ["T201"]
 "splinepy/io/**" = ["A001"]
 
