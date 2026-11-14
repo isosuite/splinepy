@@ -286,11 +286,9 @@ struct Cache {
     const QueryArrays query(queries, orders, pd, true);
     const auto count = query.queries.shape(0);
     const auto n_orders = query.orders.size() / pd;
-    const auto shape =
-        n_orders == 1
-            ? std::initializer_list<std::size_t>{count, dim}
-            : std::initializer_list<std::size_t>{count, n_orders, dim};
-    OutArray<double> result(out, shape);
+    // Copy the shape into OutArray within the initializer list's lifetime.
+    auto result = n_orders == 1 ? OutArray<double>(out, {count, dim})
+                                : OutArray<double>(out, {count, n_orders, dim});
     Span<double> values(result.data(), result.size());
     Options options;
     options.nthreads = threads;
@@ -369,13 +367,14 @@ struct Cache {
     Span<double> values;
     Span<int64_t> indices;
     if (n_orders) {
-      const auto shape =
-          n_orders == 1
-              ? std::initializer_list<std::size_t>{count, layout.width}
-              : std::initializer_list<std::size_t>{count,
-                                                   n_orders,
-                                                   layout.width};
-      basis.emplace(out_basis, shape);
+      if (n_orders == 1) {
+        basis.emplace(out_basis,
+                      std::initializer_list<std::size_t>{count, layout.width});
+      } else {
+        basis.emplace(
+            out_basis,
+            std::initializer_list<std::size_t>{count, n_orders, layout.width});
+      }
       values = {basis->data(), basis->size()};
     }
     if (return_support) {
