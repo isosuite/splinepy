@@ -67,6 +67,8 @@ archs = ["arm64"]
 build = ["cp*"]
 
 [tool.cibuildwheel.linux]
+# Use a compatible NumPy wheel in the manylinux test environment.
+environment = { PIP_ONLY_BINARY = "numpy" }
 archs = ["x86_64"]
 build = ["cp*-many*"]
 
