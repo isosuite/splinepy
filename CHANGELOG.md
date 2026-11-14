@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- Python bindings are built with nanobind instead of pybind11. The C++ spline class hierarchy (`SplinepyBase`, `Bezier`, `BSpline`, ...) and the `SPLINEPY_MORE`, `SPLINEPY_BUILD_EXPLICIT` and `SPLINEPY_COMPILE_BSPLINELIB` build options are removed; kernels live in the standalone `core/` library.
+- `Spline` and `Multipatch` are plain Python classes. Control points, weights, degrees and knot vectors are plain numpy arrays, no synchronization with the backend is needed.
+- `spline.knot_vectors` returns a list of `splinepy.KnotVector`, a numpy array subclass.
+
+### Removed
+- `PySpline`, `PyMultipatch`, `PhysicalSpaceArray`, `_new_core`, `_coordinate_pointers` and related private helpers.
+- Vendored `pybind11`.
+
 ## [0.2.1] - 2026-06
 
 ### Added

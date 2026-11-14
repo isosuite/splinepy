@@ -38,10 +38,25 @@ target_include_directories(
          $<INSTALL_INTERFACE:include>)
 
 target_compile_features(splinepy_core_lib PUBLIC cxx_std_17)
-target_compile_options(splinepy_core_lib PRIVATE -fPIC -Wall -Wextra -Wpedantic)
+set_target_properties(splinepy_core_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(MSVC)
+  target_compile_options(splinepy_core_lib PRIVATE /W4)
+else()
+  target_compile_options(splinepy_core_lib PRIVATE -Wall -Wextra -Wpedantic)
+endif()
 
 # Modern alias
 add_library(splinepy::core ALIAS splinepy_core_lib)
+
+if(DEFINED TARGETS_EXPORT_NAME)
+    install(
+        TARGETS splinepy_core_lib
+        EXPORT "${TARGETS_EXPORT_NAME}"
+        LIBRARY DESTINATION ${lib_dest}
+        ARCHIVE DESTINATION ${lib_dest}
+        INCLUDES DESTINATION "${incl_dest}"
+    )
+endif()
 
 # Tests
 if(SPLINEPY_CORE_BUILD_TESTS)
@@ -54,5 +69,9 @@ option(SPLINEPY_CORE_BUILD_BENCHMARKS "Build splinepy core benchmarks" ON)
 if(SPLINEPY_CORE_BUILD_BENCHMARKS)
   add_executable(core_benchmarks benchmarks/benchmark_queries.cpp)
   target_link_libraries(core_benchmarks PRIVATE splinepy::core)
-  target_compile_options(core_benchmarks PRIVATE -Wall -Wextra -O3)
+  if(MSVC)
+    target_compile_options(core_benchmarks PRIVATE /W4)
+  else()
+    target_compile_options(core_benchmarks PRIVATE -Wall -Wextra)
+  endif()
 endif()

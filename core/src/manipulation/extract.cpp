@@ -241,7 +241,8 @@ SplineBatchData ExtractBezierPatches(const SplineView& spline,
       for (int32_t d = 0; d < spline.para_dim; ++d) {
         const int64_t j_d = local_rem % patch_cps_n[d];
         local_rem /= patch_cps_n[d];
-        const int64_t i_d = elem_idx[d] * spline.degrees[d] + j_d;
+        const int32_t step_d = (spline.degrees[d] == 0) ? 1 : spline.degrees[d];
+        const int64_t i_d = elem_idx[d] * step_d + j_d;
         global_cp_idx += i_d * decomp_strides[d];
       }
 

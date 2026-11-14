@@ -32,7 +32,11 @@ add_executable(
 
 target_link_libraries(core_tests PRIVATE splinepy::core GTest::gtest_main)
 
-target_compile_options(core_tests PRIVATE -Wall -Wextra -Wpedantic)
+if(MSVC)
+  target_compile_options(core_tests PRIVATE /W4)
+else()
+  target_compile_options(core_tests PRIVATE -Wall -Wextra -Wpedantic)
+endif()
 target_compile_definitions(
   core_tests
   PRIVATE
