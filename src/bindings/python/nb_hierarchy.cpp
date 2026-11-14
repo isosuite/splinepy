@@ -5,6 +5,7 @@
 
 #include <nanobind/stl/unique_ptr.h>
 
+#include "splinepy/core/hierarchy/coarsen.hpp"
 #include "splinepy/core/hierarchy/export.hpp"
 #include "splinepy/core/hierarchy/proximity.hpp"
 #include "splinepy/core/hierarchy/refine.hpp"
@@ -243,6 +244,40 @@ struct Cache {
                          admissible,
                          options);
     }
+    return Replacement(std::move(result));
+  }
+
+  nb::object Coarsen(nb::handle indices,
+                     int32_t admissible,
+                     bool exact,
+                     double tolerance,
+                     int64_t max_iterations,
+                     int threads) const {
+    const auto marked = Snapshot<std::size_t>(indices, "uintp");
+    if (marked.ndim() != 1) {
+      throw nb::value_error("marked leaves must be a 1D array");
+    }
+    Options options;
+    options.nthreads = threads;
+    std::optional<ThbRefinementData> result;
+    {
+      nb::gil_scoped_release release;
+      result = CoarsenThb(arrays.spline,
+                          extraction[0],
+                          {marked.data(), marked.size()},
+                          admissible,
+                          exact,
+                          tolerance,
+                          max_iterations,
+                          options);
+    }
+    if (!result) {
+      return nb::none();
+    }
+    return Replacement(std::move(*result));
+  }
+
+  nb::tuple Replacement(ThbRefinementData&& result) const {
     auto& hierarchy = result.hierarchy;
     nb::list levels;
     for (auto& level : hierarchy.level_knots) {
@@ -594,7 +629,8 @@ void init_nb_hierarchy(nb::module_& module) {
       .def("proximities", &Cache::Proximities)
       .def("is_admissible", &Cache::IsAdmissible)
       .def("admissible_closure", &Cache::Closure)
-      .def("refine", &Cache::Refine);
+      .def("refine", &Cache::Refine)
+      .def("coarsen", &Cache::Coarsen);
 }
 
 } // namespace splinepy::py

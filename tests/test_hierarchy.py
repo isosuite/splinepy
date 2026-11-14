@@ -721,6 +721,35 @@ def test_thb_coarsen_projects_and_preserves_parametric_integral():
     np.testing.assert_allclose(hierarchy.control_points, [[0.5], [0.5]], atol=1e-14)
 
 
+@pytest.mark.parametrize("method", ["l2", "exact"])
+def test_thb_coarsen_iteration_limit_can_be_retried(method):
+    hierarchy = splinepy.THBSpline([1], [[0, 0, 1, 1]], [[0], [1]])
+    hierarchy.refine([0])
+    leaves = hierarchy.leaves
+    controls = hierarchy.control_points
+    with pytest.raises(RuntimeError, match=r"after 1 iteration.*residual.*target"):
+        hierarchy.coarsen([0, 1], method=method, max_iterations=1)
+    assert hierarchy.leaves is leaves
+    assert hierarchy.control_points is controls
+    hierarchy.coarsen([0, 1], method=method, max_iterations=5000)
+    np.testing.assert_allclose(hierarchy.control_points, [[0], [1]], atol=1e-13)
+
+
+def test_rational_thb_coarsen_rejects_nonpositive_projected_weights_atomically():
+    hierarchy = splinepy.RationalTHBSpline.from_hierarchy(
+        [1], [[[0, 0, 1, 1]], [[0, 0, 0.5, 1, 1]]],
+        [[1, 0], [1, 1]], [[0], [1], [2]], weights=[1, 0.01, 0.01],
+    )
+    leaves = hierarchy.leaves
+    controls = hierarchy.control_points
+    weights = hierarchy.weights
+    with pytest.raises(ValueError, match="nonpositive rational weights"):
+        hierarchy.coarsen([0, 1])
+    assert hierarchy.leaves is leaves
+    assert hierarchy.control_points is controls
+    assert hierarchy.weights is weights
+
+
 def test_thb_coarsen_handles_unequal_nonuniform_sibling_counts():
     hierarchy = splinepy.THBSpline.from_hierarchy(
         [1],

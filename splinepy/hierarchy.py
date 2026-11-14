@@ -940,6 +940,7 @@ class THBSpline(HBSpline):
         method="l2",
         tolerance=1e-10,
         nthreads=None,
+        max_iterations=None,
     ):
         """Merge complete marked sibling groups in place and return this spline.
 
@@ -970,47 +971,38 @@ class THBSpline(HBSpline):
             Relative tolerance for accepting an exact transfer.
         nthreads : int, optional
             Number of worker threads.
+        max_iterations : int or None, optional
+            CG iteration limit per homogeneous component for both methods.
+            None or -1 uses max(100, 2 * number of target coefficients).
+            Exhausting the limit raises RuntimeError before updating the spline.
 
         Returns
         -------
         spline : THBSpline
             The updated hierarchy.
         """
-        from splinepy._coarsen import merge_siblings, transfer
-
         if method not in ("l2", "exact"):
             raise ValueError("method must be 'l2' or 'exact'")
         if not np.isfinite(tolerance) or tolerance <= 0:
             raise ValueError("tolerance must be finite and positive")
-        grade = None if admissible is None else self._admissibility_class(admissible)
+        max_iterations = -1 if max_iterations is None else index(max_iterations)
+        if max_iterations != -1 and max_iterations < 1:
+            raise ValueError("max_iterations must be positive, -1, or None")
+        grade = 0 if admissible is None else self._admissibility_class(admissible)
         state = self._state
         marked = self._marked_leaves(state, elements, level, box, where)
         if self._state is not state:
             raise RuntimeError("hierarchy changed while selecting leaves")
         if not marked.size:
             return self
-        data, cache = state
-        degrees, levels = data[:2]
-        cells = self._cells(degrees, levels, cache.extraction())
-        merged = merge_siblings(degrees, levels, cells, marked)
-        if merged is None:
-            return self
-        levels = levels[: int(merged[:, 0].max()) + 1]
-        active = self.active_keys(degrees, levels, merged)
-        target = THBSpline.from_hierarchy(
-            degrees, levels, merged, np.zeros((active.size, 1))
-        )
-        if grade is not None and not target.is_admissible(grade):
-            raise ValueError("coarsened hierarchy would violate admissibility")
-        points, weights = transfer(
-            cache, data, target, method, tolerance, _thread_count(nthreads)
-        )
-        replacement = type(self).from_hierarchy(
-            degrees, levels, merged, points, weights=weights
+        replacement = state[1].coarsen(
+            marked, grade, method == "exact", tolerance, max_iterations,
+            _thread_count(nthreads),
         )
         if self._state is not state:
             raise RuntimeError("hierarchy changed during coarsening")
-        self._state = replacement._state
+        if replacement is not None:
+            self._state = replacement
         return self
 
 
