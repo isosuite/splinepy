@@ -234,3 +234,48 @@ def test_add_fields():
     # Success
     geometry.add_fields([two_dim_field], field_dim=2)
     geometry.add_fields([geometry.patches], field_dim=3)
+
+
+def test_edit_patch_control_points_propagates_reversed_seam():
+    left = splinepy.Bezier([1, 1], [[0, 0], [1, 0], [0, 1], [1, 1]])
+    right = splinepy.Bezier([1, 1], [[1, 1], [2, 1], [1, 0], [2, 0]])
+    mp = splinepy.Multipatch([left, right])
+    interfaces = mp.interfaces
+    boundaries = mp.sub_multipatch
+
+    with mp.edit_patch_control_points(0) as points:
+        points[1] += [0.25, 0.125]
+
+    np.testing.assert_array_equal(right.cps[2], left.cps[1])
+    assert mp.interfaces is interfaces
+    assert mp.sub_multipatch is not boundaries
+
+    before = mp.control_points.copy()
+    with (
+        pytest.raises(ValueError, match="Conflicting edits"),
+        mp.edit_patches_control_points([0, 1]) as (a, b),
+    ):
+        a[1] += 1
+        b[2] -= 1
+    np.testing.assert_array_equal(mp.control_points, before)
+
+    with pytest.raises(RuntimeError, match="cancel"), mp.edit_patch_control_points(
+        0
+    ) as points:
+        points[1] += 1
+        raise RuntimeError("cancel")
+    np.testing.assert_array_equal(mp.control_points, before)
+
+
+def test_update_patch_cps_propagates_shared_corner():
+    patches = [
+        splinepy.Bezier([1, 1], np.array([[0, 0], [1, 0], [0, 1], [1, 1]]) + [x, y])
+        for y in range(2)
+        for x in range(2)
+    ]
+    mp = splinepy.Multipatch(patches)
+    points = patches[0].cps.copy()
+    points[3] = [1.25, 1.5]
+    mp.update_patch_control_points(0, points)
+    for patch, index in zip(patches, [3, 2, 1, 0], strict=True):
+        np.testing.assert_array_equal(patch.cps[index], points[3])

@@ -2,6 +2,8 @@
 Multipatch Spline Configuration
 """
 
+from contextlib import contextmanager as _contextmanager
+
 import numpy as _np
 
 from splinepy import settings as _settings
@@ -17,6 +19,9 @@ class Multipatch(_SplinepyBase):
     """
     System of patches to store information such as boundaries and
     interfaces
+
+    Edit attached control points through the multipatch edit methods. Direct
+    changes to attached patches bypass seam propagation and cache invalidation.
     """
 
     __slots__ = (
@@ -28,6 +33,7 @@ class Multipatch(_SplinepyBase):
         "_boundary_multipatch",
         "_boundary_patch_ids",
         "_sub_patch_centers",
+        "_control_point_seams",
         "n_default_threads",
         "same_parametric_bounds",
         "tolerance",
@@ -106,6 +112,7 @@ class Multipatch(_SplinepyBase):
         self._boundary_multipatch = None
         self._boundary_patch_ids = None
         self._sub_patch_centers = None
+        self._control_point_seams = None
 
     @property
     def name(self):
@@ -182,6 +189,8 @@ class Multipatch(_SplinepyBase):
     def interfaces(self, con):
         """Sets interfaces"""
         self._interfaces = _np.ascontiguousarray(con, dtype="int32")
+        self._interface_orientations = None
+        self._control_point_seams = None
         self._boundary_multipatch = None
         self._boundary_patch_ids = None
 
@@ -238,6 +247,7 @@ class Multipatch(_SplinepyBase):
         -------
         None
         """
+        self._control_point_seams = None
         self._interface_orientations = _np.ascontiguousarray(
             interface_orientations, dtype="int32"
         )
@@ -450,6 +460,168 @@ class Multipatch(_SplinepyBase):
             return _np.empty((0, 0))
         return _np.vstack([p.control_points for p in self._patches])
 
+    def _seam_control_points(self):
+        """Map each shared patch-local row to its entire interface group."""
+        if self._control_point_seams is not None:
+            return self._control_point_seams
+
+        dim = self.para_dim
+        face_count = 2 * dim
+        interfaces = self.interfaces.ravel()
+        expected = set()
+        for face, neighbor in enumerate(interfaces):
+            if neighbor < 0:
+                continue
+            if (
+                neighbor >= len(interfaces)
+                or neighbor == face
+                or interfaces[neighbor] != face
+            ):
+                raise ValueError("Interface connectivity must be reciprocal")
+            expected.add(tuple(sorted((face, neighbor))))
+
+        groups = {}
+        for row in self.interface_orientations():
+            a, fa, b, fb = map(int, row[:4])
+            axes = list(row[4 : 4 + dim])
+            directions = row[4 + dim :]
+            if sorted(axes) != list(range(dim)) or axes[fa // 2] != fb // 2:
+                raise ValueError("Interface has no valid axis correspondence")
+            pair = tuple(sorted((a * face_count + fa, b * face_count + fb)))
+            if pair not in expected:
+                raise ValueError("Interface orientation does not match connectivity")
+            expected.remove(pair)
+
+            patches = (self._patches[a], self._patches[b])
+            grids = []
+            for patch, face in zip(patches, (fa, fb), strict=True):
+                axis, side = divmod(face, 2)
+                if patch.has_knot_vectors:
+                    degree = patch.degrees[axis]
+                    knots = _np.asarray(patch.knot_vectors[axis])
+                    end = knots[: degree + 1] if not side else knots[-degree - 1 :]
+                    if not _np.all(end == end[0]):
+                        raise ValueError(
+                            "Control-point editing requires clamped interfaces"
+                        )
+                shape = tuple(patch.control_mesh_resolutions)
+                grid = _np.arange(len(patch.control_points)).reshape(shape, order="F")
+                grids.append(grid.take([0 if not side else -1], axis=axis))
+
+            left, right = grids
+            right = right.transpose(axes)
+            for axis, direction in enumerate(directions):
+                if not direction:
+                    right = _np.flip(right, axis)
+            pa, pb = patches
+            for axis, other in enumerate(axes):
+                if axis == fa // 2:
+                    continue
+                if pa.degrees[axis] != pb.degrees[other]:
+                    raise ValueError("Interface degrees do not match")
+                if pa.has_knot_vectors or pb.has_knot_vectors:
+                    ka = _np.asarray(
+                        pa.knot_vectors[axis]
+                        if pa.has_knot_vectors
+                        else _np.repeat([0.0, 1.0], pa.degrees[axis] + 1)
+                    )
+                    kb = _np.asarray(
+                        pb.knot_vectors[other]
+                        if pb.has_knot_vectors
+                        else _np.repeat([0.0, 1.0], pb.degrees[other] + 1)
+                    )
+                    ka = (ka - ka[0]) / (ka[-1] - ka[0])
+                    kb = (kb - kb[0]) / (kb[-1] - kb[0])
+                    if not directions[axis]:
+                        kb = 1 - kb[::-1]
+                    if ka.shape != kb.shape or not _np.allclose(
+                        ka, kb, rtol=0, atol=_settings.TOLERANCE
+                    ):
+                        raise ValueError("Interface knot vectors do not match")
+
+            left, right = left.ravel(), right.ravel()
+            if grids[0].shape != grids[1].transpose(axes).shape or not _np.allclose(
+                pa.control_points[left],
+                pb.control_points[right],
+                rtol=0,
+                atol=_settings.TOLERANCE,
+            ):
+                raise ValueError("Interface control points do not match")
+            wa = pa.weights[left].ravel() if pa.is_rational else _np.ones(len(left))
+            wb = pb.weights[right].ravel() if pb.is_rational else _np.ones(len(right))
+            if not _np.allclose(
+                wa / wa[0], wb / wb[0], rtol=0, atol=_settings.TOLERANCE
+            ):
+                raise ValueError("Interface weights do not match")
+            for ia, ib in zip(left, right, strict=True):
+                first, second = (a, ia), (b, ib)
+                group = groups.setdefault(first, {first})
+                other = groups.get(second, {second})
+                if group is not other:
+                    group.update(other)
+                    for member in other:
+                        groups[member] = group
+
+        if expected:
+            raise ValueError("Missing orientation for a connected face")
+        self._control_point_seams = groups
+        return groups
+
+    def _update_patch_cps(self, edits):
+        if not edits:
+            return
+        proposed = {}
+        seams = self._seam_control_points()
+        for patch_id, raw_values in edits.items():
+            original = self._patches[patch_id].control_points
+            values = _np.asarray(raw_values, dtype=float)
+            if values.shape != original.shape or not _np.isfinite(values).all():
+                raise ValueError(
+                    "Expected finite control points with the original shape"
+                )
+            for index in _np.flatnonzero(_np.any(values != original, axis=1)):
+                key = (patch_id, index)
+                for member in seams.get(key, (key,)):
+                    if member in proposed and not _np.array_equal(
+                        proposed[member], values[index]
+                    ):
+                        raise ValueError("Conflicting edits to a shared control point")
+                    proposed[member] = values[index]
+
+        updates = {}
+        for (patch_id, index), value in proposed.items():
+            if patch_id not in updates:
+                updates[patch_id] = _np.array(self._patches[patch_id].control_points)
+            updates[patch_id][index] = value
+        for patch_id, values in updates.items():
+            self._patches[patch_id].control_points[:] = values
+        if updates:
+            self._sub_patch_centers = None
+            self._sub_multipatch = None
+            self._invalidate_boundary_caches()
+
+    def update_patch_control_points(self, patch_id, control_points):
+        """Update coordinates in local order and propagate shared seam points."""
+        index = range(len(self._patches))[patch_id]
+        self._update_patch_cps({index: control_points})
+
+    @_contextmanager
+    def edit_patches_control_points(self, patch_ids):
+        """Yield working copies in patch order and commit together on clean exit."""
+        indices = range(len(self._patches))
+        ids = [indices[i] for i in patch_ids]
+        if len(set(ids)) != len(ids):
+            raise ValueError("Each patch may be edited only once per context")
+        edits = {i: _np.array(self._patches[i].control_points) for i in ids}
+        yield tuple(edits.values())
+        self._update_patch_cps(edits)
+
+    @_contextmanager
+    def edit_patch_control_points(self, patch_id):
+        """Yield a working copy of one patch's control points."""
+        with self.edit_patches_control_points([patch_id]) as (points,):
+            yield points
+
     def control_point_offsets(self):
         """
         Offsets of each patch's control points in `control_points`.
@@ -511,7 +683,7 @@ class Multipatch(_SplinepyBase):
 
         # Enforces computation only if recompute or non-available
         if recompute or self._interfaces is None:
-            self._interfaces = self._compute_interfaces()
+            self.interfaces = self._compute_interfaces()
         interfaces = self._interfaces
 
         self._logd("Successfully provided new interfaces using uff algorithm")
