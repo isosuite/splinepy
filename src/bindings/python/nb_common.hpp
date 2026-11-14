@@ -1,5 +1,7 @@
 #pragma once
 
+#include <nanobind/nanobind.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <limits>
@@ -10,7 +12,6 @@
 #include <type_traits>
 #include <vector>
 
-#include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
 #include <nanobind/stl/optional.h>
 #include <nanobind/stl/string.h>

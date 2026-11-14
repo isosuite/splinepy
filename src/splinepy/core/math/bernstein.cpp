@@ -113,7 +113,8 @@ double DeCasteljau1D(int32_t p,
     buf = heap_buf.data();
   }
 
-  for (int32_t i = 0; i <= p; ++i) {
+  buf[0] = control_points[0];
+  for (int32_t i = 1; i <= p; ++i) {
     buf[i] = control_points[static_cast<std::size_t>(i * stride)];
   }
 
@@ -147,7 +148,8 @@ void DeCasteljauSplit1D(int32_t p,
     buf = heap_buf.data();
   }
 
-  for (int32_t i = 0; i <= p; ++i) {
+  buf[0] = control_points[0];
+  for (int32_t i = 1; i <= p; ++i) {
     buf[i] = control_points[static_cast<std::size_t>(i * stride)];
   }
 

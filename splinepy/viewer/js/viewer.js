@@ -209,6 +209,56 @@ function button(text, css, onclick) {
   return b;
 }
 
+function layerCheckbox(name, checked) {
+  const label = document.createElement("label");
+  label.style.cssText = "display:block;cursor:pointer";
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.checked = checked;
+  label.append(input, " ", name);
+  return { label, input };
+}
+
+function appendLayerToggles(body, categories, draw) {
+  for (const [category, layers] of categories) {
+    if (layers.length === 1) {
+      body.appendChild(layers[0].label);
+      continue;
+    }
+    const group = layerCheckbox(`All ${category.replaceAll("_", " ")}`, false);
+    const details = document.createElement("details");
+    const summary = document.createElement("summary");
+    summary.style.cursor = "pointer";
+    group.label.style.display = "inline";
+    summary.appendChild(group.label);
+    const members = document.createElement("div");
+    members.style.paddingLeft = "1em";
+    details.append(summary, members);
+    body.appendChild(details);
+    const updateGroup = () => {
+      const visible = layers.filter(({ obj }) => obj.visible).length;
+      group.input.checked = visible === layers.length;
+      group.input.indeterminate = visible > 0 && visible < layers.length;
+    };
+    group.input.onchange = () => {
+      for (const { input, obj } of layers) {
+        input.checked = obj.visible = group.input.checked;
+      }
+      updateGroup();
+      draw();
+    };
+    for (const { label, input, obj } of layers) {
+      input.onchange = () => {
+        obj.visible = input.checked;
+        updateGroup();
+        draw();
+      };
+      members.appendChild(label);
+    }
+    updateGroup();
+  }
+}
+
 async function renderGrid(el, scene) {
   const { ncols, link, titles } = scene.options;
   const n = scene.panels.length;
@@ -412,6 +462,7 @@ export async function renderScene(el, scene) {
     head.onclick = () => { layersOpen = !layersOpen; body.style.display = layersOpen ? "" : "none"; paintHead(); };
     paintHead();
     toggles.append(head, body);
+    const categories = new Map();
     let cbar = null;
 
     for (const layer of sc.layers) {
@@ -446,12 +497,13 @@ export async function renderScene(el, scene) {
       if (!obj) continue;
       if (layer.visible === false) obj.visible = false;
       three.add(obj); content.push(obj);
-      const label = document.createElement("label");
-      label.style.cssText = "display:block;cursor:pointer";
-      label.innerHTML = `<input type="checkbox" ${obj.visible ? "checked" : ""}> ${layer.name}`;
-      label.firstChild.onchange = (e) => { obj.visible = e.target.checked; draw(); };
-      body.appendChild(label);
+      const checkbox = layerCheckbox(layer.name, obj.visible);
+      checkbox.input.onchange = () => { obj.visible = checkbox.input.checked; draw(); };
+      const category = layer.category ?? layer.name;
+      if (!categories.has(category)) categories.set(category, []);
+      categories.get(category).push({ ...checkbox, obj });
     }
+    appendLayerToggles(body, categories, draw);
     if (cbar) { el.appendChild(cbar); content.push(cbar); }
     if (sc.layers.length > 1) { el.appendChild(toggles); content.push(toggles); }
     gizmo = opt.axes ? axesGizmo(renderer, camera, controls.target) : null;

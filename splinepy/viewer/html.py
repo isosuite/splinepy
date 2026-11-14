@@ -2,6 +2,7 @@
 
 import html as _html
 import pathlib as _pathlib
+from contextlib import contextmanager as _contextmanager
 
 from splinepy.viewer import scene as _scene
 
@@ -210,7 +211,7 @@ class Viewer:
 
     def _page(self, width, height, scale=1):
         """Context manager yielding a headless playwright page of the scene."""
-        return _HeadlessPage(self.to_html(), width, height, scale)
+        return _headless_page(self.to_html(), width, height, scale)
 
     def screenshot(self, path, width=800, height=600, camera=None, ui=False, scale=1):
         """Renders a PNG headlessly (needs ``pip install playwright``).
@@ -282,31 +283,27 @@ class Viewer:
         )
 
 
-class _HeadlessPage:
-    def __init__(self, html, width, height, scale):
-        self.html, self.size, self.scale = html, (width, height), scale
-
-    def __enter__(self):
-        try:
-            from playwright.sync_api import sync_playwright
-        except ImportError as e:
-            raise ImportError(
-                "Headless rendering needs playwright: pip install playwright"
-                " && playwright install chromium"
-            ) from e
-        self._pw = sync_playwright().start()
-        self._browser = self._pw.chromium.launch(
+@_contextmanager
+def _headless_page(html, width, height, scale):
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as e:
+        raise ImportError(
+            "Headless rendering needs playwright: pip install playwright"
+            " && playwright install chromium"
+        ) from e
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(
             args=["--use-angle=swiftshader", "--enable-unsafe-swiftshader"]
         )
-        page = self._browser.new_page(
-            viewport={"width": self.size[0], "height": self.size[1]},
-            device_scale_factor=self.scale,
-        )
-        page.set_content(self.html)
-        page.wait_for_function("window.viewer !== undefined")
-        page.evaluate("viewer.ready()")
-        return page
-
-    def __exit__(self, *exc):
-        self._browser.close()
-        self._pw.stop()
+        try:
+            page = browser.new_page(
+                viewport={"width": width, "height": height},
+                device_scale_factor=scale,
+            )
+            page.set_content(html)
+            page.wait_for_function("window.viewer !== undefined")
+            page.evaluate("viewer.ready()")
+            yield page
+        finally:
+            browser.close()
