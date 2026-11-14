@@ -1,13 +1,12 @@
 from functools import wraps as _wraps
 
 import numpy as _np
-from splinepy.utils.data import _enforce_len
 
 from splinepy import settings as _settings
 from splinepy import splinepy_core as _splinepy_core
 from splinepy.helpme import visualize as _visualize
-
 from splinepy.utils import log as _log
+from splinepy.utils.data import _enforce_len
 from splinepy.utils.data import cartesian_product as _cartesian_product
 
 
@@ -480,7 +479,8 @@ def spline(spline, para_dim, split_plane):
     # Snap near-knot requests before counting exact multiplicities.
     coordinates = []
     missing = []
-    for coordinate in split_plane:
+    for raw_coordinate in split_plane:
+        coordinate = raw_coordinate
         nearest = knots[_np.argmin(abs(knots - coordinate))]
         if abs(nearest - coordinate) <= _settings.TOLERANCE:
             coordinate = nearest
@@ -814,7 +814,7 @@ class HierarchyExtractor:
                 control_points=points_on_leaf.copy(),
                 weights=weights_on_leaf.copy(),
             )
-            for points_on_leaf, weights_on_leaf in zip(points, weights)
+            for points_on_leaf, weights_on_leaf in zip(points, weights, strict=False)
         ]
 
     def multipatch(self, nthreads=None):

@@ -1401,7 +1401,7 @@ def converted(spline, target=None, *, nthreads=None):
     elements. Hierarchical inputs use leaf elements. Each element has its
     own local parameter domain.
     """
-    from splinepy import BSpline, Multipatch, NURBS
+    from splinepy import NURBS, BSpline, Multipatch
     from splinepy.hierarchy import HBSpline
 
     if target is None:

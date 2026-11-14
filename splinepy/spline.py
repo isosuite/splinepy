@@ -13,12 +13,12 @@ from splinepy import settings as _settings
 from splinepy import splinepy_core as _core
 from splinepy import utils as _utils
 from splinepy._base import SplinepyBase as _SplinepyBase
-from splinepy.knot_vector import KnotVector as _KnotVector
 from splinepy.helpme import visualize as _visualize
 from splinepy.helpme.check import Checker as _Checker
 from splinepy.helpme.create import Creator as _Creator
 from splinepy.helpme.extract import Extractor as _Extractor
 from splinepy.helpme.integrate import Integrator as _Integrator
+from splinepy.knot_vector import KnotVector as _KnotVector
 from splinepy.utils.data import SplineData as _SplineData
 from splinepy.utils.data import cartesian_product as _cartesian_product
 
@@ -37,9 +37,7 @@ class RequiredProperties(_SplinepyBase):
     }
 
     # union of all req props. nice for check support
-    __union_all = {
-        rp for rps in __required_spline_properties.values() for rp in rps
-    }
+    __union_all = {rp for rps in __required_spline_properties.values() for rp in rps}
 
     # intersection of all req props. nice for checking minimal support
     __intersection_all = __union_all.intersection(
@@ -220,7 +218,6 @@ def _knot_vector_arrays(knot_vectors):
     ]
 
 
-
 def _spline_from_native(properties):
     """Construct a spline from NumPy arrays that own native result buffers."""
     name = (
@@ -250,8 +247,14 @@ def _proximity_resolutions(spline, resolutions):
 
 
 def _run_proximity(
-    handle, queries, tolerance, max_iterations,
-    tight_search_bounds, nthreads, return_verbose, out=None,
+    handle,
+    queries,
+    tolerance,
+    max_iterations,
+    tight_search_bounds,
+    nthreads,
+    return_verbose,
+    out=None,
 ):
     if tolerance is None:
         tolerance = min(_settings.TOLERANCE, 1e-14)
@@ -263,12 +266,19 @@ def _run_proximity(
     if return_verbose:
         if out is None:
             shapes = (
-                (n, pd), (n, dim), (n, dim), (n, 1), (n, 1),
-                (n, pd, dim), (n, pd, pd, dim),
+                (n, pd),
+                (n, dim),
+                (n, dim),
+                (n, 1),
+                (n, 1),
+                (n, pd, dim),
+                (n, pd, pd, dim),
             )
             out = tuple(_np.empty(shape) for shape in shapes)
-        elif not isinstance(out, tuple) or len(out) != 7 or any(
-            array is None for array in out
+        elif (
+            not isinstance(out, tuple)
+            or len(out) != 7
+            or any(array is None for array in out)
         ):
             raise ValueError("Verbose out must be a tuple of seven arrays.")
         outputs = out
@@ -301,18 +311,32 @@ class _PreparedProximity:
 
     def __init__(self, spline, resolutions, guess, nthreads):
         self._handle = _core.ProximityHandle(
-            spline, _proximity_resolutions(spline, resolutions),
-            guess=guess, nthreads=nthreads,
+            spline,
+            _proximity_resolutions(spline, resolutions),
+            guess=guess,
+            nthreads=nthreads,
         )
 
     def query(
-        self, queries, tolerance=None, max_iterations=-1,
-        tight_search_bounds=False, nthreads=None, return_verbose=False, out=None,
+        self,
+        queries,
+        tolerance=None,
+        max_iterations=-1,
+        tight_search_bounds=False,
+        nthreads=None,
+        return_verbose=False,
+        out=None,
     ):
         """Query the snapshot. Arguments and results match spline.proximities."""
         return _run_proximity(
-            self._handle, queries, tolerance, max_iterations,
-            tight_search_bounds, nthreads, return_verbose, out,
+            self._handle,
+            queries,
+            tolerance,
+            max_iterations,
+            tight_search_bounds,
+            nthreads,
+            return_verbose,
+            out,
         )
 
 
@@ -405,13 +429,16 @@ class Spline(_SplinepyBase):
             ("weights", "control_points"),
             ("knot_vectors", "degrees"),
         ):
-            if first in properties and second in properties:
-                if len(properties[first]) != len(properties[second]):
-                    second_name = "self.degrees" if second == "degrees" else second
-                    raise ValueError(
-                        f"len({first}) ({len(properties[first])}) should "
-                        f"match len({second_name}) ({len(properties[second])})."
-                    )
+            if (
+                first in properties
+                and second in properties
+                and len(properties[first]) != len(properties[second])
+            ):
+                second_name = "self.degrees" if second == "degrees" else second
+                raise ValueError(
+                    f"len({first}) ({len(properties[first])}) should "
+                    f"match len({second_name}) ({len(properties[second])})."
+                )
         if all(key in properties for key in self.required_properties):
             _core.validate_spline_properties(**properties)
 
@@ -432,9 +459,7 @@ class Spline(_SplinepyBase):
         if value is self._data.get(key):
             return
         properties = {
-            name: self._data[name]
-            for name in _PROPERTY_KEYS
-            if name in self._data
+            name: self._data[name] for name in _PROPERTY_KEYS if name in self._data
         }
         properties[key] = self._normalize_property(key, value)
         self._validate_properties(properties)
@@ -763,17 +788,14 @@ class Spline(_SplinepyBase):
         unique_knots: list
         """
         if not self.has_knot_vectors:
-            self._logd(
-                "Returning parametric_bounds as "
-                "Bezier spline's unique knots."
-            )
+            self._logd("Returning parametric_bounds as Bezier spline's unique knots.")
             return list(self.parametric_bounds.T)
 
         else:
             self._logd("Retrieving unique knots")
             return [
                 kv[d : len(kv) - d].unique()
-                for kv, d in zip(self.knot_vectors, self.degrees)
+                for kv, d in zip(self.knot_vectors, self.degrees, strict=False)
             ]
 
     @property
@@ -791,9 +813,7 @@ class Spline(_SplinepyBase):
         knot_multiplicities: list<np.array>
         """
         if "Bezier" in self.name:
-            self._logd(
-                "Returning multiplicities of knots if Bezier was BSpline"
-            )
+            self._logd("Returning multiplicities of knots if Bezier was BSpline")
             return [_np.array([d + 1, d + 1]) for d in self.degrees]
 
         else:
@@ -814,16 +834,14 @@ class Spline(_SplinepyBase):
         parametric_bounds: (2, para_dim) np.ndarray
         """
         if not self.has_knot_vectors:
-            return _np.vstack(
-                (_np.zeros(self.para_dim), _np.ones(self.para_dim))
-            )
+            return _np.vstack((_np.zeros(self.para_dim), _np.ones(self.para_dim)))
 
         kvs = self._data["knot_vectors"]
         degrees = self._data["degrees"]
         return _np.array(
             [
-                [kv[d] for kv, d in zip(kvs, degrees)],
-                [kv[-d - 1] for kv, d in zip(kvs, degrees)],
+                [kv[d] for kv, d in zip(kvs, degrees, strict=False)],
+                [kv[-d - 1] for kv, d in zip(kvs, degrees, strict=False)],
             ],
             dtype="float64",
         )
@@ -893,7 +911,7 @@ class Spline(_SplinepyBase):
             return _np.array(
                 [
                     len(kv) - d - 1
-                    for kv, d in zip(self._data["knot_vectors"], degrees)
+                    for kv, d in zip(self._data["knot_vectors"], degrees, strict=False)
                 ],
                 dtype="int32",
             )
@@ -1163,8 +1181,8 @@ class Spline(_SplinepyBase):
         queries: (n, para_dim) array-like
         n_threads: int
         out: optional
-          Preallocated, C-contiguous result array (a tuple of two arrays (basis float64, support int32) of the shape of
-          the result), filled in place and returned, like numpy's ``out``.
+          Preallocated, C-contiguous tuple of two result arrays (float64 basis
+          and int32 support), filled in place and returned like numpy's ``out``.
           A fresh array is created if it is not given.
 
         Returns
@@ -1223,8 +1241,8 @@ class Spline(_SplinepyBase):
         orders: (para_dim,) or (m, para_dim) array-like
         nthreads: int
         out: optional
-          Preallocated, C-contiguous result array (a tuple of two arrays (basis float64, support int32) of the shape of
-          the result), filled in place and returned, like numpy's ``out``.
+          Preallocated, C-contiguous tuple of two result arrays (float64 basis
+          and int32 support), filled in place and returned like numpy's ``out``.
           A fresh array is created if it is not given.
 
         Returns
@@ -1301,7 +1319,8 @@ class Spline(_SplinepyBase):
         """
         return _run_proximity(
             _core.ProximityHandle(
-                self, _proximity_resolutions(self, initial_guess_sample_resolutions),
+                self,
+                _proximity_resolutions(self, initial_guess_sample_resolutions),
                 nthreads=_default_if_none(nthreads, _settings.NTHREADS),
             ),
             queries,
@@ -1325,7 +1344,9 @@ class Spline(_SplinepyBase):
         if guess not in ("bvh", "grid"):
             raise ValueError("Initial guess must be 'bvh' or 'grid'")
         return _PreparedProximity(
-            self, initial_guess_sample_resolutions, guess,
+            self,
+            initial_guess_sample_resolutions,
+            guess,
             _default_if_none(nthreads, _settings.NTHREADS),
         )
 
@@ -1345,9 +1366,7 @@ class Spline(_SplinepyBase):
             self.check.clamped_knot_vectors(warning=True)
 
         _core.elevate_degrees(self, para_dims=parametric_dimensions)
-        self._logd(
-            f"Elevated {parametric_dimensions}.-dim. " "degree of the spline."
-        )
+        self._logd(f"Elevated {parametric_dimensions}.-dim. degree of the spline.")
 
     def reduce_degrees(self, parametric_dimensions, tolerance=None):
         """
@@ -1376,8 +1395,7 @@ class Spline(_SplinepyBase):
             return "reduced" if r else "failed"
 
         self._logd(
-            f"Tried to reduce degrees for {parametric_dimensions}.-dims. "
-            "Results: ",
+            f"Tried to reduce degrees for {parametric_dimensions}.-dims. Results: ",
             f"{[meaningful(r) for r in reduced]}.",
         )
 

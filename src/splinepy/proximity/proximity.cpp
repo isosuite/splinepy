@@ -29,13 +29,13 @@ SOFTWARE.
 #include <memory>
 #include <numeric>
 
-#include "splinepy/proximity/proximity.hpp"
-#include "splinepy/proximity/slsqp/slsqp.h"
-#include "splinepy/core/queries/evaluate.hpp"
-#include "splinepy/core/queries/derivative.hpp"
 #include "splinepy/core/memory/workspace.hpp"
 #include "splinepy/core/multipatch/interfaces.hpp"
+#include "splinepy/core/queries/derivative.hpp"
+#include "splinepy/core/queries/evaluate.hpp"
 #include "splinepy/core/validate/validator.hpp"
+#include "splinepy/proximity/proximity.hpp"
+#include "splinepy/proximity/slsqp/slsqp.h"
 #include "splinepy/utils/nthreads.hpp"
 #include "splinepy/utils/print.hpp"
 
@@ -132,13 +132,15 @@ struct SearchData {
 
     /// @brief space
     Span<double> w_space;
-    Span<int> jw_space; // int array
-    Span<double> g_space;   // n + 1 array
+    Span<int> jw_space;   // int array
+    Span<double> g_space; // n + 1 array
 
     /// @brief proximity specific setup for SLSQP
     void Setup(SearchData& data);
 
-    void CopyDerivative(Span<const double> der) { std::copy_n(der.data(), n, g); }
+    void CopyDerivative(Span<const double> der) {
+      std::copy_n(der.data(), n, g);
+    }
   } SLSQP;
 
   /// @brief Levenberg-Marquart specific search data
@@ -200,8 +202,8 @@ using detail::ConvergenceGoal;
 using detail::SearchData;
 
 static void FillHessian(splinepy::core::SplineView spline,
-                 Span<const double> at,
-                 Span<double> hess);
+                        Span<const double> at,
+                        Span<double> hess);
 
 namespace {
 
@@ -210,14 +212,15 @@ using splinepy::core::Span;
 
 // Grow only as candidates are found. Previous blocks remain valid until
 // the enclosing query scope rewinds the arena.
-template <typename T>
+template<typename T>
 class ArenaCandidates {
- public:
+public:
   explicit ArenaCandidates(MemoryArena& arena) : arena_(arena) {}
 
   void Push(const T& value) {
     if (size_ == storage_.size()) {
-      auto next = arena_.AllocateSpan<T>(storage_.empty() ? 16 : 2 * storage_.size());
+      auto next =
+          arena_.AllocateSpan<T>(storage_.empty() ? 16 : 2 * storage_.size());
       if (size_ != 0) {
         std::uninitialized_copy_n(storage_.data(), size_, next.data());
       }
@@ -231,7 +234,7 @@ class ArenaCandidates {
     return size_ == 0 ? Span<T>() : storage_.subspan(0, size_);
   }
 
- private:
+private:
   static_assert(std::is_trivially_copyable_v<T>);
   MemoryArena& arena_;
   Span<T> storage_;
@@ -245,9 +248,7 @@ splinepy::core::Workspace& QueryWorkspace() {
   return workspace;
 }
 
-MemoryArena& QueryArena() {
-  return QueryWorkspace().GetThreadArena(0);
-}
+MemoryArena& QueryArena() { return QueryWorkspace().GetThreadArena(0); }
 
 /// Splines are validated once, when planting. Not in the hot loops. Hands the
 /// thread's workspace to the kernels, so that they don't set up their own for
@@ -339,15 +340,17 @@ void ComputeGramMatrix(SearchData& data) {
   }
 }
 
-bool SolvePivoted(Span<double> matrix, Span<double> rhs,
-                  Span<double> solution, Span<int> rows) {
+bool SolvePivoted(Span<double> matrix,
+                  Span<double> rhs,
+                  Span<double> solution,
+                  Span<int> rows) {
   const int n = static_cast<int>(rows.size());
   std::iota(rows.begin(), rows.end(), 0);
   for (int i{}; i < n; ++i) {
     int pivot = i;
     for (int j{i + 1}; j < n; ++j) {
-      if (std::abs(matrix[rows[j] * n + i]) >
-          std::abs(matrix[rows[pivot] * n + i])) {
+      if (std::abs(matrix[rows[j] * n + i])
+          > std::abs(matrix[rows[pivot] * n + i])) {
         pivot = j;
       }
     }
@@ -380,7 +383,6 @@ bool SolvePivoted(Span<double> matrix, Span<double> rhs,
   }
   return true;
 }
-
 
 /// y = M x for row major n x n
 void MatVec(Span<const double> m,
@@ -580,7 +582,8 @@ void SearchData::Setup(const int para_dim_,
   status.convergence_norm = -1.0;
 
   const auto output = [&](double* pointer, std::size_t size) {
-    return pointer ? Span<double>(pointer, size) : arena->AllocateSpan<double>(size);
+    return pointer ? Span<double>(pointer, size)
+                   : arena->AllocateSpan<double>(size);
   };
   phys_query = Span<const double>(query, dim);
   current_guess = output(final_guess, para_dim);
@@ -607,9 +610,12 @@ void Proximity::GuessMinusQuery(Span<const double> guess,
       spline_,
       splinepy::core::Span<const double>(guess.data(), spline_.para_dim),
       splinepy::core::Span<double>(difference.data(), spline_.dim),
-          QueryOptions());
-  std::transform(difference.begin(), difference.end(), query.begin(),
-                 difference.begin(), std::minus<>{});
+      QueryOptions());
+  std::transform(difference.begin(),
+                 difference.end(),
+                 query.begin(),
+                 difference.begin(),
+                 std::minus<>{});
 }
 
 void Proximity::GuessMinusQuery(Span<const double> guess,
@@ -620,9 +626,12 @@ void Proximity::GuessMinusQuery(Span<const double> guess,
       spline_,
       splinepy::core::Span<const double>(guess.data(), spline_.para_dim),
       splinepy::core::Span<double>(guess_phys.data(), spline_.dim),
-          QueryOptions());
-  std::transform(guess_phys.begin(), guess_phys.end(), query.begin(),
-                 difference.begin(), std::minus<>{});
+      QueryOptions());
+  std::transform(guess_phys.begin(),
+                 guess_phys.end(),
+                 query.begin(),
+                 difference.begin(),
+                 std::minus<>{});
 }
 
 void Proximity::MakeInitialGuess(Span<const double> goal,
@@ -636,7 +645,9 @@ void Proximity::MakeInitialGuess(Span<const double> goal,
 
 void Proximity::MakeInitialGuess(SearchData& data) const {
   MakeInitialGuess(data.phys_query, data.initial_guess);
-  std::copy(data.initial_guess.begin(), data.initial_guess.end(), data.current_guess.begin());
+  std::copy(data.initial_guess.begin(),
+            data.initial_guess.end(),
+            data.current_guess.begin());
 }
 
 void Proximity::UpdateAndClip(SearchData& data) const {
@@ -678,7 +689,7 @@ void Proximity::dJdu(Span<const double> guess,
         splinepy::core::Span<const double>(guess.data(), para_dim),
         splinepy::core::Span<const int32_t>(derivative_query.data(), para_dim),
         splinepy::core::Span<double>(gradient_row_view.data(), dim),
-          QueryOptions());
+        QueryOptions());
 
     // note that there's no negative here, thus not rhs yet
     djdu[i] = Dot(difference, gradient_row_view);
@@ -707,7 +718,8 @@ void Proximity::d2Jdu2(Span<const double> guess,
     ++derivative_query[j];
 
     // adjust view on hessian array
-    const auto derivative = spline_hessian.subspan((i * para_dim + j) * dim, dim);
+    const auto derivative =
+        spline_hessian.subspan((i * para_dim + j) * dim, dim);
 
     // compute
     splinepy::core::Derivative(
@@ -715,7 +727,7 @@ void Proximity::d2Jdu2(Span<const double> guess,
         splinepy::core::Span<const double>(guess.data(), para_dim),
         splinepy::core::Span<const int32_t>(derivative_query.data(), para_dim),
         splinepy::core::Span<double>(derivative.data(), dim),
-          QueryOptions());
+        QueryOptions());
 
     // fill lhs_ij
     d2jdu2[i * para_dim + j] =
@@ -930,7 +942,9 @@ void Proximity::Dogleg(SearchData& d) const {
         DoglegStep(arena, gs, hs, bs, m, radius, step_scaled);
 
     // apply projected step
-    std::copy(d.current_guess.begin(), d.current_guess.end(), previous_guess.begin());
+    std::copy(d.current_guess.begin(),
+              d.current_guess.end(),
+              previous_guess.begin());
     const double previous_J = d.status.J;
     std::fill(d.delta_guess.begin(), d.delta_guess.end(), 0.0);
     for (int i{}; i < m; ++i) {
@@ -941,8 +955,8 @@ void Proximity::Dogleg(SearchData& d) const {
     // the step that was actually taken, scaled
     double taken_norm{};
     for (int i{}; i < m; ++i) {
-      step[i] = (d.current_guess[free[i]] - previous_guess[free[i]])
-                / range[free[i]];
+      step[i] =
+          (d.current_guess[free[i]] - previous_guess[free[i]]) / range[free[i]];
       taken_norm += step[i] * step[i];
     }
     taken_norm = std::sqrt(taken_norm);
@@ -967,7 +981,9 @@ void Proximity::Dogleg(SearchData& d) const {
       ComputeStatus(d, false);
       stale = false;
     } else {
-      std::copy(previous_guess.begin(), previous_guess.end(), d.current_guess.begin());
+      std::copy(previous_guess.begin(),
+                previous_guess.end(),
+                d.current_guess.begin());
       d.status.J = previous_J;
       stale = true;
     }
@@ -988,7 +1004,8 @@ void Proximity::FindSearchBound(SearchData& data, const bool tight) const {
   }
 
   // you need to be sure that you have sampled your spline fine enough
-  const double* step_size = initial_guess_ ? initial_guess_->StepSize() : nullptr;
+  const double* step_size =
+      initial_guess_ ? initial_guess_->StepSize() : nullptr;
   if (step_size == nullptr) {
     return;
   }
@@ -996,11 +1013,9 @@ void Proximity::FindSearchBound(SearchData& data, const bool tight) const {
     // adjust lower (0) and upper (1) bounds aggressively
     // but of course, not so aggressive that it is out of bound.
     data.lower_bound[i] =
-        std::max(data.lower_bound[i],
-                 data.current_guess[i] - step_size[i]);
+        std::max(data.lower_bound[i], data.current_guess[i] - step_size[i]);
     data.upper_bound[i] =
-        std::min(data.upper_bound[i],
-                 data.current_guess[i] + step_size[i]);
+        std::min(data.upper_bound[i], data.current_guess[i] + step_size[i]);
   }
 }
 
@@ -1121,14 +1136,18 @@ void Proximity::LevenbergMarquart(SearchData& data) const {
     }
 
     // update the save original_guess before updating
-    std::copy(data.current_guess.begin(), data.current_guess.end(), data.LM.prev_guess.begin());
+    std::copy(data.current_guess.begin(),
+              data.current_guess.end(),
+              data.LM.prev_guess.begin());
     UpdateAndClip(data);
 
     // get actual delta guess, in case it is clipped
-    if (std::any_of(data.clipped.begin(), data.clipped.end(),
-                    [](int clipped) { return clipped != 0; })) {
+    if (std::any_of(data.clipped.begin(), data.clipped.end(), [](int clipped) {
+          return clipped != 0;
+        })) {
       for (int axis{}; axis < data.para_dim; ++axis) {
-        data.delta_guess[axis] = data.LM.prev_guess[axis] - data.current_guess[axis];
+        data.delta_guess[axis] =
+            data.LM.prev_guess[axis] - data.current_guess[axis];
       }
     }
 
@@ -1137,8 +1156,8 @@ void Proximity::LevenbergMarquart(SearchData& data) const {
     for (int coordinate{}; coordinate < data.dim; ++coordinate) {
       metric[coordinate] = 0.0;
       for (int axis{}; axis < data.para_dim; ++axis) {
-        metric[coordinate] +=
-            data.spline_gradient[axis * data.dim + coordinate] * data.delta_guess[axis];
+        metric[coordinate] += data.spline_gradient[axis * data.dim + coordinate]
+                              * data.delta_guess[axis];
       }
     }
     const double metric2 = Dot(metric, data.difference);
@@ -1171,7 +1190,9 @@ void Proximity::LevenbergMarquart(SearchData& data) const {
         }
 
         // we continue -> set current_guess back to previous guess
-        std::copy(data.LM.prev_guess.begin(), data.LM.prev_guess.end(), data.current_guess.begin());
+        std::copy(data.LM.prev_guess.begin(),
+                  data.LM.prev_guess.end(),
+                  data.current_guess.begin());
         PrepareIterationLevenbergMarquart(data);
         ComputeStatus(data, false);
         continue;
@@ -1319,16 +1340,22 @@ void Proximity::SolveFrom(
 
   // initial guess and set it as current guess
   std::copy_n(start, para_dim, data.initial_guess.data());
-  std::copy(data.initial_guess.begin(), data.initial_guess.end(), data.current_guess.begin());
+  std::copy(data.initial_guess.begin(),
+            data.initial_guess.end(),
+            data.current_guess.begin());
 
   // we want to keep the best result
   ComputeCostAndDerivatives(data, 0); // computes J
   double best_J = data.status.J;
   auto best_guess = arena.AllocateSpan<double>(para_dim);
-  std::copy(data.initial_guess.begin(), data.initial_guess.end(), best_guess.begin());
+  std::copy(data.initial_guess.begin(),
+            data.initial_guess.end(),
+            best_guess.begin());
   auto keep_best = [&best_J, &best_guess, &data]() {
     if (data.status.J < best_J) {
-      std::copy(data.current_guess.begin(), data.current_guess.end(), best_guess.begin());
+      std::copy(data.current_guess.begin(),
+                data.current_guess.end(),
+                best_guess.begin());
       best_J = data.status.J;
     }
   };
@@ -1482,8 +1509,8 @@ std::vector<Proximity::Start> Proximity::BvhStarts(const double* query) const {
   return result;
 }
 
-Span<Proximity::StartView> Proximity::CollectBvhStarts(
-    const double* query, MemoryArena& arena) const {
+Span<Proximity::StartView>
+Proximity::CollectBvhStarts(const double* query, MemoryArena& arena) const {
   if (!bvh_) {
     return {};
   }
@@ -1506,8 +1533,8 @@ Span<Proximity::StartView> Proximity::CollectBvhStarts(
   }
   Span<double> distance_squared = arena.AllocateSpan<double>(n_samples);
   const bool cached = !bvh_sample_points_.empty();
-  Span<double> points = cached ? Span<double>()
-                               : arena.AllocateSpan<double>(n_samples * dim);
+  Span<double> points =
+      cached ? Span<double>() : arena.AllocateSpan<double>(n_samples * dim);
 
   auto next_index = [&](Span<int> idx) {
     int d{};
@@ -1581,7 +1608,7 @@ Span<Proximity::StartView> Proximity::CollectBvhStarts(
               double gap{};
               for (int c{}; c < dim; ++c) {
                 const double dx = element_points[nb * dim + c]
-                                - element_points[flat * dim + c];
+                                  - element_points[flat * dim + c];
                 gap += dx * dx;
               }
               spacing = std::max(spacing, std::sqrt(gap));
@@ -1593,8 +1620,7 @@ Span<Proximity::StartView> Proximity::CollectBvhStarts(
             start.distance_squared = d2;
             // the closest point of the basin is at most half a sampling
             // step closer than the sample
-            const double reach =
-                std::max(std::sqrt(d2) - .5 * spacing, 0.0);
+            const double reach = std::max(std::sqrt(d2) - .5 * spacing, 0.0);
             start.lower_bound_squared =
                 std::max(lower_bound_squared, reach * reach);
             if (step.empty()) {
@@ -1617,11 +1643,13 @@ Span<Proximity::StartView> Proximity::CollectBvhStarts(
 
         return best_squared;
       },
-      arena, max_bvh_visits_);
+      arena,
+      max_bvh_visits_);
 
   const auto candidates = starts.Values();
   if (!candidates.empty()) {
-    std::sort(candidates.begin(), candidates.end(),
+    std::sort(candidates.begin(),
+              candidates.end(),
               [](const StartView& a, const StartView& b) {
                 return a.distance_squared < b.distance_squared;
               });
@@ -1634,7 +1662,9 @@ namespace {
 /// True if the rows of the jacobian (one derivative vector per parametric
 /// axis) are close to linearly dependent. Hadamard ratio of the gram matrix:
 /// det(G) / prod(G_ii) is 1 for orthogonal and 0 for dependent rows.
-bool IsRankDeficient(const double* jacobian, const int para_dim, const int dim) {
+bool IsRankDeficient(const double* jacobian,
+                     const int para_dim,
+                     const int dim) {
   if (para_dim > 3) {
     return false;
   }
@@ -1705,9 +1735,18 @@ void Proximity::VerboseQuery(
     // single start from the kd-tree
     auto guess = arena.AllocateSpan<double>(para_dim);
     MakeInitialGuess({query, static_cast<std::size_t>(dim)}, guess);
-    SolveFrom(query, tolerance, max_iterations, tight_bounds, guess.data(),
-              final_guess, nearest, nearest_minus_query, distance,
-              convergence_norm, first_derivatives, second_derivatives);
+    SolveFrom(query,
+              tolerance,
+              max_iterations,
+              tight_bounds,
+              guess.data(),
+              final_guess,
+              nearest,
+              nearest_minus_query,
+              distance,
+              convergence_norm,
+              first_derivatives,
+              second_derivatives);
     return;
   }
 
@@ -1716,14 +1755,24 @@ void Proximity::VerboseQuery(
     splinepy::utils::PrintAndThrowError("bvh did not find any element");
   }
 
-  SolveFrom(query, tolerance, max_iterations, tight_bounds,
-            starts[0].guess.data(), final_guess, nearest, nearest_minus_query,
-            distance, convergence_norm, first_derivatives, second_derivatives);
+  SolveFrom(query,
+            tolerance,
+            max_iterations,
+            tight_bounds,
+            starts[0].guess.data(),
+            final_guess,
+            nearest,
+            nearest_minus_query,
+            distance,
+            convergence_norm,
+            first_derivatives,
+            second_derivatives);
 
   // more starts, only from basins that can hold a closer point and that were
   // not found by a previous start
   auto final_step = starts[0].step;
-  const auto max_starts = std::min(starts.size(), static_cast<std::size_t>(max_starts_));
+  const auto max_starts =
+      std::min(starts.size(), static_cast<std::size_t>(max_starts_));
   const auto found = arena.AllocateSpan<double>(max_starts * para_dim);
   std::copy_n(final_guess, para_dim, found.data());
   std::size_t n_starts{1};
@@ -1755,9 +1804,17 @@ void Proximity::VerboseQuery(
       continue;
     }
     double t_distance{}, t_convergence{};
-    SolveFrom(query, tolerance, max_iterations, tight_bounds,
-              starts[i].guess.data(), t_guess.data(), t_nearest.data(),
-              t_diff.data(), t_distance, t_convergence, t_first.data(),
+    SolveFrom(query,
+              tolerance,
+              max_iterations,
+              tight_bounds,
+              starts[i].guess.data(),
+              t_guess.data(),
+              t_nearest.data(),
+              t_diff.data(),
+              t_distance,
+              t_convergence,
+              t_first.data(),
               second_derivatives ? t_second.data() : nullptr);
     std::copy_n(t_guess.data(), para_dim, found.data() + n_starts * para_dim);
     ++n_starts;
@@ -1794,7 +1851,8 @@ void Proximity::VerboseQuery(
   double largest_norm{};
   for (int i{}; i < para_dim; ++i) {
     for (int k{}; k < dim; ++k) {
-      axis_norm[i] += first_derivatives[i * dim + k] * first_derivatives[i * dim + k];
+      axis_norm[i] +=
+          first_derivatives[i * dim + k] * first_derivatives[i * dim + k];
     }
     axis_norm[i] = std::sqrt(axis_norm[i]);
     largest_norm = std::max(largest_norm, axis_norm[i]);
@@ -1802,9 +1860,11 @@ void Proximity::VerboseQuery(
   for (int i{}; i < para_dim; ++i) {
     const double radius = 2.0 * final_step[i];
     const bool collapsed = axis_norm[i] <= 1e-6 * largest_norm;
-    lower[i] = collapsed ? bounds[i] : std::max(bounds[i], final_guess[i] - radius);
-    upper[i] = collapsed ? bounds[para_dim + i]
-                         : std::min(bounds[para_dim + i], final_guess[i] + radius);
+    lower[i] =
+        collapsed ? bounds[i] : std::max(bounds[i], final_guess[i] - radius);
+    upper[i] = collapsed
+                   ? bounds[para_dim + i]
+                   : std::min(bounds[para_dim + i], final_guess[i] + radius);
     n_candidates *= kPerAxis;
   }
 
@@ -1857,9 +1917,17 @@ void Proximity::VerboseQuery(
   for (std::size_t i{}; i < std::min(kMaxRestarts, restarts.size()); ++i) {
     double t_distance{}, t_convergence{};
     sample_at(restarts[i].sample);
-    SolveFrom(query, tolerance, max_iterations, tight_bounds,
-              u.data(), t_guess.data(), t_nearest.data(),
-              t_diff.data(), t_distance, t_convergence, t_first.data(),
+    SolveFrom(query,
+              tolerance,
+              max_iterations,
+              tight_bounds,
+              u.data(),
+              t_guess.data(),
+              t_nearest.data(),
+              t_diff.data(),
+              t_distance,
+              t_convergence,
+              t_first.data(),
               second_derivatives ? t_second.data() : nullptr);
     if (t_distance < distance) {
       distance = t_distance;
@@ -1876,8 +1944,8 @@ void Proximity::VerboseQuery(
 }
 
 static void FillHessian(splinepy::core::SplineView spline,
-                 Span<const double> at,
-                 Span<double> hess) {
+                        Span<const double> at,
+                        Span<double> hess) {
   const int para_dim = spline.para_dim;
   const int dim = spline.dim;
 
@@ -1899,7 +1967,7 @@ static void FillHessian(splinepy::core::SplineView spline,
         splinepy::core::Span<const double>(at.data(), para_dim),
         splinepy::core::Span<const int32_t>(derivative_query.data(), para_dim),
         splinepy::core::Span<double>(derivative.data(), dim),
-          QueryOptions());
+        QueryOptions());
 
     // reset derivative query
     --derivative_query[i];
@@ -1911,7 +1979,8 @@ static void FillHessian(splinepy::core::SplineView spline,
       // upper triangle without diagonal
       compute(i, j);
       // copy derivative to lower
-      std::copy_n(hess.data() + (i * para_dim + j) * dim, dim,
+      std::copy_n(hess.data() + (i * para_dim + j) * dim,
+                  dim,
                   hess.data() + (j * para_dim + i) * dim);
     }
     // diagonal

@@ -777,7 +777,7 @@ def test_proximity_out_buffers():
     expected = curve.proximities(queries, return_verbose=True)
     out = tuple(np.empty_like(array) for array in expected)
     assert search.query(queries, return_verbose=True, out=out) is out
-    for actual, reference in zip(out, expected):
+    for actual, reference in zip(out, expected, strict=False):
         np.testing.assert_allclose(actual, reference)
 
     params = np.empty_like(expected[0])

@@ -43,8 +43,8 @@ class HBSpline:
         if degrees.ndim != 1 or not degrees.size or len(knots) != degrees.size:
             raise ValueError("expected one degree and knot vector per parametric axis")
         span_counts = []
-        for degree, axis in zip(degrees, knots):
-            degree = int(degree)
+        for raw_degree, axis in zip(degrees, knots, strict=False):
+            degree = int(raw_degree)
             if axis.ndim != 1 or axis.size < 2 * (degree + 1):
                 raise ValueError("invalid knot vector length")
             domain_knots = axis[degree : axis.size - degree]
@@ -70,10 +70,19 @@ class HBSpline:
                 if self._rational
                 else "use the rational hierarchy class to supply weights"
             )
-        weights = None if weights is None else _immutable(np.asarray(weights, dtype=np.float64))
+        weights = (
+            None
+            if weights is None
+            else _immutable(np.asarray(weights, dtype=np.float64))
+        )
         data = (
-            degrees, levels, _immutable(leaves), _immutable(active),
-            points, weights, self._truncate,
+            degrees,
+            levels,
+            _immutable(leaves),
+            _immutable(active),
+            points,
+            weights,
+            self._truncate,
         )
         self._state = data, splinepy_core._HierarchyCache(data)
 
@@ -86,7 +95,9 @@ class HBSpline:
         return self._state[1]
 
     @classmethod
-    def from_hierarchy(cls, degrees, levels, leaf_cells, control_points, *, weights=None):
+    def from_hierarchy(
+        cls, degrees, levels, leaf_cells, control_points, *, weights=None
+    ):
         """Build from nested knots, leaf cells and active coefficients.
 
         Each leaf row gives its level and one zero-based nonempty span index
@@ -113,10 +124,13 @@ class HBSpline:
         """Copy a BSpline or NURBS into a single-level hierarchy."""
         if not spline.has_knot_vectors:
             raise TypeError("from_bspline expects a BSpline or NURBS")
+        target = cls
         if spline.is_rational and not cls._rational:
-            cls = RationalTHBSpline if cls._truncate else RationalHBSpline
-        return cls(
-            spline.degrees, spline.knot_vectors, spline.control_points,
+            target = RationalTHBSpline if cls._truncate else RationalHBSpline
+        return target(
+            spline.degrees,
+            spline.knot_vectors,
+            spline.control_points,
             weights=spline.weights if spline.is_rational else None,
         )
 
@@ -163,8 +177,16 @@ class HBSpline:
     def parametric_bounds(self):
         """Return the lower and upper parameter bounds."""
         return np.array(
-            [[axis[p] for p, axis in zip(self.degrees, self.levels[0])],
-             [axis[-int(p) - 1] for p, axis in zip(self.degrees, self.levels[0])]]
+            [
+                [
+                    axis[p]
+                    for p, axis in zip(self.degrees, self.levels[0], strict=False)
+                ],
+                [
+                    axis[-int(p) - 1]
+                    for p, axis in zip(self.degrees, self.levels[0], strict=False)
+                ],
+            ]
         )
 
     @property
@@ -210,8 +232,9 @@ class HBSpline:
         cells[:, 0] = levels
         for level, knots in enumerate(knot_levels):
             mask = levels == level
-            for axis, (degree, vector) in enumerate(zip(degrees, knots)):
-                degree = int(degree)
+            pairs = zip(degrees, knots, strict=False)
+            for axis, (raw_degree, vector) in enumerate(pairs):
+                degree = int(raw_degree)
                 breaks = np.unique(vector[degree : vector.size - degree])
                 cells[mask, axis + 1] = np.searchsorted(
                     breaks, extraction["bounds"][mask, 0, axis]
@@ -276,15 +299,25 @@ class HBSpline:
             if elements.ndim == 2 and level is not None:
                 coordinates = _integers(elements, "element coordinates")
                 if coordinates.shape[1] != self.para_dim:
-                    raise ValueError("element coordinates must match the parametric dimension")
+                    raise ValueError(
+                        "element coordinates must match the parametric dimension"
+                    )
                 cells = self._cells(degrees, knot_levels, extraction)[candidates, 1:]
-                lookup = {tuple(cell): leaf for cell, leaf in zip(cells, candidates)}
+                lookup = {
+                    tuple(cell): leaf
+                    for cell, leaf in zip(cells, candidates, strict=False)
+                }
                 try:
                     return np.unique(
-                        np.asarray([lookup[tuple(cell)] for cell in coordinates], dtype=np.uintp)
+                        np.asarray(
+                            [lookup[tuple(cell)] for cell in coordinates],
+                            dtype=np.uintp,
+                        )
                     )
                 except KeyError as error:
-                    raise ValueError("element coordinates do not identify a current leaf") from error
+                    raise ValueError(
+                        "element coordinates do not identify a current leaf"
+                    ) from error
             return candidates[self._leaf_indices(elements, candidates.size)]
 
         bounds = extraction["bounds"][candidates]
@@ -295,7 +328,9 @@ class HBSpline:
                 or not np.isfinite(box).all()
                 or not np.all(box[0] < box[1])
             ):
-                raise ValueError("box must contain finite, increasing lower and upper bounds")
+                raise ValueError(
+                    "box must contain finite, increasing lower and upper bounds"
+                )
             mask = ((bounds[:, 0] < box[1]) & (bounds[:, 1] > box[0])).all(axis=1)
         else:
             centers = 0.5 * bounds[:, 0] + 0.5 * bounds[:, 1]
@@ -305,7 +340,13 @@ class HBSpline:
         return candidates[mask]
 
     def refine(
-        self, elements=None, level=None, *, box=None, where=None, admissible=2,
+        self,
+        elements=None,
+        level=None,
+        *,
+        box=None,
+        where=None,
+        admissible=2,
         nthreads=None,
     ):
         """Split marked leaves in place and return this spline.
@@ -361,7 +402,9 @@ class HBSpline:
 
     def evaluate(self, queries, nthreads=None, out=None):
         """Evaluate the geometry at queries of shape (n, para_dim)."""
-        return self.derivative(queries, np.zeros(self.para_dim, dtype=np.int32), nthreads, out)
+        return self.derivative(
+            queries, np.zeros(self.para_dim, dtype=np.int32), nthreads, out
+        )
 
     def _derivative_orders(self, orders):
         orders = _integers(orders, "orders")
@@ -409,7 +452,12 @@ class HBSpline:
         ):
             raise ValueError("basis and support output arrays must not overlap")
         return self._cache.basis(
-            queries, orders, _thread_count(nthreads), out_basis, out_support, return_support
+            queries,
+            orders,
+            _thread_count(nthreads),
+            out_basis,
+            out_support,
+            return_support,
         )
 
     def basis_derivative_and_support(self, queries, orders, nthreads=None, out=None):
@@ -423,7 +471,11 @@ class HBSpline:
         if len(out) != 2:
             raise ValueError("out must contain two arrays")
         return self._basis_query(
-            queries, self._derivative_orders(orders), nthreads, *out, return_support=True
+            queries,
+            self._derivative_orders(orders),
+            nthreads,
+            *out,
+            return_support=True,
         )
 
     def basis_and_support(self, queries, nthreads=None, out=None):
@@ -447,7 +499,12 @@ class HBSpline:
     def basis_derivative(self, queries, orders, nthreads=None, out=None):
         """Return basis derivatives with zero padding."""
         return self._basis_query(
-            queries, self._derivative_orders(orders), nthreads, out, None, return_support=False
+            queries,
+            self._derivative_orders(orders),
+            nthreads,
+            out,
+            None,
+            return_support=False,
         )[0]
 
 
@@ -455,8 +512,6 @@ class RationalHBSpline(HBSpline):
     """Rational hierarchical B-spline."""
 
     _rational = True
-
-
 
 
 class THBSpline(HBSpline):
@@ -467,15 +522,28 @@ class THBSpline(HBSpline):
     @property
     def rationalthb(self):
         """Copy this hierarchy as a rational THB spline with the same geometry."""
-        weights = self.weights if self.is_rational else np.ones(len(self.control_points))
+        weights = (
+            self.weights if self.is_rational else np.ones(len(self.control_points))
+        )
         return RationalTHBSpline.from_hierarchy(
-            self.degrees, self.levels, self.leaf_cells, self.control_points,
+            self.degrees,
+            self.levels,
+            self.leaf_cells,
+            self.control_points,
             weights=weights,
         )
 
     def coarsen(
-        self, elements=None, level=None, *, box=None, where=None,
-        admissible=2, method="l2", tolerance=1e-10, nthreads=None,
+        self,
+        elements=None,
+        level=None,
+        *,
+        box=None,
+        where=None,
+        admissible=2,
+        method="l2",
+        tolerance=1e-10,
+        nthreads=None,
     ):
         """Merge complete marked sibling groups in place and return this spline.
 

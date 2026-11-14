@@ -7,8 +7,8 @@
 #include <cstring>
 #include <vector>
 
-#include "splinepy/core/manipulation/detail/knot_insertion_alpha.hpp"
 #include "splinepy/core/common.hpp"
+#include "splinepy/core/manipulation/detail/knot_insertion_alpha.hpp"
 #include "splinepy/core/math/bspline_basis.hpp"
 #include "splinepy/core/memory/buffer.hpp"
 #include "splinepy/core/memory/memory_arena.hpp"

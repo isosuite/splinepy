@@ -30,9 +30,9 @@ SOFTWARE.
 #include <vector>
 
 #include "splinepy/core/memory/memory_arena.hpp"
+#include "splinepy/core/memory/span.hpp"
 #include "splinepy/core/model/spline_view.hpp"
 #include "splinepy/core/spatial/element_bvh.hpp"
-#include "splinepy/core/memory/span.hpp"
 #include "splinepy/utils/print.hpp"
 
 namespace splinepy::proximity {
@@ -164,7 +164,7 @@ private:
   };
 
   Span<StartView> CollectBvhStarts(const double* query,
-                                  splinepy::core::MemoryArena& arena) const;
+                                   splinepy::core::MemoryArena& arena) const;
 
 public:
   /// @brief Sets the initial guess source for queries without a bvh.
@@ -259,13 +259,15 @@ private:
   /// derivative again and store it.
   /// @param data
   /// @param recompute_costs
-  void ComputeStatus(detail::SearchData& data, const bool recompute_costs) const;
+  void ComputeStatus(detail::SearchData& data,
+                     const bool recompute_costs) const;
 
   /// @brief resets search bounds to spline's parametric bounds. if tight==true,
   /// current_guess +- the sampling step size of the initial guess source.
   /// @param data
   /// @param tight
-  void FindSearchBound(detail::SearchData& data, const bool tight = false) const;
+  void FindSearchBound(detail::SearchData& data,
+                       const bool tight = false) const;
 
   /// @brief Prepares lhs and rhs of newton iteration
   void PrepareIterationNewton(detail::SearchData& data) const;

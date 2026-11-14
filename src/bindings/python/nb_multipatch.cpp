@@ -19,31 +19,41 @@
 
 namespace splinepy::py {
 
-nb::object InterfacesFromBoundaryCenters(nb::ndarray<const double, nb::c_contig> py_center_vertices,
-                                        double tolerance,
-                                        int parametric_dimension) {
+nb::object InterfacesFromBoundaryCenters(
+    nb::ndarray<const double, nb::c_contig> py_center_vertices,
+    double tolerance,
+    int parametric_dimension) {
   const int n_faces_total = static_cast<int>(py_center_vertices.shape(0));
   const int num_element_faces = 2 * parametric_dimension;
   const int num_patches = n_faces_total / num_element_faces;
   const int dim = static_cast<int>(py_center_vertices.shape(1));
   const double* centers_ptr = py_center_vertices.data();
 
-  splinepy::core::Span<const double> centers_span(centers_ptr, n_faces_total * dim);
-  auto ifaces = splinepy::core::InterfacesFromBoundaryCenters(
-      centers_span, num_patches, parametric_dimension, dim, tolerance);
+  splinepy::core::Span<const double> centers_span(centers_ptr,
+                                                  n_faces_total * dim);
+  auto ifaces =
+      splinepy::core::InterfacesFromBoundaryCenters(centers_span,
+                                                    num_patches,
+                                                    parametric_dimension,
+                                                    dim,
+                                                    tolerance);
 
-  return TakeNumPyBuffer(ifaces, {size_t(num_patches), size_t(num_element_faces)});
+  return TakeNumPyBuffer(ifaces,
+                         {size_t(num_patches), size_t(num_element_faces)});
 }
 
-int AddBoundariesFromContinuity(const nb::list& boundary_splines,
-                                nb::ndarray<const int32_t, nb::c_contig> boundary_interfaces,
-                                nb::ndarray<int32_t, nb::c_contig> global_interfaces,
-                                double tolerance,
-                                int n_threads) {
+int AddBoundariesFromContinuity(
+    const nb::list& boundary_splines,
+    nb::ndarray<const int32_t, nb::c_contig> boundary_interfaces,
+    nb::ndarray<int32_t, nb::c_contig> global_interfaces,
+    double tolerance,
+    int n_threads) {
   const int n_boundary_patches = static_cast<int>(nb::len(boundary_splines));
-  if (n_boundary_patches == 0) return 0;
+  if (n_boundary_patches == 0)
+    return 0;
 
-  const int n_faces_per_boundary_patch = static_cast<int>(boundary_interfaces.shape(1));
+  const int n_faces_per_boundary_patch =
+      static_cast<int>(boundary_interfaces.shape(1));
   const int para_dim = n_faces_per_boundary_patch / 2;
 
   std::vector<PySplineHolder> holders;
@@ -65,11 +75,13 @@ int AddBoundariesFromContinuity(const nb::list& boundary_splines,
       dot_p += vec0[i] * vec1[i];
     }
     double denom = std::sqrt(norm0 * norm1);
-    if (denom == 0.0) return false;
+    if (denom == 0.0)
+      return false;
     return (std::abs(1.0 - std::abs(dot_p) / denom) < tolerance);
   };
 
-  auto tangential_vector = [&](int patch_id, int face_id) -> std::vector<double> {
+  auto tangential_vector = [&](int patch_id,
+                               int face_id) -> std::vector<double> {
     std::vector<double> para_coord(para_dim, 0.0);
     std::vector<int32_t> orders(para_dim, 0);
     std::vector<double> tang_vec(dim, 0.0);
@@ -98,29 +110,39 @@ int AddBoundariesFromContinuity(const nb::list& boundary_splines,
     return tang_vec;
   };
 
-  std::vector<bool> faces_are_g1(n_faces_per_boundary_patch * n_boundary_patches, false);
+  std::vector<bool> faces_are_g1(n_faces_per_boundary_patch
+                                     * n_boundary_patches,
+                                 false);
   auto precompute_tolerances = [&](int start, int end, int) {
     for (int i = start; i < end; ++i) {
       for (int j = 0; j < n_faces_per_boundary_patch; ++j) {
-        const int adjacent_global = boundary_interfaces_ptr[i * n_faces_per_boundary_patch + j];
-        if (adjacent_global < 0) continue;
+        const int adjacent_global =
+            boundary_interfaces_ptr[i * n_faces_per_boundary_patch + j];
+        if (adjacent_global < 0)
+          continue;
         const int adjacent_id = adjacent_global / n_faces_per_boundary_patch;
-        const int adjacent_face_id = adjacent_global % n_faces_per_boundary_patch;
-        if (adjacent_id < i) continue;
+        const int adjacent_face_id =
+            adjacent_global % n_faces_per_boundary_patch;
+        if (adjacent_id < i)
+          continue;
 
         const std::vector<double> vec0 = tangential_vector(i, j);
-        const std::vector<double> vec1 = tangential_vector(adjacent_id, adjacent_face_id);
+        const std::vector<double> vec1 =
+            tangential_vector(adjacent_id, adjacent_face_id);
 
         const bool is_g1 = areG1(vec0, vec1);
         faces_are_g1[i * n_faces_per_boundary_patch + j] = is_g1;
-        faces_are_g1[adjacent_id * n_faces_per_boundary_patch + adjacent_face_id] = is_g1;
+        faces_are_g1[adjacent_id * n_faces_per_boundary_patch
+                     + adjacent_face_id] = is_g1;
       }
     }
   };
 
   {
     nb::gil_scoped_release release;
-    splinepy::utils::NThreadExecution(precompute_tolerances, n_boundary_patches, n_threads);
+    splinepy::utils::NThreadExecution(precompute_tolerances,
+                                      n_boundary_patches,
+                                      n_threads);
   }
 
   std::vector<bool> is_assigned(n_boundary_patches, false);
@@ -129,7 +151,8 @@ int AddBoundariesFromContinuity(const nb::list& boundary_splines,
 
   int current_max_id = 1;
   for (int i = 0; i < n_boundary_patches; ++i) {
-    if (is_assigned[i]) continue;
+    if (is_assigned[i])
+      continue;
 
     new_boundary_id[i] = current_max_id;
     is_assigned[i] = true;
@@ -140,12 +163,15 @@ int AddBoundariesFromContinuity(const nb::list& boundary_splines,
       queued_splines.pop_back();
 
       for (int i_face = 0; i_face < n_faces_per_boundary_patch; ++i_face) {
-        const int combined_index = current_id * n_faces_per_boundary_patch + i_face;
+        const int combined_index =
+            current_id * n_faces_per_boundary_patch + i_face;
         if (faces_are_g1[combined_index]) {
           const int adjacent_global = boundary_interfaces_ptr[combined_index];
-          if (adjacent_global < 0) continue;
+          if (adjacent_global < 0)
+            continue;
           const int adjacent_id = adjacent_global / n_faces_per_boundary_patch;
-          if (is_assigned[adjacent_id]) continue;
+          if (is_assigned[adjacent_id])
+            continue;
 
           new_boundary_id[adjacent_id] = current_max_id;
           is_assigned[adjacent_id] = true;
@@ -176,11 +202,13 @@ int AddBoundariesFromContinuity(const nb::list& boundary_splines,
   return current_max_id;
 }
 
-nb::object InterfaceOrientations(const nb::list& spline_list,
-                                 nb::ndarray<const int32_t, nb::c_contig> interfaces,
-                                 double tolerance) {
+nb::object
+InterfaceOrientations(const nb::list& spline_list,
+                      nb::ndarray<const int32_t, nb::c_contig> interfaces,
+                      double tolerance) {
   const int num_patches = static_cast<int>(nb::len(spline_list));
-  if (num_patches == 0) return nb::none();
+  if (num_patches == 0)
+    return nb::none();
 
   std::vector<PySplineHolder> holders;
   holders.reserve(num_patches);
@@ -193,12 +221,16 @@ nb::object InterfaceOrientations(const nb::list& spline_list,
   const int para_dim = holders[0].view.para_dim;
 
   splinepy::core::SplineBatchView batch(views.data(), views.size());
-  splinepy::core::Span<const int32_t> ifaces_span(interfaces.data(), interfaces.size());
-  auto orientations = splinepy::core::InterfaceOrientations(batch, ifaces_span, tolerance);
+  splinepy::core::Span<const int32_t> ifaces_span(interfaces.data(),
+                                                  interfaces.size());
+  auto orientations =
+      splinepy::core::InterfaceOrientations(batch, ifaces_span, tolerance);
 
   const int n_entries_per_line = 4 + 2 * para_dim;
-  const int num_ifaces = static_cast<int>(orientations.size() / n_entries_per_line);
-  return TakeNumPyBuffer(orientations, {size_t(num_ifaces), size_t(n_entries_per_line)});
+  const int num_ifaces =
+      static_cast<int>(orientations.size() / n_entries_per_line);
+  return TakeNumPyBuffer(orientations,
+                         {size_t(num_ifaces), size_t(n_entries_per_line)});
 }
 
 void init_nb_multipatch(nb::module_& m) {

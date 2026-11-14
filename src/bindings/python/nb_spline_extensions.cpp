@@ -23,21 +23,24 @@ namespace splinepy::py {
 
 namespace {
 
-nb::object InsertKnots(nb::handle spline, int para_dim, nb::object knots, double tol) {
+nb::object
+InsertKnots(nb::handle spline, int para_dim, nb::object knots, double tol) {
   PySplineHolder holder(spline);
   ContiguousAdapter<double> knots_adapter(knots, "float64");
   const double* knots_ptr = knots_adapter.data();
   const int n_knots = static_cast<int>(knots_adapter.size());
 
   std::vector<bool> successful(n_knots, false);
-  if (n_knots == 0) return MakeNumPyArray1D(successful);
+  if (n_knots == 0)
+    return MakeNumPyArray1D(successful);
 
   const int p = holder.view.degrees[para_dim];
   const int max_mult = p + 1;
 
   std::vector<double> current_kv;
   if (holder.view.HasKnotVectors()) {
-    current_kv.assign(holder.view.knot_vectors[para_dim].begin(), holder.view.knot_vectors[para_dim].end());
+    current_kv.assign(holder.view.knot_vectors[para_dim].begin(),
+                      holder.view.knot_vectors[para_dim].end());
   } else {
     current_kv.resize(2 * (p + 1));
     for (int i = 0; i <= p; ++i) {
@@ -77,21 +80,28 @@ nb::object InsertKnots(nb::handle spline, int para_dim, nb::object knots, double
   }
 
   if (!valid_knots.empty()) {
-    splinepy::core::Span<const double> knot_span(valid_knots.data(), valid_knots.size());
-    auto new_data = splinepy::core::InsertKnots(holder.view, para_dim, knot_span);
+    splinepy::core::Span<const double> knot_span(valid_knots.data(),
+                                                 valid_knots.size());
+    auto new_data =
+        splinepy::core::InsertKnots(holder.view, para_dim, knot_span);
     SetSplineData(spline, std::move(new_data));
   }
 
   return MakeNumPyArray1D(successful);
 }
 
-nb::list RemoveKnots(nb::handle spline, int para_dim, nb::object knots, double tolerance) {
+nb::list RemoveKnots(nb::handle spline,
+                     int para_dim,
+                     nb::object knots,
+                     double tolerance) {
   PySplineHolder holder(spline);
   splinepy::core::Options options;
   options.tolerance = tolerance;
   ContiguousAdapter<double> knots_adapter(knots, "float64");
-  splinepy::core::Span<const double> knots_span(knots_adapter.data(), knots_adapter.size());
-  auto res = splinepy::core::RemoveKnots(holder.view, para_dim, knots_span, options);
+  splinepy::core::Span<const double> knots_span(knots_adapter.data(),
+                                                knots_adapter.size());
+  auto res =
+      splinepy::core::RemoveKnots(holder.view, para_dim, knots_span, options);
 
   SetSplineData(spline, std::move(res.spline));
 
@@ -143,7 +153,7 @@ struct ViewList {
 };
 
 /// result[o][i] from a flat list ordered o * n_inner + i
-template <typename Convert>
+template<typename Convert>
 nb::list ToGrid(size_t n_outer, size_t n_inner, Convert&& convert) {
   nb::list out;
   for (size_t o = 0; o < n_outer; ++o) {
@@ -160,18 +170,22 @@ nb::list ComposeBatch(nb::list outers, nb::list inners, int nthreads) {
   ViewList outer_views(outers), inner_views(inners);
   splinepy::core::Options options;
   options.nthreads = nthreads;
-  auto results = splinepy::core::ComposeBatch(outer_views.Batch(), inner_views.Batch(), options);
+  auto results = splinepy::core::ComposeBatch(outer_views.Batch(),
+                                              inner_views.Batch(),
+                                              options);
   return ToGrid(outer_views.size(), inner_views.size(), [&](size_t k) {
     return SplineFromData(std::move(results[k]));
   });
 }
 
-nb::list ComposeSensitivitiesBatch(nb::list outers, nb::list inners, int nthreads) {
+nb::list
+ComposeSensitivitiesBatch(nb::list outers, nb::list inners, int nthreads) {
   ViewList outer_views(outers), inner_views(inners);
   splinepy::core::Options options;
   options.nthreads = nthreads;
-  auto results = splinepy::core::ComposeSensitivitiesBatch(
-      outer_views.Batch(), inner_views.Batch(), options);
+  auto results = splinepy::core::ComposeSensitivitiesBatch(outer_views.Batch(),
+                                                           inner_views.Batch(),
+                                                           options);
   return ToGrid(outer_views.size(), inner_views.size(), [&](size_t k) {
     nb::list sensitivities;
     for (auto& s : results[k]) {
@@ -185,11 +199,15 @@ nb::list CompositionDerivativeBatch(nb::list outers,
                                     nb::list inners,
                                     nb::list inner_derivatives,
                                     int nthreads) {
-  ViewList outer_views(outers), inner_views(inners), derivative_views(inner_derivatives);
+  ViewList outer_views(outers), inner_views(inners),
+      derivative_views(inner_derivatives);
   splinepy::core::Options options;
   options.nthreads = nthreads;
-  auto results = splinepy::core::CompositionDerivativeBatch(
-      outer_views.Batch(), inner_views.Batch(), derivative_views.Batch(), options);
+  auto results =
+      splinepy::core::CompositionDerivativeBatch(outer_views.Batch(),
+                                                 inner_views.Batch(),
+                                                 derivative_views.Batch(),
+                                                 options);
   return ToGrid(outer_views.size(), inner_views.size(), [&](size_t k) {
     return SplineFromData(std::move(results[k]));
   });
@@ -198,7 +216,8 @@ nb::list CompositionDerivativeBatch(nb::list outers,
 nb::list ComposeSensitivities(nb::handle outer, nb::handle inner) {
   PySplineHolder holder_outer(outer);
   PySplineHolder holder_inner(inner);
-  auto sensitivities = splinepy::core::ComposeSensitivities(holder_outer.view, holder_inner.view);
+  auto sensitivities = splinepy::core::ComposeSensitivities(holder_outer.view,
+                                                            holder_inner.view);
 
   nb::list result;
   for (auto& s : sensitivities) {
@@ -210,7 +229,8 @@ nb::list ComposeSensitivities(nb::handle outer, nb::handle inner) {
 nb::object DerivativeSpline(nb::handle spline, nb::object orders) {
   PySplineHolder holder(spline);
   ContiguousAdapter<int32_t> orders_adapter(orders, "int32");
-  splinepy::core::Span<const int32_t> orders_span(orders_adapter.data(), orders_adapter.size());
+  splinepy::core::Span<const int32_t> orders_span(orders_adapter.data(),
+                                                  orders_adapter.size());
   auto result = splinepy::core::DerivativeSpline(holder.view, orders_span);
   return SplineFromData(std::move(result));
 }
@@ -218,7 +238,8 @@ nb::object DerivativeSpline(nb::handle spline, nb::object orders) {
 nb::list Split(nb::handle spline, int para_dim, nb::object locations) {
   PySplineHolder holder(spline);
   ContiguousAdapter<double> locs_adapter(locations, "float64");
-  std::vector<double> locs(locs_adapter.data(), locs_adapter.data() + locs_adapter.size());
+  std::vector<double> locs(locs_adapter.data(),
+                           locs_adapter.data() + locs_adapter.size());
   std::sort(locs.begin(), locs.end());
 
   splinepy::core::Span<const double> locs_span(locs.data(), locs.size());
@@ -265,7 +286,8 @@ nb::list ExtractBoundaries(nb::handle spline, nb::handle boundary_ids) {
   } else {
     for (int bid : bids) {
       if (bid < 0 || bid >= 2 * para_dim) {
-        splinepy::utils::PrintAndThrowError("Requested Boundary ID exceeds admissible range.");
+        splinepy::utils::PrintAndThrowError(
+            "Requested Boundary ID exceeds admissible range.");
       }
       auto bnd = splinepy::core::ExtractBoundary(holder.view, bid);
       result.append(SplineFromData(std::move(bnd)));
@@ -280,7 +302,9 @@ nb::object ExtractDim(nb::handle spline, int phys_dim) {
   return SplineFromData(std::move(result));
 }
 
-nb::object CompositionDerivative(nb::handle outer, nb::handle inner, nb::handle inner_derivative) {
+nb::object CompositionDerivative(nb::handle outer,
+                                 nb::handle inner,
+                                 nb::handle inner_derivative) {
   PySplineHolder holder_outer(outer);
   PySplineHolder holder_inner(inner);
   PySplineHolder holder_inner_der(inner_derivative);
@@ -296,7 +320,8 @@ nb::object SameSplineWithKnotVectors(nb::handle spline) {
     return nb::borrow(spline);
   }
 
-  splinepy::core::SplineData data = splinepy::core::SplineData::FromView(holder.view);
+  splinepy::core::SplineData data =
+      splinepy::core::SplineData::FromView(holder.view);
   data.knot_vectors.resize(data.para_dim);
   for (int32_t d = 0; d < data.para_dim; ++d) {
     const int p = data.degrees[d];
@@ -347,22 +372,64 @@ nb::object EvaluateBoundaryCenters(nb::handle spline) {
 } // namespace
 
 void init_nb_spline_extensions(nb::module_& m) {
-  m.def("insert_knots", &InsertKnots, nb::arg("spline"), nb::arg("para_dim"), nb::arg("knots"), nb::arg("tolerance") = 1e-10);
-  m.def("remove_knots", &RemoveKnots, nb::arg("spline"), nb::arg("para_dim"), nb::arg("knots"), nb::arg("tolerance"));
+  m.def("insert_knots",
+        &InsertKnots,
+        nb::arg("spline"),
+        nb::arg("para_dim"),
+        nb::arg("knots"),
+        nb::arg("tolerance") = 1e-10);
+  m.def("remove_knots",
+        &RemoveKnots,
+        nb::arg("spline"),
+        nb::arg("para_dim"),
+        nb::arg("knots"),
+        nb::arg("tolerance"));
   m.def("multiply", &Multiply, nb::arg("a"), nb::arg("b"));
   m.def("add", &Add, nb::arg("a"), nb::arg("b"));
   m.def("compose", &Compose, nb::arg("outer"), nb::arg("inner"));
-  m.def("compose_batch", &ComposeBatch, nb::arg("outers"), nb::arg("inners"), nb::arg("nthreads") = 1);
-  m.def("compose_sensitivities_batch", &ComposeSensitivitiesBatch, nb::arg("outers"), nb::arg("inners"), nb::arg("nthreads") = 1);
-  m.def("composition_derivative_batch", &CompositionDerivativeBatch, nb::arg("outers"), nb::arg("inners"), nb::arg("inner_derivatives"), nb::arg("nthreads") = 1);
-  m.def("compose_sensitivities", &ComposeSensitivities, nb::arg("outer"), nb::arg("inner"));
-  m.def("derivative_spline", &DerivativeSpline, nb::arg("spline"), nb::arg("orders"));
-  m.def("split", &Split, nb::arg("spline"), nb::arg("para_dim"), nb::arg("locations"));
+  m.def("compose_batch",
+        &ComposeBatch,
+        nb::arg("outers"),
+        nb::arg("inners"),
+        nb::arg("nthreads") = 1);
+  m.def("compose_sensitivities_batch",
+        &ComposeSensitivitiesBatch,
+        nb::arg("outers"),
+        nb::arg("inners"),
+        nb::arg("nthreads") = 1);
+  m.def("composition_derivative_batch",
+        &CompositionDerivativeBatch,
+        nb::arg("outers"),
+        nb::arg("inners"),
+        nb::arg("inner_derivatives"),
+        nb::arg("nthreads") = 1);
+  m.def("compose_sensitivities",
+        &ComposeSensitivities,
+        nb::arg("outer"),
+        nb::arg("inner"));
+  m.def("derivative_spline",
+        &DerivativeSpline,
+        nb::arg("spline"),
+        nb::arg("orders"));
+  m.def("split",
+        &Split,
+        nb::arg("spline"),
+        nb::arg("para_dim"),
+        nb::arg("locations"));
   m.def("extract_bezier_patches", &ExtractBezierPatches, nb::arg("spline"));
-  m.def("extract_boundaries", &ExtractBoundaries, nb::arg("spline"), nb::arg("boundary_ids") = nb::none());
+  m.def("extract_boundaries",
+        &ExtractBoundaries,
+        nb::arg("spline"),
+        nb::arg("boundary_ids") = nb::none());
   m.def("extract_dim", &ExtractDim, nb::arg("spline"), nb::arg("phys_dim"));
-  m.def("composition_derivative", &CompositionDerivative, nb::arg("outer"), nb::arg("inner"), nb::arg("inner_derivative"));
-  m.def("same_spline_with_knot_vectors", &SameSplineWithKnotVectors, nb::arg("spline"));
+  m.def("composition_derivative",
+        &CompositionDerivative,
+        nb::arg("outer"),
+        nb::arg("inner"),
+        nb::arg("inner_derivative"));
+  m.def("same_spline_with_knot_vectors",
+        &SameSplineWithKnotVectors,
+        nb::arg("spline"));
   m.def("boundary_centers", &EvaluateBoundaryCenters, nb::arg("spline"));
 }
 

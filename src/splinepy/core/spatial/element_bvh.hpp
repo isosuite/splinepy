@@ -2,8 +2,8 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <limits>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <new>
 #include <utility>
@@ -25,7 +25,7 @@ namespace splinepy::core {
 /// point closer than d to this query" without sampling the spline.
 /// Dimensions are runtime values with no upper limit.
 class ElementBvh {
- public:
+public:
   ElementBvh() = default;
 
   /// Builds boxes for all non-empty knot spans. The spline is not referenced
@@ -78,10 +78,10 @@ class ElementBvh {
   /// bound for the answer). Traversal stops as soon as the next lower bound
   /// exceeds that, or after `max_visits` calls. Returns the number of calls.
   template<typename Visitor>
-  int64_t Traverse(const double* point,
-                   Visitor&& visitor,
-                   const int64_t max_visits =
-                       std::numeric_limits<int64_t>::max()) const {
+  int64_t Traverse(
+      const double* point,
+      Visitor&& visitor,
+      const int64_t max_visits = std::numeric_limits<int64_t>::max()) const {
     if (!valid_ || max_visits <= 0) {
       return 0;
     }
@@ -91,11 +91,11 @@ class ElementBvh {
 
   /// Allocates scratch in the caller’s arena. The caller controls its scope.
   template<typename Visitor>
-  int64_t Traverse(const double* point,
-                   Visitor&& visitor,
-                   MemoryArena& arena,
-                   const int64_t max_visits =
-                       std::numeric_limits<int64_t>::max()) const {
+  int64_t Traverse(
+      const double* point,
+      Visitor&& visitor,
+      MemoryArena& arena,
+      const int64_t max_visits = std::numeric_limits<int64_t>::max()) const {
     if (!valid_ || max_visits <= 0) {
       return 0;
     }
@@ -148,7 +148,7 @@ class ElementBvh {
     return visits;
   }
 
- private:
+private:
   struct Node {
     int64_t left{-1};
     int64_t right{-1};

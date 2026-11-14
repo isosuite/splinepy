@@ -103,14 +103,25 @@ TEST(Proximity, IndividualSolversOnEmbeddedCurveWithOptionalOutputs) {
 
   const int resolution[] = {4};
   const double query[] = {0.7, 0.2, 0.3};
-  for (const auto solver : {Solver::kNewton, Solver::kDogleg, Solver::kSlsqp,
+  for (const auto solver : {Solver::kNewton,
+                            Solver::kDogleg,
+                            Solver::kSlsqp,
                             Solver::kLevenbergMarquart}) {
     Proximity proximity(view);
     proximity.SetSolverChain({solver});
     ASSERT_TRUE(proximity.PlantBvh(resolution));
     double parameter{}, distance{}, convergence{};
-    proximity.VerboseQuery(query, 1e-10, 100, false, &parameter, nullptr,
-                           nullptr, distance, convergence, nullptr, nullptr);
+    proximity.VerboseQuery(query,
+                           1e-10,
+                           100,
+                           false,
+                           &parameter,
+                           nullptr,
+                           nullptr,
+                           distance,
+                           convergence,
+                           nullptr,
+                           nullptr);
     EXPECT_NEAR(parameter, 0.35, 1e-7);
     EXPECT_NEAR(distance, std::sqrt(0.13), 1e-10);
   }

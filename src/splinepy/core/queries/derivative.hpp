@@ -27,12 +27,17 @@ Buffer<double> Derivative(const SplineView& spline,
 
 /// Reusable schedule for flattened derivative multi-indices.
 class DerivativeOrders {
- public:
-  DerivativeOrders(Span<const int32_t> orders, std::size_t para_dim, bool rational);
+public:
+  DerivativeOrders(Span<const int32_t> orders,
+                   std::size_t para_dim,
+                   bool rational);
 
- private:
-  friend void Derivative(const SplineView&, Span<const double>, const DerivativeOrders&,
-                         Span<double>, const Options&);
+private:
+  friend void Derivative(const SplineView&,
+                         Span<const double>,
+                         const DerivativeOrders&,
+                         Span<double>,
+                         const Options&);
 
   std::size_t para_dim_;
   bool rational_;

@@ -7,7 +7,7 @@ try:
     from vedo import color_map as _color_map
     from vedo.colors import get_color as _get_color
 except ImportError:
-    def _missing_vedo(*args, **kwargs):
+    def _missing_vedo(*_args, **_kwargs):
         raise ImportError("Vedo is required for SVG export. Install splinepy[all].")
 
     _Plotter = _color_map = _get_color = _missing_vedo

@@ -5,10 +5,10 @@
 #include <map>
 #include <vector>
 
-#include "splinepy/core/queries/detail/query_helpers.hpp"
 #include "splinepy/core/concurrency/parallel_for.hpp"
 #include "splinepy/core/math/binomial.hpp"
 #include "splinepy/core/memory/workspace.hpp"
+#include "splinepy/core/queries/detail/query_helpers.hpp"
 #include "splinepy/core/queries/evaluate.hpp"
 #include "splinepy/core/validate/validator.hpp"
 
@@ -371,7 +371,9 @@ void Derivative(const SplineView& spline,
 DerivativeOrders::DerivativeOrders(Span<const int32_t> orders,
                                    std::size_t para_dim,
                                    bool rational)
-    : para_dim_(para_dim), rational_(rational), axis_orders_(para_dim, 0) {
+    : para_dim_(para_dim),
+      rational_(rational),
+      axis_orders_(para_dim, 0) {
   if (para_dim == 0 || orders.empty() || orders.size() % para_dim) {
     throw SplinepyException("Invalid derivative multi-indices");
   }
@@ -424,8 +426,8 @@ void Derivative(const SplineView& spline,
     ThrowIfInvalid(spline, options);
   }
   const auto pd = orders.para_dim_;
-  if (spline.para_dim != static_cast<int64_t>(pd) || spline.dim <= 0 ||
-      spline.IsRational() != orders.rational_ || queries.size() % pd) {
+  if (spline.para_dim != static_cast<int64_t>(pd) || spline.dim <= 0
+      || spline.IsRational() != orders.rational_ || queries.size() % pd) {
     throw SplinepyException("Derivative plan does not match spline or queries");
   }
   const auto dim = static_cast<std::size_t>(spline.dim);
@@ -450,8 +452,10 @@ void Derivative(const SplineView& spline,
     while (first < end) {
       const auto middle = first + (end - first) / 2;
       const auto candidate = terms.subspan(middle * pd, pd);
-      if (std::lexicographical_compare(candidate.begin(), candidate.end(),
-                                       order.begin(), order.end())) {
+      if (std::lexicographical_compare(candidate.begin(),
+                                       candidate.end(),
+                                       order.begin(),
+                                       order.end())) {
         first = middle + 1;
       } else {
         end = middle;
@@ -459,110 +463,135 @@ void Derivative(const SplineView& spline,
     }
     return first;
   };
-  const auto threads = std::min(count, static_cast<std::size_t>(std::max(1, options.nthreads)));
+  const auto threads =
+      std::min(count, static_cast<std::size_t>(std::max(1, options.nthreads)));
   WorkspaceRef workspace(options, MemoryArena::kDefaultBlockSize, threads);
   workspace->GetThreadArena(static_cast<int>(threads - 1));
-  ParallelForWithThreadId(std::size_t{0}, count, options.nthreads,
-                          [&](std::size_t q, int thread) {
-    auto& arena = workspace->GetThreadArena(thread);
-    auto scope = arena.CreateScope();
-    auto cp_strides = arena.AllocateSpan<int64_t>(pd);
-    auto support_strides = arena.AllocateSpan<int64_t>(pd);
-    detail::ComputeAxisStrides(spline, cp_strides, support_strides);
-    auto starts = arena.AllocateSpan<int32_t>(pd);
-    auto axis_offsets = arena.AllocateSpan<std::size_t>(pd + 1);
-    axis_offsets[0] = 0;
-    for (std::size_t axis = 0; axis < pd; ++axis) {
-      axis_offsets[axis + 1] = axis_offsets[axis] +
-          (std::size_t{1} + std::min(orders.axis_orders_[axis], spline.degrees[axis])) *
-          (std::size_t{1} + spline.degrees[axis]);
-    }
-    auto tables = arena.AllocateSpan<double>(axis_offsets[pd]);
-    for (std::size_t axis = 0; axis < pd; ++axis) {
-      int32_t span;
-      detail::Evaluate1DAxisBasis(
-          spline, axis, queries[q * pd + axis],
-          std::min(orders.axis_orders_[axis], spline.degrees[axis]), span, starts[axis],
-          tables.subspan(axis_offsets[axis], axis_offsets[axis + 1] - axis_offsets[axis]));
-    }
+  ParallelForWithThreadId(
+      std::size_t{0},
+      count,
+      options.nthreads,
+      [&](std::size_t q, int thread) {
+        auto& arena = workspace->GetThreadArena(thread);
+        auto scope = arena.CreateScope();
+        auto cp_strides = arena.AllocateSpan<int64_t>(pd);
+        auto support_strides = arena.AllocateSpan<int64_t>(pd);
+        detail::ComputeAxisStrides(spline, cp_strides, support_strides);
+        auto starts = arena.AllocateSpan<int32_t>(pd);
+        auto axis_offsets = arena.AllocateSpan<std::size_t>(pd + 1);
+        axis_offsets[0] = 0;
+        for (std::size_t axis = 0; axis < pd; ++axis) {
+          axis_offsets[axis + 1] =
+              axis_offsets[axis]
+              + (std::size_t{1}
+                 + std::min(orders.axis_orders_[axis], spline.degrees[axis]))
+                    * (std::size_t{1} + spline.degrees[axis]);
+        }
+        auto tables = arena.AllocateSpan<double>(axis_offsets[pd]);
+        for (std::size_t axis = 0; axis < pd; ++axis) {
+          int32_t span;
+          detail::Evaluate1DAxisBasis(
+              spline,
+              axis,
+              queries[q * pd + axis],
+              std::min(orders.axis_orders_[axis], spline.degrees[axis]),
+              span,
+              starts[axis],
+              tables.subspan(axis_offsets[axis],
+                             axis_offsets[axis + 1] - axis_offsets[axis]));
+        }
 
-    const auto supports = spline.NumSupports();
-    auto points = arena.AllocateSpan<int64_t>(supports);
-    for (int64_t support = 0; support < supports; ++support) {
-      int64_t point = 0;
-      for (std::size_t axis = 0; axis < pd; ++axis) {
-        const auto basis = support / support_strides[axis] % (spline.degrees[axis] + 1);
-        point += (starts[axis] + basis) * cp_strides[axis];
-      }
-      points[support] = point;
-    }
-
-    auto values = arena.AllocateSpan<double>(term_count * dim, 0.0);
-    auto weights = arena.AllocateSpan<double>(orders.rational_ ? term_count : 0);
-    auto difference = arena.AllocateSpan<int32_t>(orders.rational_ ? pd : 0);
-    auto gamma = arena.AllocateSpan<int32_t>(orders.rational_ ? pd : 0);
-    auto correction = arena.AllocateSpan<double>(orders.rational_ ? dim : 0);
-    for (std::size_t i = 0; i < term_count; ++i) {
-      const auto order = terms.subspan(i * pd, pd);
-      auto value = values.subspan(i * dim, dim);
-      double weight = 0.0;
-      if (std::equal(order.begin(), order.end(), spline.degrees.begin(),
-                     [](int32_t k, int32_t degree) { return k <= degree; })) {
+        const auto supports = spline.NumSupports();
+        auto points = arena.AllocateSpan<int64_t>(supports);
         for (int64_t support = 0; support < supports; ++support) {
-          double basis = 1.0;
+          int64_t point = 0;
           for (std::size_t axis = 0; axis < pd; ++axis) {
-            const auto width = spline.degrees[axis] + 1;
-            const auto j = support / support_strides[axis] % width;
-            basis *= tables[axis_offsets[axis] + order[axis] * std::size_t(width) + j];
+            const auto basis =
+                support / support_strides[axis] % (spline.degrees[axis] + 1);
+            point += (starts[axis] + basis) * cp_strides[axis];
           }
-          const auto point = points[support];
-          const auto coefficient = basis * spline.Weight(point);
-          weight += coefficient;
+          points[support] = point;
+        }
+
+        auto values = arena.AllocateSpan<double>(term_count * dim, 0.0);
+        auto weights =
+            arena.AllocateSpan<double>(orders.rational_ ? term_count : 0);
+        auto difference =
+            arena.AllocateSpan<int32_t>(orders.rational_ ? pd : 0);
+        auto gamma = arena.AllocateSpan<int32_t>(orders.rational_ ? pd : 0);
+        auto correction =
+            arena.AllocateSpan<double>(orders.rational_ ? dim : 0);
+        for (std::size_t i = 0; i < term_count; ++i) {
+          const auto order = terms.subspan(i * pd, pd);
+          auto value = values.subspan(i * dim, dim);
+          double weight = 0.0;
+          if (std::equal(
+                  order.begin(),
+                  order.end(),
+                  spline.degrees.begin(),
+                  [](int32_t k, int32_t degree) { return k <= degree; })) {
+            for (int64_t support = 0; support < supports; ++support) {
+              double basis = 1.0;
+              for (std::size_t axis = 0; axis < pd; ++axis) {
+                const auto width = spline.degrees[axis] + 1;
+                const auto j = support / support_strides[axis] % width;
+                basis *= tables[axis_offsets[axis]
+                                + order[axis] * std::size_t(width) + j];
+              }
+              const auto point = points[support];
+              const auto coefficient = basis * spline.Weight(point);
+              weight += coefficient;
+              for (std::size_t component = 0; component < dim; ++component) {
+                value[component] +=
+                    coefficient * spline.Point(point, component);
+              }
+            }
+          }
+          if (!orders.rational_) {
+            continue;
+          }
+          weights[i] = weight;
+          std::fill(correction.begin(), correction.end(), 0.0);
+          std::fill(gamma.begin(), gamma.end(), 0);
+          for (;;) {
+            // Higher derivatives of the polynomial weight spline vanish once
+            // any component exceeds the degree.
+            std::size_t axis = 0;
+            while (axis < pd
+                   && gamma[axis]
+                          == std::min(order[axis], spline.degrees[axis])) {
+              gamma[axis++] = 0;
+            }
+            if (axis == pd) {
+              break;
+            }
+            ++gamma[axis];
+            double factor = weights[find_term(gamma, i + 1)];
+            if (factor == 0.0) {
+              continue;
+            }
+            for (axis = 0; axis < pd; ++axis) {
+              difference[axis] = order[axis] - gamma[axis];
+              factor *= BinomialDouble(order[axis], gamma[axis]);
+            }
+            const auto sub = find_term(difference, i);
+            for (std::size_t component = 0; component < dim; ++component) {
+              correction[component] += factor * values[sub * dim + component];
+            }
+          }
+          const auto inverse_weight =
+              weights[0] != 0.0 ? 1.0 / weights[0] : 0.0;
           for (std::size_t component = 0; component < dim; ++component) {
-            value[component] += coefficient * spline.Point(point, component);
+            value[component] =
+                (value[component] - correction[component]) * inverse_weight;
           }
         }
-      }
-      if (!orders.rational_) {
-        continue;
-      }
-      weights[i] = weight;
-      std::fill(correction.begin(), correction.end(), 0.0);
-      std::fill(gamma.begin(), gamma.end(), 0);
-      for (;;) {
-        // Higher derivatives of the polynomial weight spline vanish once
-        // any component exceeds the degree.
-        std::size_t axis = 0;
-        while (axis < pd && gamma[axis] == std::min(order[axis], spline.degrees[axis])) {
-          gamma[axis++] = 0;
+        for (std::size_t i = 0; i < output_count; ++i) {
+          std::copy_n(values.data() + orders.output_indices_[i] * dim,
+                      dim,
+                      out.data() + (q * output_count + i) * dim);
         }
-        if (axis == pd) {
-          break;
-        }
-        ++gamma[axis];
-        double factor = weights[find_term(gamma, i + 1)];
-        if (factor == 0.0) {
-          continue;
-        }
-        for (axis = 0; axis < pd; ++axis) {
-          difference[axis] = order[axis] - gamma[axis];
-          factor *= BinomialDouble(order[axis], gamma[axis]);
-        }
-        const auto sub = find_term(difference, i);
-        for (std::size_t component = 0; component < dim; ++component) {
-          correction[component] += factor * values[sub * dim + component];
-        }
-      }
-      const auto inverse_weight = weights[0] != 0.0 ? 1.0 / weights[0] : 0.0;
-      for (std::size_t component = 0; component < dim; ++component) {
-        value[component] = (value[component] - correction[component]) * inverse_weight;
-      }
-    }
-    for (std::size_t i = 0; i < output_count; ++i) {
-      std::copy_n(values.data() + orders.output_indices_[i] * dim, dim,
-                  out.data() + (q * output_count + i) * dim);
-    }
-  });
+      });
 }
 
 Buffer<double> Derivative(const SplineView& spline,

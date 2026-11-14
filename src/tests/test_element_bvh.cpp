@@ -234,13 +234,22 @@ TEST(ElementBvhScratch, ReusesArenaAcrossCappedAndPrunedTraversals) {
   for (int iteration = 0; iteration < 3; ++iteration) {
     auto scope = arena.CreateScope();
     int64_t expected = 0;
-    EXPECT_EQ(bvh.Traverse(&query, [&](int64_t element, double) {
-      EXPECT_EQ(element, expected++);
-      return std::numeric_limits<double>::infinity();
-    }, arena, 64), 64);
-    EXPECT_EQ(bvh.Traverse(&query, [](int64_t element, double bound) {
-      EXPECT_EQ(element, 0);
-      return bound;
-    }, arena), 1);
+    EXPECT_EQ(bvh.Traverse(
+                  &query,
+                  [&](int64_t element, double) {
+                    EXPECT_EQ(element, expected++);
+                    return std::numeric_limits<double>::infinity();
+                  },
+                  arena,
+                  64),
+              64);
+    EXPECT_EQ(bvh.Traverse(
+                  &query,
+                  [](int64_t element, double bound) {
+                    EXPECT_EQ(element, 0);
+                    return bound;
+                  },
+                  arena),
+              1);
   }
 }

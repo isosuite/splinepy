@@ -39,6 +39,7 @@ def _hierarchy_record(spline):
         record["weights_ndim"] = weights.ndim
     return record
 
+
 def load(fname):
     """
     Loads splines from json file. Returns a list of splines
@@ -81,8 +82,11 @@ def load(fname):
         if hierarchy_type is not None:
             spline_list.append(
                 hierarchy_type.from_hierarchy(
-                    jbz["degrees"], jbz["levels"], jbz["leaf_cells"],
-                    jbz["control_points"], weights=jbz.get("weights"),
+                    jbz["degrees"],
+                    jbz["levels"],
+                    jbz["leaf_cells"],
+                    jbz["control_points"],
+                    weights=jbz.get("weights"),
                 )
             )
             continue
@@ -92,9 +96,7 @@ def load(fname):
         data_dict = {}
         for prop in req_props:
             data_dict[prop] = jbz[prop]
-        spline_list.append(
-            _settings.NAME_TO_TYPE[jbz["SplineType"]](**data_dict)
-        )
+        spline_list.append(_settings.NAME_TO_TYPE[jbz["SplineType"]](**data_dict))
 
         # Add show options if any
         show_options = jbz.get("show_options", None)
@@ -107,7 +109,9 @@ def load(fname):
     return spline_list
 
 
-def export(fname, spline_list, list_name=None, base64encoding=False, *, extraction_basis=None):
+def export(
+    fname, spline_list, list_name=None, base64encoding=False, *, extraction_basis=None
+):
     """
     Exports a list of arbitrary splines in json-format
 

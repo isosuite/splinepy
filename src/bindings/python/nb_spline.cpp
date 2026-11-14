@@ -15,8 +15,8 @@
 #include "splinepy/core/queries/derivative.hpp"
 #include "splinepy/core/queries/evaluate.hpp"
 #include "splinepy/core/queries/jacobian.hpp"
-#include "splinepy/proximity/grid_guess.hpp"
 #include "splinepy/core/validate/validator.hpp"
+#include "splinepy/proximity/grid_guess.hpp"
 #include "splinepy/proximity/proximity.hpp"
 #include "splinepy/utils/grid_points.hpp"
 #include "splinepy/utils/nthreads.hpp"
@@ -67,10 +67,14 @@ SplineViewWrapper::SplineViewWrapper(nb::handle spline_obj) {
     auto d = spline_obj.attr("_data");
     if (nb::isinstance<nb::dict>(d)) {
       auto dict = nb::cast<nb::dict>(d);
-      if (dict.contains("control_points")) cps = dict["control_points"];
-      if (dict.contains("degrees")) degs = dict["degrees"];
-      if (dict.contains("knot_vectors")) kvs = dict["knot_vectors"];
-      if (dict.contains("weights")) ws = dict["weights"];
+      if (dict.contains("control_points"))
+        cps = dict["control_points"];
+      if (dict.contains("degrees"))
+        degs = dict["degrees"];
+      if (dict.contains("knot_vectors"))
+        kvs = dict["knot_vectors"];
+      if (dict.contains("weights"))
+        ws = dict["weights"];
     }
   }
 
@@ -80,9 +84,11 @@ SplineViewWrapper::SplineViewWrapper(nb::handle spline_obj) {
 static nb::dict TakeSplineProperties(splinepy::core::SplineData& data) {
   const size_t degrees_shape[] = {data.degrees.size()};
   const size_t n_control_points = data.NumControlPoints();
-  const size_t control_points_shape[] = {n_control_points, static_cast<size_t>(data.dim)};
+  const size_t control_points_shape[] = {n_control_points,
+                                         static_cast<size_t>(data.dim)};
   nb::dict d;
-  d["degrees"] = nb::cast(WrapBuffer<int32_t>(data.degrees, {degrees_shape, 1}));
+  d["degrees"] =
+      nb::cast(WrapBuffer<int32_t>(data.degrees, {degrees_shape, 1}));
   d["control_points"] = nb::cast(
       WrapBuffer<double>(data.control_points, {control_points_shape, 2}));
   if (data.HasKnotVectors()) {
@@ -95,7 +101,8 @@ static nb::dict TakeSplineProperties(splinepy::core::SplineData& data) {
   }
   if (data.IsRational()) {
     const size_t weights_shape[] = {n_control_points, 1};
-    d["weights"] = nb::cast(WrapBuffer<double>(data.weights, {weights_shape, 2}));
+    d["weights"] =
+        nb::cast(WrapBuffer<double>(data.weights, {weights_shape, 2}));
   }
   return d;
 }
@@ -104,7 +111,8 @@ void SetSplineData(nb::handle spline, splinepy::core::SplineData&& data) {
   auto properties = TakeSplineProperties(data);
   if (properties.contains("knot_vectors")) {
     auto axes = nb::cast<nb::list>(properties["knot_vectors"]);
-    auto knot_vector = nb::module_::import_("splinepy.knot_vector").attr("KnotVector");
+    auto knot_vector =
+        nb::module_::import_("splinepy.knot_vector").attr("KnotVector");
     for (size_t i = 0; i < nb::len(axes); ++i) {
       axes[i] = axes[i].attr("view")(knot_vector);
     }
@@ -118,11 +126,16 @@ nb::object SplineFromData(splinepy::core::SplineData&& data) {
       .attr("_spline_from_native")(TakeSplineProperties(data));
 }
 
-nb::object Evaluate(nb::handle spline, nb::object queries, int nthreads, nb::object out, bool check_bounds) {
+nb::object Evaluate(nb::handle spline,
+                    nb::object queries,
+                    int nthreads,
+                    nb::object out,
+                    bool check_bounds) {
   SplineViewWrapper wrapper(spline);
   ContiguousAdapter<double> q_adapter(queries, "float64");
   const size_t para_dim = wrapper.view.para_dim;
-  const size_t n_queries = QueryCount(q_adapter, para_dim, spline, check_bounds);
+  const size_t n_queries =
+      QueryCount(q_adapter, para_dim, spline, check_bounds);
   const size_t dim = wrapper.view.dim;
 
   OutArray<double> out_array(out, {n_queries, dim});
@@ -143,7 +156,12 @@ nb::object Evaluate(nb::handle spline, nb::object queries, int nthreads, nb::obj
   return out_array.result();
 }
 
-nb::object Derivative(nb::handle spline, nb::object queries, nb::object orders, int nthreads, nb::object out, bool check_bounds) {
+nb::object Derivative(nb::handle spline,
+                      nb::object queries,
+                      nb::object orders,
+                      int nthreads,
+                      nb::object out,
+                      bool check_bounds) {
   SplineViewWrapper wrapper(spline);
   ContiguousAdapter<double> q_adapter(queries, "float64");
   ContiguousAdapter<int32_t> ord_adapter(orders, "int32");
@@ -151,31 +169,38 @@ nb::object Derivative(nb::handle spline, nb::object queries, nb::object orders, 
   const int para_dim = wrapper.view.para_dim;
   CheckOrders(ord_adapter, para_dim);
   const int dim = wrapper.view.dim;
-  const size_t n_queries = QueryCount(q_adapter, para_dim, spline, check_bounds);
+  const size_t n_queries =
+      QueryCount(q_adapter, para_dim, spline, check_bounds);
 
   splinepy::core::Options options;
   options.nthreads = nthreads;
 
-  if (ord_adapter.ndim() <= 1 || (ord_adapter.ndim() == 2 && ord_adapter.shape(0) == 1)) {
+  if (ord_adapter.ndim() <= 1
+      || (ord_adapter.ndim() == 2 && ord_adapter.shape(0) == 1)) {
     OutArray<double> out_array(out, {n_queries, static_cast<size_t>(dim)});
     double* out_ptr = out_array.data();
     {
       nb::gil_scoped_release release;
       splinepy::core::Derivative(
           wrapper.view,
-          splinepy::core::Span<const double>(q_adapter.data(), q_adapter.size()),
-          splinepy::core::Span<const int32_t>(ord_adapter.data(), ord_adapter.size()),
+          splinepy::core::Span<const double>(q_adapter.data(),
+                                             q_adapter.size()),
+          splinepy::core::Span<const int32_t>(ord_adapter.data(),
+                                              ord_adapter.size()),
           splinepy::core::Span<double>(out_ptr, n_queries * dim),
           options);
     }
     return out_array.result();
   } else {
     const size_t n_orders = ord_adapter.shape(0);
-    OutArray<double> out_array(out, {n_queries, n_orders, static_cast<size_t>(dim)});
+    OutArray<double> out_array(out,
+                               {n_queries, n_orders, static_cast<size_t>(dim)});
     {
       nb::gil_scoped_release release;
       const splinepy::core::DerivativeOrders schedule(
-          {ord_adapter.data(), ord_adapter.size()}, para_dim, wrapper.view.IsRational());
+          {ord_adapter.data(), ord_adapter.size()},
+          para_dim,
+          wrapper.view.IsRational());
       splinepy::core::Derivative(wrapper.view,
                                  {q_adapter.data(), q_adapter.size()},
                                  schedule,
@@ -186,11 +211,16 @@ nb::object Derivative(nb::handle spline, nb::object queries, nb::object orders, 
   }
 }
 
-nb::object Jacobian(nb::handle spline, nb::object queries, int nthreads, nb::object out, bool check_bounds) {
+nb::object Jacobian(nb::handle spline,
+                    nb::object queries,
+                    int nthreads,
+                    nb::object out,
+                    bool check_bounds) {
   SplineViewWrapper wrapper(spline);
   ContiguousAdapter<double> q_adapter(queries, "float64");
   const size_t para_dim = wrapper.view.para_dim;
-  const size_t n_queries = QueryCount(q_adapter, para_dim, spline, check_bounds);
+  const size_t n_queries =
+      QueryCount(q_adapter, para_dim, spline, check_bounds);
   const size_t dim = wrapper.view.dim;
 
   OutArray<double> out_array(out, {n_queries, dim, para_dim});
@@ -211,11 +241,16 @@ nb::object Jacobian(nb::handle spline, nb::object queries, int nthreads, nb::obj
   return out_array.result();
 }
 
-nb::object Basis(nb::handle spline, nb::object queries, int nthreads, nb::object out, bool check_bounds) {
+nb::object Basis(nb::handle spline,
+                 nb::object queries,
+                 int nthreads,
+                 nb::object out,
+                 bool check_bounds) {
   SplineViewWrapper wrapper(spline);
   ContiguousAdapter<double> q_adapter(queries, "float64");
   const size_t para_dim = wrapper.view.para_dim;
-  const size_t n_queries = QueryCount(q_adapter, para_dim, spline, check_bounds);
+  const size_t n_queries =
+      QueryCount(q_adapter, para_dim, spline, check_bounds);
   const size_t num_basis = wrapper.view.NumSupports();
 
   OutArray<double> out_array(out, {n_queries, num_basis});
@@ -236,16 +271,22 @@ nb::object Basis(nb::handle spline, nb::object queries, int nthreads, nb::object
   return out_array.result();
 }
 
-std::pair<nb::object, nb::object> BasisAndSupport(nb::handle spline, nb::object queries, int nthreads, nb::object out, bool check_bounds) {
+std::pair<nb::object, nb::object> BasisAndSupport(nb::handle spline,
+                                                  nb::object queries,
+                                                  int nthreads,
+                                                  nb::object out,
+                                                  bool check_bounds) {
   SplineViewWrapper wrapper(spline);
   ContiguousAdapter<double> q_adapter(queries, "float64");
   const size_t para_dim = wrapper.view.para_dim;
-  const size_t n_queries = QueryCount(q_adapter, para_dim, spline, check_bounds);
+  const size_t n_queries =
+      QueryCount(q_adapter, para_dim, spline, check_bounds);
   const size_t num_basis_per_query = wrapper.view.NumSupports();
 
   const auto [out_basis_obj, out_support_obj] = SplitOutPair(out);
   OutArray<double> basis_array(out_basis_obj, {n_queries, num_basis_per_query});
-  OutArray<int32_t> support_array(out_support_obj, {n_queries, num_basis_per_query});
+  OutArray<int32_t> support_array(out_support_obj,
+                                  {n_queries, num_basis_per_query});
   double* out_basis = basis_array.data();
   int32_t* out_support = support_array.data();
 
@@ -257,37 +298,48 @@ std::pair<nb::object, nb::object> BasisAndSupport(nb::handle spline, nb::object 
     splinepy::core::BasisAndSupport(
         wrapper.view,
         splinepy::core::Span<const double>(q_adapter.data(), q_adapter.size()),
-        splinepy::core::Span<double>(out_basis, n_queries * num_basis_per_query),
-        splinepy::core::Span<int32_t>(out_support, n_queries * num_basis_per_query),
+        splinepy::core::Span<double>(out_basis,
+                                     n_queries * num_basis_per_query),
+        splinepy::core::Span<int32_t>(out_support,
+                                      n_queries * num_basis_per_query),
         options);
   }
 
   return {basis_array.result(), support_array.result()};
 }
 
-nb::object BasisDerivative(nb::handle spline, nb::object queries, nb::object orders, int nthreads, nb::object out, bool check_bounds) {
+nb::object BasisDerivative(nb::handle spline,
+                           nb::object queries,
+                           nb::object orders,
+                           int nthreads,
+                           nb::object out,
+                           bool check_bounds) {
   SplineViewWrapper wrapper(spline);
   ContiguousAdapter<double> q_adapter(queries, "float64");
   ContiguousAdapter<int32_t> ord_adapter(orders, "int32");
 
   const int para_dim = wrapper.view.para_dim;
   CheckOrders(ord_adapter, para_dim);
-  const size_t n_queries = QueryCount(q_adapter, para_dim, spline, check_bounds);
+  const size_t n_queries =
+      QueryCount(q_adapter, para_dim, spline, check_bounds);
   const size_t num_basis = wrapper.view.NumSupports();
 
   splinepy::core::Options options;
   options.nthreads = nthreads;
   options.validate = false;
 
-  if (ord_adapter.ndim() <= 1 || (ord_adapter.ndim() == 2 && ord_adapter.shape(0) == 1)) {
+  if (ord_adapter.ndim() <= 1
+      || (ord_adapter.ndim() == 2 && ord_adapter.shape(0) == 1)) {
     OutArray<double> out_array(out, {n_queries, num_basis});
     double* out_ptr = out_array.data();
     {
       nb::gil_scoped_release release;
       splinepy::core::BasisDerivative(
           wrapper.view,
-          splinepy::core::Span<const double>(q_adapter.data(), q_adapter.size()),
-          splinepy::core::Span<const int32_t>(ord_adapter.data(), ord_adapter.size()),
+          splinepy::core::Span<const double>(q_adapter.data(),
+                                             q_adapter.size()),
+          splinepy::core::Span<const int32_t>(ord_adapter.data(),
+                                              ord_adapter.size()),
           splinepy::core::Span<double>(out_ptr, n_queries * num_basis),
           options);
     }
@@ -304,9 +356,13 @@ nb::object BasisDerivative(nb::handle spline, nb::object queries, nb::object ord
         for (size_t o = 0; o < n_orders; ++o) {
           splinepy::core::BasisDerivative(
               wrapper.view,
-              splinepy::core::Span<const double>(q_ptr + q * para_dim, para_dim),
-              splinepy::core::Span<const int32_t>(ord_ptr + o * para_dim, para_dim),
-              splinepy::core::Span<double>(out_ptr + (q * n_orders + o) * num_basis, num_basis),
+              splinepy::core::Span<const double>(q_ptr + q * para_dim,
+                                                 para_dim),
+              splinepy::core::Span<const int32_t>(ord_ptr + o * para_dim,
+                                                  para_dim),
+              splinepy::core::Span<double>(out_ptr
+                                               + (q * n_orders + o) * num_basis,
+                                           num_basis),
               options);
         }
       }
@@ -314,21 +370,28 @@ nb::object BasisDerivative(nb::handle spline, nb::object queries, nb::object ord
 
     {
       nb::gil_scoped_release release;
-      splinepy::utils::NThreadExecution(bder_loop, static_cast<int>(n_queries), nthreads);
+      splinepy::utils::NThreadExecution(bder_loop,
+                                        static_cast<int>(n_queries),
+                                        nthreads);
     }
     return out_array.result();
   }
 }
 
-std::pair<nb::object, nb::object> BasisDerivativeAndSupport(nb::handle spline, 
-    nb::object queries, nb::object orders, int nthreads, nb::object out, bool check_bounds) {
+std::pair<nb::object, nb::object> BasisDerivativeAndSupport(nb::handle spline,
+                                                            nb::object queries,
+                                                            nb::object orders,
+                                                            int nthreads,
+                                                            nb::object out,
+                                                            bool check_bounds) {
   SplineViewWrapper wrapper(spline);
   ContiguousAdapter<double> q_adapter(queries, "float64");
   ContiguousAdapter<int32_t> ord_adapter(orders, "int32");
 
   const int para_dim = wrapper.view.para_dim;
   CheckOrders(ord_adapter, para_dim);
-  const size_t n_queries = QueryCount(q_adapter, para_dim, spline, check_bounds);
+  const size_t n_queries =
+      QueryCount(q_adapter, para_dim, spline, check_bounds);
   const size_t num_basis_per_query = wrapper.view.NumSupports();
 
   splinepy::core::Options options;
@@ -336,34 +399,42 @@ std::pair<nb::object, nb::object> BasisDerivativeAndSupport(nb::handle spline,
   options.validate = false;
 
   const auto [out_basis_obj, out_support_obj] = SplitOutPair(out);
-  OutArray<int32_t> support_array(out_support_obj, {n_queries, num_basis_per_query});
+  OutArray<int32_t> support_array(out_support_obj,
+                                  {n_queries, num_basis_per_query});
   int32_t* out_support = support_array.data();
   {
     nb::gil_scoped_release release;
     splinepy::core::Support(
         wrapper.view,
         splinepy::core::Span<const double>(q_adapter.data(), q_adapter.size()),
-        splinepy::core::Span<int32_t>(out_support, n_queries * num_basis_per_query),
+        splinepy::core::Span<int32_t>(out_support,
+                                      n_queries * num_basis_per_query),
         options);
   }
   auto supp_arr = support_array.result();
 
-  if (ord_adapter.ndim() <= 1 || (ord_adapter.ndim() == 2 && ord_adapter.shape(0) == 1)) {
-    OutArray<double> basis_array(out_basis_obj, {n_queries, num_basis_per_query});
+  if (ord_adapter.ndim() <= 1
+      || (ord_adapter.ndim() == 2 && ord_adapter.shape(0) == 1)) {
+    OutArray<double> basis_array(out_basis_obj,
+                                 {n_queries, num_basis_per_query});
     double* out_basis = basis_array.data();
     {
       nb::gil_scoped_release release;
       splinepy::core::BasisDerivative(
           wrapper.view,
-          splinepy::core::Span<const double>(q_adapter.data(), q_adapter.size()),
-          splinepy::core::Span<const int32_t>(ord_adapter.data(), ord_adapter.size()),
-          splinepy::core::Span<double>(out_basis, n_queries * num_basis_per_query),
+          splinepy::core::Span<const double>(q_adapter.data(),
+                                             q_adapter.size()),
+          splinepy::core::Span<const int32_t>(ord_adapter.data(),
+                                              ord_adapter.size()),
+          splinepy::core::Span<double>(out_basis,
+                                       n_queries * num_basis_per_query),
           options);
     }
     return {basis_array.result(), supp_arr};
   } else {
     const size_t n_orders = ord_adapter.shape(0);
-    OutArray<double> basis_array(out_basis_obj, {n_queries, n_orders, num_basis_per_query});
+    OutArray<double> basis_array(out_basis_obj,
+                                 {n_queries, n_orders, num_basis_per_query});
     double* out_basis = basis_array.data();
     const double* q_ptr = q_adapter.data();
     const int32_t* ord_ptr = ord_adapter.data();
@@ -373,9 +444,13 @@ std::pair<nb::object, nb::object> BasisDerivativeAndSupport(nb::handle spline,
         for (size_t o = 0; o < n_orders; ++o) {
           splinepy::core::BasisDerivative(
               wrapper.view,
-              splinepy::core::Span<const double>(q_ptr + q * para_dim, para_dim),
-              splinepy::core::Span<const int32_t>(ord_ptr + o * para_dim, para_dim),
-              splinepy::core::Span<double>(out_basis + (q * n_orders + o) * num_basis_per_query, num_basis_per_query),
+              splinepy::core::Span<const double>(q_ptr + q * para_dim,
+                                                 para_dim),
+              splinepy::core::Span<const int32_t>(ord_ptr + o * para_dim,
+                                                  para_dim),
+              splinepy::core::Span<double>(
+                  out_basis + (q * n_orders + o) * num_basis_per_query,
+                  num_basis_per_query),
               options);
         }
       }
@@ -383,17 +458,24 @@ std::pair<nb::object, nb::object> BasisDerivativeAndSupport(nb::handle spline,
 
     {
       nb::gil_scoped_release release;
-      splinepy::utils::NThreadExecution(bder_loop, static_cast<int>(n_queries), nthreads);
+      splinepy::utils::NThreadExecution(bder_loop,
+                                        static_cast<int>(n_queries),
+                                        nthreads);
     }
     return {basis_array.result(), supp_arr};
   }
 }
 
-nb::object Support(nb::handle spline, nb::object queries, int nthreads, nb::object out, bool check_bounds) {
+nb::object Support(nb::handle spline,
+                   nb::object queries,
+                   int nthreads,
+                   nb::object out,
+                   bool check_bounds) {
   SplineViewWrapper wrapper(spline);
   ContiguousAdapter<double> q_adapter(queries, "float64");
   const size_t para_dim = wrapper.view.para_dim;
-  const size_t n_queries = QueryCount(q_adapter, para_dim, spline, check_bounds);
+  const size_t n_queries =
+      QueryCount(q_adapter, para_dim, spline, check_bounds);
   const size_t num_basis_per_query = wrapper.view.NumSupports();
 
   OutArray<int32_t> out_array(out, {n_queries, num_basis_per_query});
@@ -414,7 +496,10 @@ nb::object Support(nb::handle spline, nb::object queries, int nthreads, nb::obje
   return out_array.result();
 }
 
-nb::object Sample(nb::handle spline, nb::object resolutions, int nthreads, nb::object out) {
+nb::object Sample(nb::handle spline,
+                  nb::object resolutions,
+                  int nthreads,
+                  nb::object out) {
   SplineViewWrapper wrapper(spline);
   const int para_dim = wrapper.view.para_dim;
   const int dim = wrapper.view.dim;
@@ -430,7 +515,8 @@ nb::object Sample(nb::handle spline, nb::object resolutions, int nthreads, nb::o
     if (adapter.size() == 1) {
       std::fill(res.begin(), res.end(), adapter.data()[0]);
     } else {
-      for (int i = 0; i < para_dim && i < static_cast<int>(adapter.size()); ++i) {
+      for (int i = 0; i < para_dim && i < static_cast<int>(adapter.size());
+           ++i) {
         res[i] = adapter.data()[i];
       }
     }
@@ -455,7 +541,8 @@ nb::object Sample(nb::handle spline, nb::object resolutions, int nthreads, nb::o
     nb::gil_scoped_release release;
     splinepy::core::Evaluate(
         wrapper.view,
-        splinepy::core::Span<const double>(queries_vec.data(), queries_vec.size()),
+        splinepy::core::Span<const double>(queries_vec.data(),
+                                           queries_vec.size()),
         splinepy::core::Span<double>(out_ptr, total_points * dim),
         options);
   }
@@ -465,7 +552,8 @@ nb::object Sample(nb::handle spline, nb::object resolutions, int nthreads, nb::o
 
 void ElevateDegrees(nb::handle spline, nb::object para_dims) {
   SplineViewWrapper wrapper(spline);
-  splinepy::core::SplineData data = splinepy::core::SplineData::FromView(wrapper.view);
+  splinepy::core::SplineData data =
+      splinepy::core::SplineData::FromView(wrapper.view);
 
   std::vector<int> dims;
   if (nb::isinstance<nb::int_>(para_dims)) {
@@ -488,9 +576,11 @@ void ElevateDegrees(nb::handle spline, nb::object para_dims) {
   SetSplineData(spline, std::move(data));
 }
 
-nb::list ReduceDegrees(nb::handle spline, nb::object para_dims, double tolerance) {
+nb::list
+ReduceDegrees(nb::handle spline, nb::object para_dims, double tolerance) {
   SplineViewWrapper wrapper(spline);
-  splinepy::core::SplineData data = splinepy::core::SplineData::FromView(wrapper.view);
+  splinepy::core::SplineData data =
+      splinepy::core::SplineData::FromView(wrapper.view);
 
   std::vector<int> dims;
   if (nb::isinstance<nb::int_>(para_dims)) {
@@ -531,7 +621,8 @@ nb::list GrevilleAbscissae(nb::handle spline, const double tolerance) {
   splinepy::core::Options options;
   options.tolerance = tolerance;
   options.validate = false;
-  auto greville_vec = splinepy::core::GrevilleAbscissaeList(wrapper.view, options);
+  auto greville_vec =
+      splinepy::core::GrevilleAbscissaeList(wrapper.view, options);
 
   nb::list result;
   for (auto& g : greville_vec) {
@@ -540,18 +631,25 @@ nb::list GrevilleAbscissae(nb::handle spline, const double tolerance) {
   return result;
 }
 
-ProximityHandle::ProximityHandle(
-    nb::handle spline, nb::object resolutions, std::string guess,
-    int nthreads, std::vector<std::string> chain, bool guard, int max_starts) {
+ProximityHandle::ProximityHandle(nb::handle spline,
+                                 nb::object resolutions,
+                                 std::string guess,
+                                 int nthreads,
+                                 std::vector<std::string> chain,
+                                 bool guard,
+                                 int max_starts) {
   const SplineViewWrapper wrapper(spline);
   splinepy::core::ThrowIfInvalid(wrapper.view);
   geometry_ = splinepy::core::SplineData::FromView(wrapper.view);
   const auto view = geometry_.View();
   const ContiguousAdapter<int32_t> sampling(resolutions, "int32");
-  if (sampling.ndim() != 1 || sampling.size() != static_cast<size_t>(view.para_dim)) {
-    throw nb::value_error("Initial guess resolutions must match parametric dimension");
+  if (sampling.ndim() != 1
+      || sampling.size() != static_cast<size_t>(view.para_dim)) {
+    throw nb::value_error(
+        "Initial guess resolutions must match parametric dimension");
   }
-  if (std::any_of(sampling.data(), sampling.data() + sampling.size(),
+  if (std::any_of(sampling.data(),
+                  sampling.data() + sampling.size(),
                   [](int value) { return value < 2; })) {
     throw nb::value_error("Resolution entries must be >= 2");
   }
@@ -582,9 +680,12 @@ ProximityHandle::ProximityHandle(
   proximity_->SetGuard(guard);
 }
 
-void ProximityHandle::Query(nb::object queries, double tolerance,
-                            int max_iterations, bool aggressive_search_bounds,
-                            int nthreads, nb::tuple out) const {
+void ProximityHandle::Query(nb::object queries,
+                            double tolerance,
+                            int max_iterations,
+                            bool aggressive_search_bounds,
+                            int nthreads,
+                            nb::tuple out) const {
   ContiguousAdapter<double> q_adapter(queries, "float64");
   const int para_dim = ParaDim();
   const int dim = Dim();
@@ -596,7 +697,8 @@ void ProximityHandle::Query(nb::object queries, double tolerance,
   const auto pdim = static_cast<size_t>(para_dim);
   const auto physical = static_cast<size_t>(dim);
   using Output = nb::ndarray<nb::numpy, double, nb::c_contig, nb::device::cpu>;
-  auto buffer = [&](size_t slot, std::initializer_list<size_t> shape,
+  auto buffer = [&](size_t slot,
+                    std::initializer_list<size_t> shape,
                     bool optional = false) -> Output {
     if (optional && out[slot].is_none()) {
       return {};
@@ -624,18 +726,18 @@ void ProximityHandle::Query(nb::object queries, double tolerance,
     };
     for (int i = begin; i < end; ++i) {
       double unused_distance;
-      proximity_->VerboseQuery(
-          q_ptr + static_cast<size_t>(i) * physical,
-          tolerance,
-          max_iterations,
-          aggressive_search_bounds,
-          row(params, i, pdim),
-          row(points, i, physical),
-          row(differences, i, physical),
-          distances.is_valid() ? distances.data()[i] : unused_distance,
-          residuals.data()[i],
-          row(first, i, pdim * physical),
-          row(second, i, pdim * pdim * physical));
+      proximity_->VerboseQuery(q_ptr + static_cast<size_t>(i) * physical,
+                               tolerance,
+                               max_iterations,
+                               aggressive_search_bounds,
+                               row(params, i, pdim),
+                               row(points, i, physical),
+                               row(differences, i, physical),
+                               distances.is_valid() ? distances.data()[i]
+                                                    : unused_distance,
+                               residuals.data()[i],
+                               row(first, i, pdim * physical),
+                               row(second, i, pdim * pdim * physical));
     }
   };
 
@@ -643,8 +745,6 @@ void ProximityHandle::Query(nb::object queries, double tolerance,
     nb::gil_scoped_release release;
     splinepy::utils::NThreadExecution(query_loop, n_queries, nthreads);
   }
-
-
 }
 
 // Checks a complete set of spline properties. Throws on invalid input.
@@ -657,7 +757,8 @@ bool ValidateProperties(nb::kwargs kwargs) {
 
   // Parse degrees
   auto d_obj = kwargs["degrees"];
-  if (d_obj.is_none()) return false;
+  if (d_obj.is_none())
+    return false;
   auto d_seq = nb::cast<nb::sequence>(d_obj);
   const int para_dim = static_cast<int>(nb::len(d_seq));
   std::vector<int32_t> degrees_vec(para_dim);
@@ -667,9 +768,11 @@ bool ValidateProperties(nb::kwargs kwargs) {
 
   // Parse cps
   auto cp_obj = kwargs["control_points"];
-  if (cp_obj.is_none()) return false;
+  if (cp_obj.is_none())
+    return false;
   auto cp_arr = nb::cast<nb::ndarray<const double, nb::c_contig>>(cp_obj);
-  const int dim = static_cast<int>(cp_arr.ndim() >= 2 ? cp_arr.shape(cp_arr.ndim() - 1) : 1);
+  const int dim = static_cast<int>(
+      cp_arr.ndim() >= 2 ? cp_arr.shape(cp_arr.ndim() - 1) : 1);
   const int ncps = static_cast<int>(cp_arr.size() / (dim > 0 ? dim : 1));
 
   if (dim == 0) {
@@ -763,7 +866,8 @@ bool ValidateProperties(nb::kwargs kwargs) {
   }
 
   if (kwargs.contains("weights") && !kwargs["weights"].is_none()) {
-    auto w_arr = nb::cast<nb::ndarray<const double, nb::c_contig>>(kwargs["weights"]);
+    auto w_arr =
+        nb::cast<nb::ndarray<const double, nb::c_contig>>(kwargs["weights"]);
     if (static_cast<int>(w_arr.size()) != ncps) {
       splinepy::utils::PrintAndThrowError(
           "Number of weights (",
@@ -780,31 +884,110 @@ bool ValidateProperties(nb::kwargs kwargs) {
 void init_nb_spline(nb::module_& m) {
   m.def("validate_spline_properties", &ValidateProperties);
 
-  m.def("evaluate", &Evaluate, nb::arg("spline"), nb::arg("queries"), nb::arg("nthreads") = 1, nb::arg("out") = nb::none(), nb::arg("check_bounds") = false);
-  m.def("derivative", &Derivative, nb::arg("spline"), nb::arg("queries"), nb::arg("orders"), nb::arg("nthreads") = 1, nb::arg("out") = nb::none(), nb::arg("check_bounds") = false);
-  m.def("jacobian", &Jacobian, nb::arg("spline"), nb::arg("queries"), nb::arg("nthreads") = 1, nb::arg("out") = nb::none(), nb::arg("check_bounds") = false);
-  m.def("basis", &Basis, nb::arg("spline"), nb::arg("queries"), nb::arg("nthreads") = 1, nb::arg("out") = nb::none(), nb::arg("check_bounds") = false);
-  m.def("basis_and_support", &BasisAndSupport, nb::arg("spline"), nb::arg("queries"), nb::arg("nthreads") = 1, nb::arg("out") = nb::none(), nb::arg("check_bounds") = false);
-  m.def("basis_derivative", &BasisDerivative, nb::arg("spline"), nb::arg("queries"), nb::arg("orders"), nb::arg("nthreads") = 1, nb::arg("out") = nb::none(), nb::arg("check_bounds") = false);
-  m.def("basis_derivative_and_support", &BasisDerivativeAndSupport, nb::arg("spline"), nb::arg("queries"), nb::arg("orders"), nb::arg("nthreads") = 1, nb::arg("out") = nb::none(), nb::arg("check_bounds") = false);
-  m.def("support", &Support, nb::arg("spline"), nb::arg("queries"), nb::arg("nthreads") = 1, nb::arg("out") = nb::none(), nb::arg("check_bounds") = false);
-  m.def("sample", &Sample, nb::arg("spline"), nb::arg("resolutions"), nb::arg("nthreads") = 1, nb::arg("out") = nb::none());
-  m.def("elevate_degrees", &ElevateDegrees, nb::arg("spline"), nb::arg("para_dims"));
-  m.def("reduce_degrees", &ReduceDegrees, nb::arg("spline"), nb::arg("para_dims"), nb::arg("tolerance") = 1e-4);
-  m.def("greville_abscissae_list", &GrevilleAbscissae, nb::arg("spline"), nb::arg("duplicate_tolerance") = -1.0);
+  m.def("evaluate",
+        &Evaluate,
+        nb::arg("spline"),
+        nb::arg("queries"),
+        nb::arg("nthreads") = 1,
+        nb::arg("out") = nb::none(),
+        nb::arg("check_bounds") = false);
+  m.def("derivative",
+        &Derivative,
+        nb::arg("spline"),
+        nb::arg("queries"),
+        nb::arg("orders"),
+        nb::arg("nthreads") = 1,
+        nb::arg("out") = nb::none(),
+        nb::arg("check_bounds") = false);
+  m.def("jacobian",
+        &Jacobian,
+        nb::arg("spline"),
+        nb::arg("queries"),
+        nb::arg("nthreads") = 1,
+        nb::arg("out") = nb::none(),
+        nb::arg("check_bounds") = false);
+  m.def("basis",
+        &Basis,
+        nb::arg("spline"),
+        nb::arg("queries"),
+        nb::arg("nthreads") = 1,
+        nb::arg("out") = nb::none(),
+        nb::arg("check_bounds") = false);
+  m.def("basis_and_support",
+        &BasisAndSupport,
+        nb::arg("spline"),
+        nb::arg("queries"),
+        nb::arg("nthreads") = 1,
+        nb::arg("out") = nb::none(),
+        nb::arg("check_bounds") = false);
+  m.def("basis_derivative",
+        &BasisDerivative,
+        nb::arg("spline"),
+        nb::arg("queries"),
+        nb::arg("orders"),
+        nb::arg("nthreads") = 1,
+        nb::arg("out") = nb::none(),
+        nb::arg("check_bounds") = false);
+  m.def("basis_derivative_and_support",
+        &BasisDerivativeAndSupport,
+        nb::arg("spline"),
+        nb::arg("queries"),
+        nb::arg("orders"),
+        nb::arg("nthreads") = 1,
+        nb::arg("out") = nb::none(),
+        nb::arg("check_bounds") = false);
+  m.def("support",
+        &Support,
+        nb::arg("spline"),
+        nb::arg("queries"),
+        nb::arg("nthreads") = 1,
+        nb::arg("out") = nb::none(),
+        nb::arg("check_bounds") = false);
+  m.def("sample",
+        &Sample,
+        nb::arg("spline"),
+        nb::arg("resolutions"),
+        nb::arg("nthreads") = 1,
+        nb::arg("out") = nb::none());
+  m.def("elevate_degrees",
+        &ElevateDegrees,
+        nb::arg("spline"),
+        nb::arg("para_dims"));
+  m.def("reduce_degrees",
+        &ReduceDegrees,
+        nb::arg("spline"),
+        nb::arg("para_dims"),
+        nb::arg("tolerance") = 1e-4);
+  m.def("greville_abscissae_list",
+        &GrevilleAbscissae,
+        nb::arg("spline"),
+        nb::arg("duplicate_tolerance") = -1.0);
 
   nb::class_<ProximityHandle>(m, "ProximityHandle")
-      .def(nb::init<nb::handle, nb::object, std::string, int,
-                    std::vector<std::string>, bool, int>(),
-           nb::arg("spline"), nb::arg("resolutions"), nb::arg("guess") = "bvh",
+      .def(nb::init<nb::handle,
+                    nb::object,
+                    std::string,
+                    int,
+                    std::vector<std::string>,
+                    bool,
+                    int>(),
+           nb::arg("spline"),
+           nb::arg("resolutions"),
+           nb::arg("guess") = "bvh",
            nb::arg("nthreads") = 1,
            nb::arg("chain") = std::vector<std::string>{"dogleg", "slsqp", "lm"},
-           nb::arg("guard") = true, nb::arg("max_starts") = 4)
+           nb::arg("guard") = true,
+           nb::arg("max_starts") = 4)
       .def_prop_ro("para_dim", &ProximityHandle::ParaDim)
       .def_prop_ro("dim", &ProximityHandle::Dim)
-      .def("query", &ProximityHandle::Query, nb::arg("queries"),
-           nb::arg("tolerance"), nb::arg("max_iterations"), nb::arg("aggressive_search_bounds"),
-           nb::arg("nthreads"), nb::arg("out"));
+      .def("query",
+           &ProximityHandle::Query,
+           nb::arg("queries"),
+           nb::arg("tolerance"),
+           nb::arg("max_iterations"),
+           nb::arg("aggressive_search_bounds"),
+           nb::arg("nthreads"),
+           nb::arg("out"));
 }
 
 } // namespace splinepy::py

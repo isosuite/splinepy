@@ -3,8 +3,8 @@
 #include <algorithm>
 #include <cstring>
 
-#include "splinepy/core/manipulation/detail/knot_insertion_alpha.hpp"
 #include "splinepy/core/hierarchy/detail/knots.hpp"
+#include "splinepy/core/manipulation/detail/knot_insertion_alpha.hpp"
 #include "splinepy/core/memory/workspace.hpp"
 
 namespace splinepy::core {

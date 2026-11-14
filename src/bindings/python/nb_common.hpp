@@ -23,7 +23,7 @@ namespace splinepy::py {
 
 namespace nb = nanobind;
 
-template <typename T>
+template<typename T>
 struct ContiguousAdapter {
   nb::object keepalive;
   nb::ndarray<const T, nb::c_contig> array;
@@ -40,10 +40,11 @@ struct ContiguousAdapter {
   size_t shape(size_t i) const { return array.shape(i); }
 };
 
-template <typename T, typename Storage, typename Deleter>
-nb::ndarray<nb::numpy, T> WrapOwnedArray(
-    Storage& storage, splinepy::core::Span<const size_t> shape,
-    Deleter deleter) {
+template<typename T, typename Storage, typename Deleter>
+nb::ndarray<nb::numpy, T>
+WrapOwnedArray(Storage& storage,
+               splinepy::core::Span<const size_t> shape,
+               Deleter deleter) {
   auto* data = storage.release();
   nb::capsule owner;
   try {
@@ -55,10 +56,10 @@ nb::ndarray<nb::numpy, T> WrapOwnedArray(
   return {data, shape.size(), shape.data(), owner};
 }
 
-template <typename T>
-nb::ndarray<nb::numpy, T> WrapBuffer(
-    splinepy::core::Buffer<std::remove_const_t<T>>& storage,
-    splinepy::core::Span<const size_t> shape) {
+template<typename T>
+nb::ndarray<nb::numpy, T>
+WrapBuffer(splinepy::core::Buffer<std::remove_const_t<T>>& storage,
+           splinepy::core::Span<const size_t> shape) {
   return WrapOwnedArray<T>(storage, shape, [](void* pointer) noexcept {
     splinepy::core::detail::AlignedFree(pointer);
   });
@@ -75,16 +76,16 @@ inline size_t ArraySize(splinepy::core::Span<const size_t> shape) {
   return size;
 }
 
-template <typename T>
-nb::ndarray<nb::numpy, T> AllocateNumPyArray(
-    splinepy::core::Span<const size_t> shape) {
+template<typename T>
+nb::ndarray<nb::numpy, T>
+AllocateNumPyArray(splinepy::core::Span<const size_t> shape) {
   std::unique_ptr<T[]> storage(new T[ArraySize(shape)]);
   return WrapOwnedArray<T>(storage, shape, [](void* pointer) noexcept {
     delete[] static_cast<T*>(pointer);
   });
 }
 
-template <typename T>
+template<typename T>
 nb::object TakeNumPyBuffer(splinepy::core::Buffer<T>& buffer,
                            std::initializer_list<size_t> shape) {
   const splinepy::core::Span<const size_t> extents(shape.begin(), shape.size());
@@ -93,7 +94,7 @@ nb::object TakeNumPyBuffer(splinepy::core::Buffer<T>& buffer,
                             : nb::cast(WrapBuffer<T>(buffer, extents));
 }
 
-template <typename T>
+template<typename T>
 nb::object CopyNumPyArray(const T* data,
                           splinepy::core::Span<const size_t> shape) {
   auto result = AllocateNumPyArray<T>(shape);
@@ -103,7 +104,7 @@ nb::object CopyNumPyArray(const T* data,
   return nb::cast(result);
 }
 
-template <typename T>
+template<typename T>
 nb::object MakeNumPyArray1D(splinepy::core::Span<const T> span) {
   const size_t shape[] = {span.size()};
   return CopyNumPyArray(span.data(), {shape, 1});
@@ -116,25 +117,26 @@ inline nb::object MakeNumPyArray1D(const std::vector<bool>& vec) {
   return nb::cast(result);
 }
 
-template <typename T>
+template<typename T>
 nb::object MakeNumPyArray2D(const T* data, size_t rows, size_t cols) {
   const size_t shape[] = {rows, cols};
   return CopyNumPyArray(data, {shape, 2});
 }
 
-template <typename T>
+template<typename T>
 nb::object MakeNumPyArray3D(const T* data, size_t d0, size_t d1, size_t d2) {
   const size_t shape[] = {d0, d1, d2};
   return CopyNumPyArray(data, {shape, 3});
 }
 
 /// numpy ufunc style output. With `out` given, results are written into that
-/// array in place and it is returned (it has to be a writable C-contiguous array
-/// of element type T and exactly the expected shape; nothing is converted or
-/// copied behind the caller's back). Without `out`, a fresh array is allocated.
-template <typename T>
+/// array in place and it is returned (it has to be a writable C-contiguous
+/// array of element type T and exactly the expected shape; nothing is converted
+/// or copied behind the caller's back). Without `out`, a fresh array is
+/// allocated.
+template<typename T>
 class OutArray {
- public:
+public:
   OutArray(const nb::object& out, std::initializer_list<size_t> shape)
       : shape_(shape) {
     size_ = ArraySize(shape_);
@@ -142,8 +144,8 @@ class OutArray {
     if (!out.is_none()) {
       nb::ndarray<T, nb::c_contig, nb::device::cpu> array;
       if (!nb::try_cast(out, array, /*convert=*/false)) {
-        throw std::invalid_argument(
-            "out must be a writable, C-contiguous numpy array of the dtype of the result.");
+        throw std::invalid_argument("out must be a writable, C-contiguous "
+                                    "numpy array of the dtype of the result.");
       }
       bool matches = array.ndim() == shape_.size();
       for (size_t i = 0; matches && i < shape_.size(); ++i) {
@@ -154,7 +156,8 @@ class OutArray {
         for (size_t i = 0; i < shape_.size(); ++i) {
           expected += (i ? ", " : "") + std::to_string(shape_[i]);
         }
-        throw std::invalid_argument("out has the wrong shape, expected (" + expected + ").");
+        throw std::invalid_argument("out has the wrong shape, expected ("
+                                    + expected + ").");
       }
       ptr_ = array.data();
       result_ = out;
@@ -170,7 +173,7 @@ class OutArray {
   size_t size() const { return size_; }
   nb::object result() const { return result_; }
 
- private:
+private:
   std::vector<size_t> shape_;
   size_t size_{1};
   T* ptr_{nullptr};
@@ -215,19 +218,24 @@ struct SplineViewWrapper {
 
     if (!cps_obj.is_none()) {
       cps_keepalive = np.attr("ascontiguousarray")(cps_obj, np.attr("float64"));
-      cps_arr = nb::cast<nb::ndarray<const double, nb::c_contig>>(cps_keepalive);
+      cps_arr =
+          nb::cast<nb::ndarray<const double, nb::c_contig>>(cps_keepalive);
       view.control_points_data = cps_arr.data();
-      view.num_control_points = static_cast<int64_t>(cps_arr.ndim() >= 2 ? cps_arr.shape(0) : cps_arr.size());
-      view.dim = static_cast<int32_t>(cps_arr.ndim() >= 2 ? cps_arr.shape(cps_arr.ndim() - 1) : 1);
+      view.num_control_points = static_cast<int64_t>(
+          cps_arr.ndim() >= 2 ? cps_arr.shape(0) : cps_arr.size());
+      view.dim = static_cast<int32_t>(
+          cps_arr.ndim() >= 2 ? cps_arr.shape(cps_arr.ndim() - 1) : 1);
       view.cp_stride = view.dim;
       view.dim_stride = 1;
     }
 
     if (!deg_obj.is_none()) {
       deg_keepalive = np.attr("ascontiguousarray")(deg_obj, np.attr("int32"));
-      degrees_arr = nb::cast<nb::ndarray<const int32_t, nb::c_contig>>(deg_keepalive);
+      degrees_arr =
+          nb::cast<nb::ndarray<const int32_t, nb::c_contig>>(deg_keepalive);
       view.para_dim = static_cast<int32_t>(degrees_arr.size());
-      view.degrees = splinepy::core::Span<const int32_t>(degrees_arr.data(), degrees_arr.size());
+      view.degrees = splinepy::core::Span<const int32_t>(degrees_arr.data(),
+                                                         degrees_arr.size());
     }
 
     if (!kvs_obj.is_none()) {
@@ -244,21 +252,26 @@ struct SplineViewWrapper {
         if (nb::hasattr(item, "numpy")) {
           item = item.attr("numpy")();
         }
-        nb::object item_arr = np.attr("ascontiguousarray")(item, np.attr("float64"));
+        nb::object item_arr =
+            np.attr("ascontiguousarray")(item, np.attr("float64"));
         kv_keepalive.push_back(item_arr);
         auto arr = nb::cast<nb::ndarray<const double, nb::c_contig>>(item_arr);
         kv_arrs.push_back(arr);
         kv_spans.emplace_back(arr.data(), arr.size());
       }
       if (!kv_spans.empty()) {
-        view.knot_vectors = splinepy::core::Span<const splinepy::core::Span<const double>>(
-            kv_spans.data(), kv_spans.size());
+        view.knot_vectors =
+            splinepy::core::Span<const splinepy::core::Span<const double>>(
+                kv_spans.data(),
+                kv_spans.size());
       }
     }
 
     if (!weights_obj.is_none()) {
-      weights_keepalive = np.attr("ascontiguousarray")(weights_obj, np.attr("float64"));
-      weights_arr = nb::cast<nb::ndarray<const double, nb::c_contig>>(weights_keepalive);
+      weights_keepalive =
+          np.attr("ascontiguousarray")(weights_obj, np.attr("float64"));
+      weights_arr =
+          nb::cast<nb::ndarray<const double, nb::c_contig>>(weights_keepalive);
       view.weights_data = weights_arr->data();
       view.weight_stride = 1;
     } else {
@@ -278,8 +291,10 @@ struct SplineViewWrapper {
         weights_arr(other.weights_arr),
         view(other.view) {
     if (!kv_spans.empty()) {
-      view.knot_vectors = splinepy::core::Span<const splinepy::core::Span<const double>>(
-          kv_spans.data(), kv_spans.size());
+      view.knot_vectors =
+          splinepy::core::Span<const splinepy::core::Span<const double>>(
+              kv_spans.data(),
+              kv_spans.size());
     }
   }
 
@@ -295,8 +310,10 @@ struct SplineViewWrapper {
         weights_arr(std::move(other.weights_arr)),
         view(other.view) {
     if (!kv_spans.empty()) {
-      view.knot_vectors = splinepy::core::Span<const splinepy::core::Span<const double>>(
-          kv_spans.data(), kv_spans.size());
+      view.knot_vectors =
+          splinepy::core::Span<const splinepy::core::Span<const double>>(
+              kv_spans.data(),
+              kv_spans.size());
     }
   }
 
@@ -313,8 +330,10 @@ struct SplineViewWrapper {
       weights_arr = other.weights_arr;
       view = other.view;
       if (!kv_spans.empty()) {
-        view.knot_vectors = splinepy::core::Span<const splinepy::core::Span<const double>>(
-            kv_spans.data(), kv_spans.size());
+        view.knot_vectors =
+            splinepy::core::Span<const splinepy::core::Span<const double>>(
+                kv_spans.data(),
+                kv_spans.size());
       }
     }
     return *this;
@@ -333,8 +352,10 @@ struct SplineViewWrapper {
       weights_arr = std::move(other.weights_arr);
       view = other.view;
       if (!kv_spans.empty()) {
-        view.knot_vectors = splinepy::core::Span<const splinepy::core::Span<const double>>(
-            kv_spans.data(), kv_spans.size());
+        view.knot_vectors =
+            splinepy::core::Span<const splinepy::core::Span<const double>>(
+                kv_spans.data(),
+                kv_spans.size());
       }
     }
     return *this;
@@ -350,14 +371,12 @@ struct SplineViewWrapper {
   explicit SplineViewWrapper(nb::handle spline_obj);
 };
 
-
 struct PySplineHolder {
   SplineViewWrapper wrapper;
   std::string name;
   const splinepy::core::SplineView& view;
 
-  explicit PySplineHolder(nb::handle obj)
-      : wrapper(obj), view(wrapper.view) {
+  explicit PySplineHolder(nb::handle obj) : wrapper(obj), view(wrapper.view) {
     if (nb::hasattr(obj, "name")) {
       name = nb::cast<std::string>(obj.attr("name"));
     } else if (nb::hasattr(obj, "whatami")) {

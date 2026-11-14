@@ -3,9 +3,9 @@
 #include <cassert>
 #include <vector>
 
-#include "splinepy/core/queries/detail/query_helpers.hpp"
 #include "splinepy/core/concurrency/parallel_for.hpp"
 #include "splinepy/core/memory/workspace.hpp"
+#include "splinepy/core/queries/detail/query_helpers.hpp"
 #include "splinepy/core/validate/validator.hpp"
 
 namespace splinepy::core {

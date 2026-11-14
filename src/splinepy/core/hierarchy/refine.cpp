@@ -2,8 +2,8 @@
 
 #include <algorithm>
 
-#include "splinepy/core/hierarchy/detail/grid.hpp"
 #include "splinepy/core/concurrency/parallel_for.hpp"
+#include "splinepy/core/hierarchy/detail/grid.hpp"
 #include "splinepy/core/memory/workspace.hpp"
 
 namespace splinepy::core {

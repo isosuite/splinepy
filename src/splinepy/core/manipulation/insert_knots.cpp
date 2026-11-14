@@ -4,8 +4,8 @@
 #include <stdexcept>
 #include <vector>
 
-#include "splinepy/core/manipulation/detail/manipulation_helpers.hpp"
 #include "splinepy/core/concurrency/parallel_for.hpp"
+#include "splinepy/core/manipulation/detail/manipulation_helpers.hpp"
 #include "splinepy/core/validate/validator.hpp"
 
 namespace splinepy::core {

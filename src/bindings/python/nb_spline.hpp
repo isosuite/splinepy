@@ -27,18 +27,26 @@ nb::object SplineFromData(splinepy::core::SplineData&& data);
 
 // Owns the geometry and the initial guess structure for all query batches.
 class ProximityHandle {
- public:
-  ProximityHandle(nb::handle spline, nb::object resolutions, std::string guess,
-                  int nthreads, std::vector<std::string> chain, bool guard,
+public:
+  ProximityHandle(nb::handle spline,
+                  nb::object resolutions,
+                  std::string guess,
+                  int nthreads,
+                  std::vector<std::string> chain,
+                  bool guard,
                   int max_starts);
 
   int ParaDim() const { return proximity_->spline_.para_dim; }
   int Dim() const { return proximity_->spline_.dim; }
 
-  void Query(nb::object queries, double tolerance, int max_iterations,
-             bool aggressive_search_bounds, int nthreads, nb::tuple out) const;
+  void Query(nb::object queries,
+             double tolerance,
+             int max_iterations,
+             bool aggressive_search_bounds,
+             int nthreads,
+             nb::tuple out) const;
 
- private:
+private:
   splinepy::core::SplineData geometry_;
   std::unique_ptr<splinepy::proximity::Proximity> proximity_;
 };

@@ -6,15 +6,15 @@
 #include <nanobind/stl/unique_ptr.h>
 
 #include "splinepy/core/hierarchy/export.hpp"
-#include "splinepy/core/hierarchy/refine.hpp"
 #include "splinepy/core/hierarchy/proximity.hpp"
+#include "splinepy/core/hierarchy/refine.hpp"
 
 namespace splinepy::py {
 namespace {
 
 using namespace splinepy::core;
 
-template <class T>
+template<class T>
 ContiguousAdapter<T> Snapshot(nb::handle data, const char* dtype_name) {
   ContiguousAdapter<T> array(data, dtype_name);
   auto base = array.keepalive;
@@ -40,7 +40,8 @@ struct HierarchyArrays {
 
   HierarchyArrays(nb::handle degree_data, nb::sequence knot_data)
       : degrees(Snapshot<int32_t>(degree_data, "int32")) {
-    if (degrees.ndim() != 1 || degrees.size() == 0 || degrees.size() > INT32_MAX) {
+    if (degrees.ndim() != 1 || degrees.size() == 0
+        || degrees.size() > INT32_MAX) {
       throw nb::value_error("degrees must be a nonempty 1D array");
     }
     const auto count = nb::len(knot_data);
@@ -94,13 +95,17 @@ struct SplineArrays {
         leaves(Snapshot<uint64_t>(data[2], "uint64")),
         active(Snapshot<uint64_t>(data[3], "uint64")),
         control_points(Snapshot<double>(data[4], "float64")) {
-    if (leaves.ndim() != 1 || active.ndim() != 1 || control_points.ndim() != 2 ||
-        control_points.shape(0) != active.size() || control_points.shape(1) == 0 ||
-        control_points.shape(1) > INT32_MAX) {
+    if (leaves.ndim() != 1 || active.ndim() != 1 || control_points.ndim() != 2
+        || control_points.shape(0) != active.size()
+        || control_points.shape(1) == 0
+        || control_points.shape(1) > INT32_MAX) {
       throw nb::value_error("expected one control point per active function");
     }
-    hierarchy = {grid.levels, {leaves.data(), leaves.size()}, {active.data(), active.size()},
-                 KeyFormat::kKey64, nb::cast<bool>(data[6])};
+    hierarchy = {grid.levels,
+                 {leaves.data(), leaves.size()},
+                 {active.data(), active.size()},
+                 KeyFormat::kKey64,
+                 nb::cast<bool>(data[6])};
     spline.para_dim = static_cast<int32_t>(grid.degrees.size());
     spline.dim = static_cast<int32_t>(control_points.shape(1));
     spline.degrees = grid.Degrees();
@@ -111,9 +116,9 @@ struct SplineArrays {
     spline.hierarchy = &hierarchy;
     if (!data[5].is_none()) {
       weights.emplace(Snapshot<double>(data[5], "float64"));
-      if (weights->size() != active.size() ||
-          (weights->ndim() != 1 &&
-           !(weights->ndim() == 2 && weights->shape(1) == 1))) {
+      if (weights->size() != active.size()
+          || (weights->ndim() != 1
+              && !(weights->ndim() == 2 && weights->shape(1) == 1))) {
         throw nb::value_error("expected one weight per active function");
       }
       spline.weights_data = weights->data();
@@ -126,22 +131,24 @@ struct QueryArrays {
   ContiguousAdapter<int32_t> orders;
   Span<const double> points;
 
-  QueryArrays(nb::handle points_data, nb::handle order_data, std::size_t dim,
+  QueryArrays(nb::handle points_data,
+              nb::handle order_data,
+              std::size_t dim,
               bool multi_order = false)
       : queries(points_data, "float64"),
         orders(order_data, "int32"),
         points(queries.data(), queries.size()) {
     const bool single = orders.ndim() == 1 && orders.size() == dim;
-    const bool multiple = multi_order && orders.ndim() == 2 &&
-                          orders.shape(0) > 0 && orders.shape(1) == dim;
-    if (queries.ndim() != 2 || queries.shape(1) != dim || (!single && !multiple)) {
-      throw nb::value_error("queries and orders must match the parametric dimension");
+    const bool multiple = multi_order && orders.ndim() == 2
+                          && orders.shape(0) > 0 && orders.shape(1) == dim;
+    if (queries.ndim() != 2 || queries.shape(1) != dim
+        || (!single && !multiple)) {
+      throw nb::value_error(
+          "queries and orders must match the parametric dimension");
     }
   }
 
-  Span<const int32_t> Orders() const {
-    return {orders.data(), orders.size()};
-  }
+  Span<const int32_t> Orders() const { return {orders.data(), orders.size()}; }
 };
 
 nb::object ProximityArray(Buffer<double>& buffer,
@@ -166,7 +173,8 @@ struct Cache {
     geometry = BuildThbGeometry(arrays.spline, extraction[0]);
   }
 
-  Cache(nb::tuple data, ThbCacheData&& refined) : arrays(ValidatePayload(data)) {
+  Cache(nb::tuple data, ThbCacheData&& refined)
+      : arrays(ValidatePayload(data)) {
     nb::gil_scoped_release release;
     extraction.resize(1);
     extraction[0] = std::move(refined);
@@ -183,10 +191,13 @@ struct Cache {
       }
       levels.append(nb::tuple(axes));
     }
-    return nb::make_tuple(arrays.grid.degrees.keepalive, nb::tuple(levels),
-                          arrays.leaves.keepalive, arrays.active.keepalive,
+    return nb::make_tuple(arrays.grid.degrees.keepalive,
+                          nb::tuple(levels),
+                          arrays.leaves.keepalive,
+                          arrays.active.keepalive,
                           arrays.control_points.keepalive,
-                          arrays.weights ? arrays.weights->keepalive : nb::none(),
+                          arrays.weights ? arrays.weights->keepalive
+                                         : nb::none(),
                           arrays.hierarchy.truncate);
   }
 
@@ -195,7 +206,8 @@ struct Cache {
     return IsThbAdmissible(extraction[0], admissible);
   }
 
-  nb::object Closure(nb::handle indices, int32_t admissible, int threads) const {
+  nb::object
+  Closure(nb::handle indices, int32_t admissible, int threads) const {
     const auto marked = Snapshot<std::size_t>(indices, "uintp");
     if (marked.ndim() != 1) {
       throw nb::value_error("marked leaves must be a 1D array");
@@ -205,8 +217,11 @@ struct Cache {
     Buffer<std::size_t> closure;
     {
       nb::gil_scoped_release release;
-      closure = ThbAdmissibleClosure(arrays.spline, extraction[0],
-                                     {marked.data(), marked.size()}, admissible, options);
+      closure = ThbAdmissibleClosure(arrays.spline,
+                                     extraction[0],
+                                     {marked.data(), marked.size()},
+                                     admissible,
+                                     options);
     }
     return TakeNumPyBuffer(closure, {closure.size()});
   }
@@ -221,8 +236,12 @@ struct Cache {
     ThbRefinementData result;
     {
       nb::gil_scoped_release release;
-      result = RefineThb(arrays.spline, extraction[0], geometry,
-                         {marked.data(), marked.size()}, admissible, options);
+      result = RefineThb(arrays.spline,
+                         extraction[0],
+                         geometry,
+                         {marked.data(), marked.size()},
+                         admissible,
+                         options);
     }
     auto& hierarchy = result.hierarchy;
     nb::list levels;
@@ -235,17 +254,21 @@ struct Cache {
     }
     nb::object weights = nb::none();
     if (arrays.weights) {
-      weights = arrays.weights->ndim() == 1
-                    ? TakeNumPyBuffer(result.weights, {result.weights.size()})
-                    : TakeNumPyBuffer(result.weights, {result.weights.size(), 1});
+      weights =
+          arrays.weights->ndim() == 1
+              ? TakeNumPyBuffer(result.weights, {result.weights.size()})
+              : TakeNumPyBuffer(result.weights, {result.weights.size(), 1});
     }
     const auto active_count = hierarchy.active.size();
     const auto payload = nb::make_tuple(
-        arrays.grid.degrees.keepalive, nb::tuple(levels),
+        arrays.grid.degrees.keepalive,
+        nb::tuple(levels),
         TakeNumPyBuffer(hierarchy.leaves, {hierarchy.leaves.size()}),
         TakeNumPyBuffer(hierarchy.active, {hierarchy.active.size()}),
-        TakeNumPyBuffer(result.control_points, {active_count, size_t(arrays.spline.dim)}),
-        weights, hierarchy.truncate);
+        TakeNumPyBuffer(result.control_points,
+                        {active_count, size_t(arrays.spline.dim)}),
+        weights,
+        hierarchy.truncate);
     auto cache = std::make_unique<Cache>(payload, std::move(result.extraction));
     const auto immutable_payload = cache->Payload();
     return nb::make_tuple(immutable_payload, nb::cast(std::move(cache)));
@@ -263,16 +286,23 @@ struct Cache {
     const QueryArrays query(queries, orders, pd, true);
     const auto count = query.queries.shape(0);
     const auto n_orders = query.orders.size() / pd;
-    const auto shape = n_orders == 1 ? std::initializer_list<std::size_t>{count, dim}
-                                     : std::initializer_list<std::size_t>{count, n_orders, dim};
+    const auto shape =
+        n_orders == 1
+            ? std::initializer_list<std::size_t>{count, dim}
+            : std::initializer_list<std::size_t>{count, n_orders, dim};
     OutArray<double> result(out, shape);
     Span<double> values(result.data(), result.size());
     Options options;
     options.nthreads = threads;
     {
       nb::gil_scoped_release release;
-      EvaluateThb({&arrays.spline, 1}, extraction, {&geometry, 1}, {&query.points, 1},
-                  query.Orders(), {&values, 1}, options);
+      EvaluateThb({&arrays.spline, 1},
+                  extraction,
+                  {&geometry, 1},
+                  {&query.points, 1},
+                  query.Orders(),
+                  {&values, 1},
+                  options);
     }
     return result.result();
   }
@@ -291,8 +321,12 @@ struct Cache {
     options.nthreads = threads;
     {
       nb::gil_scoped_release release;
-      JacobianThb({&arrays.spline, 1}, extraction, {&geometry, 1}, {&points, 1},
-                  {&values, 1}, options);
+      JacobianThb({&arrays.spline, 1},
+                  extraction,
+                  {&geometry, 1},
+                  {&points, 1},
+                  {&values, 1},
+                  options);
     }
     return result.result();
   }
@@ -313,8 +347,8 @@ struct Cache {
     Span<const int32_t> multi_indices;
     if (!orders.is_none()) {
       order_array.emplace(orders, "int32");
-      if (order_array->ndim() != 2 || order_array->shape(1) != pd ||
-          order_array->shape(0) == 0) {
+      if (order_array->ndim() != 2 || order_array->shape(1) != pd
+          || order_array->shape(0) == 0) {
         throw nb::value_error("orders must match the parametric dimension");
       }
       multi_indices = {order_array->data(), order_array->size()};
@@ -325,7 +359,8 @@ struct Cache {
     ThbBasisLayout layout;
     {
       nb::gil_scoped_release release;
-      layout = BuildThbBasisLayout(arrays.spline, extraction[0], points, options);
+      layout =
+          BuildThbBasisLayout(arrays.spline, extraction[0], points, options);
     }
     const auto count = query.shape(0);
     const auto n_orders = multi_indices.size() / pd;
@@ -334,20 +369,31 @@ struct Cache {
     Span<double> values;
     Span<int64_t> indices;
     if (n_orders) {
-      const auto shape = n_orders == 1
-                             ? std::initializer_list<std::size_t>{count, layout.width}
-                             : std::initializer_list<std::size_t>{count, n_orders, layout.width};
+      const auto shape =
+          n_orders == 1
+              ? std::initializer_list<std::size_t>{count, layout.width}
+              : std::initializer_list<std::size_t>{count,
+                                                   n_orders,
+                                                   layout.width};
       basis.emplace(out_basis, shape);
       values = {basis->data(), basis->size()};
     }
     if (return_support) {
-      support.emplace(out_support, std::initializer_list<std::size_t>{count, layout.width});
+      support.emplace(out_support,
+                      std::initializer_list<std::size_t>{count, layout.width});
       indices = {support->data(), support->size()};
     }
     {
       nb::gil_scoped_release release;
-      BasisThb(arrays.spline, extraction[0], geometry, points, multi_indices, layout,
-               values, indices, options);
+      BasisThb(arrays.spline,
+               extraction[0],
+               geometry,
+               points,
+               multi_indices,
+               layout,
+               values,
+               indices,
+               options);
     }
     return nb::make_tuple(basis ? basis->result() : nb::none(),
                           support ? support->result() : nb::none());
@@ -364,8 +410,8 @@ struct Cache {
     const ContiguousAdapter<int32_t> samples(resolutions, "int32");
     const auto pd = static_cast<std::size_t>(arrays.spline.para_dim);
     const auto dim = static_cast<std::size_t>(arrays.spline.dim);
-    if (points.ndim() != 2 || points.shape(1) != dim ||
-        samples.ndim() != 1 || samples.size() != pd) {
+    if (points.ndim() != 2 || points.shape(1) != dim || samples.ndim() != 1
+        || samples.size() != pd) {
       throw nb::value_error("invalid hierarchy proximity array shape");
     }
     Options options;
@@ -374,24 +420,35 @@ struct Cache {
     {
       nb::gil_scoped_release release;
       std::call_once(proximity_initialized, [&] {
-        proximity = BuildHierarchyProximity(arrays.spline, extraction[0], geometry, options);
+        proximity = BuildHierarchyProximity(arrays.spline,
+                                            extraction[0],
+                                            geometry,
+                                            options);
       });
-      result = HierarchyProximities(arrays.spline, extraction[0], proximity,
-                                     {points.data(), points.size()},
-                                     {samples.data(), samples.size()}, tolerance,
-                                     max_iterations, tight, verbose, options);
+      result = HierarchyProximities(arrays.spline,
+                                    extraction[0],
+                                    proximity,
+                                    {points.data(), points.size()},
+                                    {samples.data(), samples.size()},
+                                    tolerance,
+                                    max_iterations,
+                                    tight,
+                                    verbose,
+                                    options);
     }
     const auto n = points.shape(0);
     auto parameters = ProximityArray(result.parameters, {n, pd});
     if (!verbose) {
       return parameters;
     }
-    return nb::make_tuple(parameters, ProximityArray(result.points, {n, dim}),
-                          ProximityArray(result.differences, {n, dim}),
-                          ProximityArray(result.distances, {n, 1}),
-                          ProximityArray(result.residuals, {n, 1}),
-                          ProximityArray(result.first_derivatives, {n, pd, dim}),
-                          ProximityArray(result.second_derivatives, {n, pd, pd, dim}));
+    return nb::make_tuple(
+        parameters,
+        ProximityArray(result.points, {n, dim}),
+        ProximityArray(result.differences, {n, dim}),
+        ProximityArray(result.distances, {n, 1}),
+        ProximityArray(result.residuals, {n, 1}),
+        ProximityArray(result.first_derivatives, {n, pd, dim}),
+        ProximityArray(result.second_derivatives, {n, pd, pd, dim}));
   }
 
   nb::object Bernstein(int threads) const {
@@ -418,9 +475,12 @@ struct Cache {
     }
     const auto leaves = cache.leaf_levels.size();
     return nb::make_tuple(
-        TakeNumPyBuffer(result.points, {leaves, size_t(cache.local_size), size_t(arrays.spline.dim)}),
+        TakeNumPyBuffer(
+            result.points,
+            {leaves, size_t(cache.local_size), size_t(arrays.spline.dim)}),
         arrays.spline.IsRational()
-            ? TakeNumPyBuffer(result.weights, {leaves, size_t(cache.local_size)})
+            ? TakeNumPyBuffer(result.weights,
+                              {leaves, size_t(cache.local_size)})
             : nb::none());
   }
 
@@ -430,7 +490,8 @@ struct Cache {
     SplineData result;
     {
       nb::gil_scoped_release release;
-      result = HierarchyToBSpline(arrays.spline, extraction[0], geometry, options);
+      result =
+          HierarchyToBSpline(arrays.spline, extraction[0], geometry, options);
     }
     nb::list knots;
     for (auto& axis : result.knot_vectors) {
@@ -438,38 +499,50 @@ struct Cache {
     }
     return nb::make_tuple(
         std::move(knots),
-        TakeNumPyBuffer(result.control_points, {size_t(result.NumControlPoints()), size_t(result.dim)}),
-        result.IsRational() ? TakeNumPyBuffer(result.weights, {result.weights.size()}) : nb::none());
+        TakeNumPyBuffer(
+            result.control_points,
+            {size_t(result.NumControlPoints()), size_t(result.dim)}),
+        result.IsRational()
+            ? TakeNumPyBuffer(result.weights, {result.weights.size()})
+            : nb::none());
   }
 
   nb::dict Extraction() const {
     const auto& cache = extraction[0];
     const auto owner = nb::cast(this, nb::rv_policy::reference);
-    const auto array = [&](const auto* data, std::initializer_list<std::size_t> shape) {
+    const auto array = [&](const auto* data,
+                           std::initializer_list<std::size_t> shape) {
       using Value = std::remove_pointer_t<decltype(data)>;
-      return nb::cast(nb::ndarray<nb::numpy, Value>(
-          data, shape.size(), shape.begin(), owner));
+      return nb::cast(nb::ndarray<nb::numpy, Value>(data,
+                                                    shape.size(),
+                                                    shape.begin(),
+                                                    owner));
     };
     nb::dict result;
     result["offsets"] = array(cache.offsets.data(), {cache.offsets.size()});
-    result["active_indices"] = array(cache.active_indices.data(),
-                                      {cache.active_indices.size()});
+    result["active_indices"] =
+        array(cache.active_indices.data(), {cache.active_indices.size()});
     result["values"] = array(cache.values.data(),
-                              {cache.active_indices.size(), cache.local_size});
-    result["levels"] = array(cache.leaf_levels.data(), {cache.leaf_levels.size()});
-    result["first_knots"] = array(cache.first_knots.data(),
-                                   {cache.leaf_levels.size(), cache.axis_bits.size()});
-    result["bounds"] = array(cache.bounds.data(),
-                              {cache.leaf_levels.size(), 2, cache.axis_bits.size()});
+                             {cache.active_indices.size(), cache.local_size});
+    result["levels"] =
+        array(cache.leaf_levels.data(), {cache.leaf_levels.size()});
+    result["first_knots"] =
+        array(cache.first_knots.data(),
+              {cache.leaf_levels.size(), cache.axis_bits.size()});
+    result["bounds"] =
+        array(cache.bounds.data(),
+              {cache.leaf_levels.size(), 2, cache.axis_bits.size()});
     return result;
   }
 };
 
-nb::tuple Layout(nb::handle degrees, nb::sequence levels, nb::handle cell_data) {
+nb::tuple
+Layout(nb::handle degrees, nb::sequence levels, nb::handle cell_data) {
   const HierarchyArrays grid(degrees, levels);
   const ContiguousAdapter<int32_t> cells(cell_data, "int32");
   if (cells.ndim() != 2 || cells.shape(1) != grid.degrees.size() + 1) {
-    throw nb::value_error("leaf cells must contain a level followed by span indices");
+    throw nb::value_error(
+        "leaf cells must contain a level followed by span indices");
   }
   std::vector<LeafCellView> cell_views;
   cell_views.reserve(cells.shape(0));
@@ -490,18 +563,30 @@ nb::tuple Layout(nb::handle degrees, nb::sequence levels, nb::handle cell_data) 
                         TakeNumPyBuffer(active[0], {active[0].size()}));
 }
 
-}  // namespace
+} // namespace
 
 void init_nb_hierarchy(nb::module_& module) {
   module.def("_hierarchy_layout", Layout);
   nb::class_<Cache>(module, "_HierarchyCache")
       .def(nb::init<nb::tuple>())
-      .def("evaluate", &Cache::Evaluate, nb::arg("queries"), nb::arg("orders"),
-           nb::arg("nthreads"), nb::arg("out").none())
-      .def("jacobian", &Cache::Jacobian, nb::arg("queries"), nb::arg("nthreads"),
+      .def("evaluate",
+           &Cache::Evaluate,
+           nb::arg("queries"),
+           nb::arg("orders"),
+           nb::arg("nthreads"),
            nb::arg("out").none())
-      .def("basis", &Cache::Basis, nb::arg("queries"), nb::arg("orders").none(),
-           nb::arg("nthreads"), nb::arg("out_basis").none(), nb::arg("out_support").none(),
+      .def("jacobian",
+           &Cache::Jacobian,
+           nb::arg("queries"),
+           nb::arg("nthreads"),
+           nb::arg("out").none())
+      .def("basis",
+           &Cache::Basis,
+           nb::arg("queries"),
+           nb::arg("orders").none(),
+           nb::arg("nthreads"),
+           nb::arg("out_basis").none(),
+           nb::arg("out_support").none(),
            nb::arg("return_support"))
       .def("extraction", &Cache::Extraction)
       .def("bernstein_extraction", &Cache::Bernstein)
@@ -513,4 +598,4 @@ void init_nb_hierarchy(nb::module_& module) {
       .def("refine", &Cache::Refine);
 }
 
-}  // namespace splinepy::py
+} // namespace splinepy::py

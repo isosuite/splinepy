@@ -4,8 +4,8 @@
 #include <cmath>
 #include <limits>
 
-#include "splinepy/core/hierarchy/detail/grid.hpp"
 #include "splinepy/core/concurrency/parallel_for.hpp"
+#include "splinepy/core/hierarchy/detail/grid.hpp"
 #include "splinepy/core/hierarchy/export.hpp"
 #include "splinepy/core/memory/workspace.hpp"
 #include "splinepy/core/queries/derivative.hpp"
@@ -234,100 +234,107 @@ HierarchyProximities(const SplineView& spline,
         std::size_t best_leaf = 0;
         bool found = false;
 
-        data.bvh.Traverse(query.data(), [&](int64_t element, double) {
-          const auto leaf = static_cast<std::size_t>(element);
-          const auto view = local_view(leaf);
-          proximity::Proximity solver(view);
-          if (tight_bounds) {
-            solver.SetInitialGuess(std::make_unique<SamplingStep>(step));
-          }
-          if (sampled.empty()) {
-            Evaluate(view, unit_queries, physical_samples, local_options);
-          }
-          const auto values =
-              sampled.empty() ? Span<const double>(physical_samples)
-                              : sampled.cspan().subspan(leaf * sample_values,
-                                                        sample_values);
-          for (std::size_t i = 0; i < sample_count; ++i) {
-            distances[i] = SquaredDistance(values.subspan(i * dim, dim), query);
-          }
+        data.bvh.Traverse(
+            query.data(),
+            [&](int64_t element, double) {
+              const auto leaf = static_cast<std::size_t>(element);
+              const auto view = local_view(leaf);
+              proximity::Proximity solver(view);
+              if (tight_bounds) {
+                solver.SetInitialGuess(std::make_unique<SamplingStep>(step));
+              }
+              if (sampled.empty()) {
+                Evaluate(view, unit_queries, physical_samples, local_options);
+              }
+              const auto values =
+                  sampled.empty()
+                      ? Span<const double>(physical_samples)
+                      : sampled.cspan().subspan(leaf * sample_values,
+                                                sample_values);
+              for (std::size_t i = 0; i < sample_count; ++i) {
+                distances[i] =
+                    SquaredDistance(values.subspan(i * dim, dim), query);
+              }
 
-          // The four best sampled basins give independent starts on a curved
-          // leaf.
-          std::array<std::size_t, 4> starts;
-          starts.fill(sample_count);
-          for (std::size_t i = 0; i < sample_count; ++i) {
-            bool minimum = true;
-            for (std::size_t axis = 0; axis < pd && minimum; ++axis) {
-              const auto digit = i / strides[axis] % samples[axis];
-              minimum = (!digit || distances[i] < distances[i - strides[axis]])
-                        && (digit + 1 == static_cast<std::size_t>(samples[axis])
-                            || distances[i] <= distances[i + strides[axis]]);
-            }
-            if (minimum) {
-              auto pos =
-                  std::find_if(starts.begin(), starts.end(), [&](auto j) {
-                    return j == sample_count || distances[i] < distances[j];
-                  });
-              if (pos != starts.end()) {
-                std::move_backward(pos, starts.end() - 1, starts.end());
-                *pos = i;
+              // The four best sampled basins give independent starts on a
+              // curved leaf.
+              std::array<std::size_t, 4> starts;
+              starts.fill(sample_count);
+              for (std::size_t i = 0; i < sample_count; ++i) {
+                bool minimum = true;
+                for (std::size_t axis = 0; axis < pd && minimum; ++axis) {
+                  const auto digit = i / strides[axis] % samples[axis];
+                  minimum =
+                      (!digit || distances[i] < distances[i - strides[axis]])
+                      && (digit + 1 == static_cast<std::size_t>(samples[axis])
+                          || distances[i] <= distances[i + strides[axis]]);
+                }
+                if (minimum) {
+                  auto pos =
+                      std::find_if(starts.begin(), starts.end(), [&](auto j) {
+                        return j == sample_count || distances[i] < distances[j];
+                      });
+                  if (pos != starts.end()) {
+                    std::move_backward(pos, starts.end() - 1, starts.end());
+                    *pos = i;
+                  }
+                }
               }
-            }
-          }
-          const auto bounds =
-              extraction.bounds.cspan().subspan(leaf * 2 * pd, 2 * pd);
-          for (const auto start : starts) {
-            if (start == sample_count) {
-              break;
-            }
-            double distance, residual;
-            solver.SolveFrom(query.data(),
-                             tolerance,
-                             max_iterations,
-                             tight_bounds,
-                             unit_queries.data() + start * pd,
-                             candidate.data(),
-                             point.data(),
-                             difference.data(),
-                             distance,
-                             residual,
-                             nullptr,
-                             nullptr);
-            for (std::size_t axis = 0; axis < pd; ++axis) {
-              const double lo = bounds[axis], hi = bounds[pd + axis];
-              const double t = std::clamp(candidate[axis], 0.0, 1.0);
-              mapped[axis] = std::clamp((1.0 - t) * lo + t * hi, lo, hi);
-              // Interior upper faces belong to their right-hand leaf. Keep a
-              // left-hand solution representable even across a discontinuity.
-              if (mapped[axis] == hi
-                  && hi != extraction.finest_breaks[axis].back()) {
-                mapped[axis] = std::nextafter(hi, lo);
+              const auto bounds =
+                  extraction.bounds.cspan().subspan(leaf * 2 * pd, 2 * pd);
+              for (const auto start : starts) {
+                if (start == sample_count) {
+                  break;
+                }
+                double distance, residual;
+                solver.SolveFrom(query.data(),
+                                 tolerance,
+                                 max_iterations,
+                                 tight_bounds,
+                                 unit_queries.data() + start * pd,
+                                 candidate.data(),
+                                 point.data(),
+                                 difference.data(),
+                                 distance,
+                                 residual,
+                                 nullptr,
+                                 nullptr);
+                for (std::size_t axis = 0; axis < pd; ++axis) {
+                  const double lo = bounds[axis], hi = bounds[pd + axis];
+                  const double t = std::clamp(candidate[axis], 0.0, 1.0);
+                  mapped[axis] = std::clamp((1.0 - t) * lo + t * hi, lo, hi);
+                  // Interior upper faces belong to their right-hand leaf. Keep
+                  // a left-hand solution representable even across a
+                  // discontinuity.
+                  if (mapped[axis] == hi
+                      && hi != extraction.finest_breaks[axis].back()) {
+                    mapped[axis] = std::nextafter(hi, lo);
+                  }
+                  const double width = hi - lo;
+                  unit[axis] = std::isfinite(width)
+                                   ? (mapped[axis] - lo) / width
+                                   : (0.5 * mapped[axis] - 0.5 * lo)
+                                         / (0.5 * hi - 0.5 * lo);
+                }
+                Evaluate(view, unit, point, local_options);
+                const auto squared = SquaredDistance(point, query);
+                if (!std::isnan(squared) && (!found || squared < best)) {
+                  found = true;
+                  best = squared;
+                  best_leaf = leaf;
+                  best_residual = residual;
+                  std::copy(mapped.begin(), mapped.end(), parameters.begin());
+                  std::copy(unit.begin(), unit.end(), best_unit.begin());
+                  if (verbose) {
+                    std::copy(point.begin(),
+                              point.end(),
+                              result.points.data() + q * dim);
+                  }
+                }
               }
-              const double width = hi - lo;
-              unit[axis] =
-                  std::isfinite(width)
-                      ? (mapped[axis] - lo) / width
-                      : (0.5 * mapped[axis] - 0.5 * lo) / (0.5 * hi - 0.5 * lo);
-            }
-            Evaluate(view, unit, point, local_options);
-            const auto squared = SquaredDistance(point, query);
-            if (!std::isnan(squared) && (!found || squared < best)) {
-              found = true;
-              best = squared;
-              best_leaf = leaf;
-              best_residual = residual;
-              std::copy(mapped.begin(), mapped.end(), parameters.begin());
-              std::copy(unit.begin(), unit.end(), best_unit.begin());
-              if (verbose) {
-                std::copy(point.begin(),
-                          point.end(),
-                          result.points.data() + q * dim);
-              }
-            }
-          }
-          return best;
-    }, arena);
+              return best;
+            },
+            arena);
 
         if (!found) {
           throw SplinepyException(
