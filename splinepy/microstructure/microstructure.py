@@ -128,7 +128,17 @@ class Microstructure(_SplinepyBase):
     @property
     def microtile(self):
         """Microtile that is either a spline, a list of splines, or a class
-        that provides a `create_tile` function."""
+        that provides a `create_tile` function.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        tile : object or None
+            Tile object, or None if no tile has been assigned.
+        """
         if hasattr(self, "_microtile"):
             return self._microtile
         else:
@@ -192,6 +202,17 @@ class Microstructure(_SplinepyBase):
 
     @parametrization_function.setter
     def parametrization_function(self, parametrization_function):
+        """Set the tile parametrization callback.
+
+        Parameters
+        ----------
+        parametrization_function : callable
+            Function supplying local tile parameters.
+
+        Returns
+        -------
+        None
+        """
         if not callable(parametrization_function):
             raise TypeError("parametrization_function must be callable")
         self._parametrization_function = parametrization_function
@@ -230,6 +251,17 @@ class Microstructure(_SplinepyBase):
 
     @parameter_sensitivity_function.setter
     def parameter_sensitivity_function(self, parameter_sensitivity_function):
+        """Set the tile sensitivity callback.
+
+        Parameters
+        ----------
+        parameter_sensitivity_function : callable or None
+            Function supplying tile sensitivities, or None to clear it.
+
+        Returns
+        -------
+        None
+        """
         if parameter_sensitivity_function is None:
             self._parameter_sensitivity_function = None
             self._sanity_check()

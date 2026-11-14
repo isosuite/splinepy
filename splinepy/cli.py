@@ -15,6 +15,15 @@ def convert(args):
     Args:
         args (namespace): Args namespace from argparse containing the options for
         convert.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed command-line options.
+
+    Returns
+    -------
+    None
     """
     fname = args.input_file
     from splinepy import io
@@ -34,6 +43,15 @@ def show(args):
 
     Args:
         args (namespace): Args namespace from argparse containing the options for show.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed command-line options.
+
+    Returns
+    -------
+    None
     """
     fname = args.input_file
     from splinepy import io
@@ -68,6 +86,14 @@ def entry():
     Currently only supports version and show commands.
 
     Try out `splinpy -h` for more information.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
     """
     print()
     print(

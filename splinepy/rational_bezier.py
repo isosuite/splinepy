@@ -129,17 +129,46 @@ class RationalBezier(_BezierBase):
 
     @property
     def rationalthb(self):
-        """Return a single-level rational THB spline with the same geometry."""
+        """Return a single-level rational THB spline with the same geometry.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        spline : RationalTHBSpline
+        """
         from splinepy.hierarchy import RationalTHBSpline
 
         return RationalTHBSpline.from_bspline(self.nurbs)
 
     @property
     def rationalbezier(self):
+        """Return a RationalBezier with the same geometry.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        spline : RationalBezier
+        """
         return self.copy(saved_data=False)
 
     @property
     def nurbs(self):
+        """Return a NURBS with the same geometry.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        spline : NURBS
+        """
         return _settings.NAME_TO_TYPE["NURBS"](
             spline=_splinepy_core.same_spline_with_knot_vectors(self)
         )

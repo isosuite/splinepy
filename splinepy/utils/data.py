@@ -249,8 +249,7 @@ def make_matrix(values, supports, n_cols, as_array=False):
 
 
 def uniform_query(bounds, resolutions):
-    """
-    Creates uniform query within the given bounds and resolutions.
+    """Creates uniform query within the given bounds and resolutions.
     Same as `gus.create.vertices.raster(bounds, resolution).vertices`.
 
     Parameters
@@ -259,6 +258,11 @@ def uniform_query(bounds, resolutions):
       [[lower_1, lower_2, ...], [upper_1, upper_2, ...]]
     resolutions: 1D array-like
       [resolution_1, resolution_2, ...]
+
+    Returns
+    -------
+    queries : numpy.ndarray
+        Uniform grid of parametric points.
     """
     # unpack bounds
     lower_b, upper_b = bounds
@@ -527,8 +531,7 @@ class SplineData(_DataHolder):
         return saved.as_vertex_data(resolutions=resolutions)
 
     def as_arrow(self, key, resolutions=None, on=None, default=None):
-        """
-        Returns as-arrow-representable data on certain places, with given
+        """Returns as-arrow-representable data on certain places, with given
         resolution, or on predefined places.
 
         Parameters
@@ -536,6 +539,13 @@ class SplineData(_DataHolder):
         key: str
         resolutions: list or tuple
         on: array-like
+        default : object, optional
+            Value returned when the key is absent.
+
+        Returns
+        -------
+        values : numpy.ndarray or object
+            Sampled vector data, or default if the key is absent.
         """
         if key not in self._saved:
             return default
@@ -651,8 +661,7 @@ class MultipatchData(SplineData):
         return saved.as_vertex_data(resolutions=resolutions)
 
     def as_arrow(self, key, resolutions=None, on=None, default=None):
-        """
-        Returns as-arrow-representable data on certain places, with given
+        """Returns as-arrow-representable data on certain places, with given
         resolution, or on predefined places.
 
         Parameters
@@ -660,6 +669,13 @@ class MultipatchData(SplineData):
         key: str
         resolutions: list or tuple
         on: array-like
+        default : object, optional
+            Value returned when the key is absent.
+
+        Returns
+        -------
+        values : numpy.ndarray or object
+            Sampled vector data, or default if the key is absent.
         """
         if key not in self._saved:
             return default

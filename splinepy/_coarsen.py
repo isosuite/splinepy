@@ -71,11 +71,13 @@ def _project(indices, values, weights, source, count, tolerance):
     flat = indices.ravel()
 
     def transpose(values_at_queries):
+        """Apply the transpose of the local extraction operator."""
         return np.bincount(
             flat, (values * values_at_queries[:, None]).ravel(), minlength=count
         )
 
     def evaluate(coefficients):
+        """Evaluate the local representation at the quadrature points."""
         return np.sum(values * coefficients[indices], axis=1)
 
     diagonal = np.bincount(

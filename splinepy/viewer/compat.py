@@ -46,7 +46,18 @@ IGNORED = {
 
 
 def to_css(c):
-    """Convert a color name, RGB(A) value, or integer index to CSS."""
+    """Convert a color name, RGB(A) value, or integer index to CSS.
+
+    Parameters
+    ----------
+    c : int, str or array-like
+        Palette index, CSS color, or RGB components.
+
+    Returns
+    -------
+    color : str or None
+        CSS color, or None for an unsupported value.
+    """
     if isinstance(c, (int, _np.integer)) and not isinstance(c, bool):
         return _INDEXED_COLORS[abs(int(c)) % len(_INDEXED_COLORS)]
     if isinstance(c, str):
@@ -65,6 +76,16 @@ def translate(kwargs):
     Old names are renamed (see :data:`ALIASES`), colors are converted to css,
     options without equivalent are dropped with a debug message. Everything
     else is passed through unchanged, so typos still raise in ``show``.
+
+    Parameters
+    ----------
+    kwargs : dict
+        Visualization options, including legacy aliases.
+
+    Returns
+    -------
+    options : dict
+        Options using viewer keyword names.
     """
     from splinepy.viewer.scene import COLORMAPS, LIGHTING
 

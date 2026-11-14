@@ -59,6 +59,10 @@ class AdditionalBlocks:
             ID of the multipatch
         comment: str
             Comment above boundaryFunctions-block
+
+        Returns
+        -------
+        None
         """
         bc_dict_for_xml = {}
         bc_dict_for_xml["tag"] = "boundaryConditions"
@@ -143,6 +147,10 @@ class AdditionalBlocks:
             Function as string. If tuple is given, function will be vector-valued.
         comment: str
             Comment above function block
+
+        Returns
+        -------
+        None
         """
         function_dict = {}
         function_dict["tag"] = "Function"
@@ -216,6 +224,10 @@ class AdditionalBlocks:
             Quadrature rule [1:GaussLegendre,2:GaussLobatto]
         comment: str
             Comment above OptionList-block
+
+        Returns
+        -------
+        None
         """
         labels = [
             "DirichletStrategy",
@@ -291,8 +303,11 @@ class AdditionalBlocks:
         self._blocks.append(assembly_dict)
 
     def to_list(self):
-        """
-        Returns list of created XML-blocks
+        """Returns list of created XML-blocks
+
+        Parameters
+        ----------
+        None
 
         Returns
         ---------
@@ -356,6 +371,7 @@ def _spline_to_ET(
             )
 
     def _array_to_text(array, is_matrix, as_b64):
+        """Encode an array for storage in XML."""
         if as_b64:
             array = _enforce_contiguous(array, dtype=_np.float64, asarray=True)
             return _base64.b64encode(array).decode("ascii")
@@ -738,6 +754,7 @@ def export(
             additional_blocks = [additional_blocks]
 
         def _apply_options(ETelement, options_list):
+            """Convert the XML options into Python values."""
             for gismo_dictionary in options_list:
                 name = gismo_dictionary.get("tag", None)
                 if name is None and not isinstance(name, str):
@@ -842,6 +859,7 @@ def load(fname, load_options=True):
 
     # Auxiliary function to unravel
     def retrieve_from_basis_(ETelement, SPdict):
+        """Read one basis and add its information to the spline data."""
         if "nurbs" in ETelement.attrib["type"].lower():
             # Recursive call for knot_vector
             for child in ETelement:
@@ -866,6 +884,7 @@ def load(fname, load_options=True):
 
     # Auxiliary function to store additional information in dictionary
     def make_dictionary(ETelement):
+        """Collect spline properties from a geometry element."""
         new_dictionary = {}
         new_dictionary["tag"] = ETelement.tag
         new_dictionary["attributes"] = ETelement.attrib

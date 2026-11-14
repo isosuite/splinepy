@@ -247,6 +247,24 @@ def scene_from_splines(
     arrows: str or callable
         Same as scalars, but vector valued. Drawn at ``arrow_on`` (parametric
         queries, (n, para_dim)) or on a coarse uniform grid.
+    arrow_on : array-like, optional
+        Parametric locations where arrows are drawn.
+    arrow_resolutions : int or sequence, optional
+        Samples per axis when drawing arrows on a regular grid.
+    knots, control_points, control_mesh : bool, optional
+        Show the corresponding geometry layers.
+    colormap : str, optional
+        Palette for scalar data.
+    vmin, vmax : float, optional
+        Scalar color limits.
+    color : str or int, optional
+        Spline geometry color.
+    opacity : float, optional
+        Spline geometry opacity.
+    axes : bool, optional
+        Show coordinate axes.
+    background : str, optional
+        Background color.
     arrow_scale: float
         Length multiplier. Default: longest arrow is 5% of bounding box.
     control_point_ids: bool
@@ -267,6 +285,11 @@ def scene_from_splines(
         Style of the respective layers. Sizes are in pixels.
     fitting_queries: bool
         Show ``spline._fitting_queries`` if the spline has any.
+
+    Returns
+    -------
+    scene : dict
+        Drawable layers and scene options.
     """
     if lighting is not None and lighting not in LIGHTING:
         raise ValueError(f"lighting must be one of {LIGHTING}")
@@ -526,6 +549,48 @@ def scene_from_mesh(
     with one value per vertex. ``texture`` (see :func:`scene_from_splines`) is
     mapped with ``uv``, a key of ``vertex_data`` or an (n, 2) array; default
     key is "uv".
+
+    Parameters
+    ----------
+    mesh : dict, array-like or gustaf.Vertices
+        Mesh or point coordinates.
+    mode : {"edges", "faces", "points"}, optional
+        Geometry to draw.
+    scalars, arrows : str or array-like, optional
+        Vertex data used for colors or vectors.
+    arrow_scale : float, optional
+        Length multiplier for arrows.
+    colormap : str, optional
+        Palette for scalar values.
+    vmin, vmax : float, optional
+        Scalar color limits.
+    color : str or int, optional
+        Mesh color.
+    opacity : float, optional
+        Layer opacity.
+    axes : bool, optional
+        Show coordinate axes.
+    background : str, optional
+        Background color.
+    name : str, optional
+        Name used for the mesh layer.
+    camera : dict, optional
+        Initial camera settings.
+    lighting : str, optional
+        Surface lighting style.
+    texture : path, bytes or array-like, optional
+        Image to map onto faces.
+    uv : str or (n, 2) array-like, optional
+        Texture coordinates or associated vertex data key.
+    arrow_color : str or int, optional
+        Arrow color.
+    arrow_to_origin : bool, optional
+        Place arrow tips at their associated vertices.
+
+    Returns
+    -------
+    scene : dict
+        Drawable layers and scene options.
     """
     if lighting is not None and lighting not in LIGHTING:
         raise ValueError(f"lighting must be one of {LIGHTING}")
@@ -612,7 +677,24 @@ def _pack(arr, dtype):
 
 
 def grid_scene(scenes, ncols=None, link_cameras=False, titles=None):
-    """Arranges several scenes as panels of one multi-viewport scene."""
+    """Arranges several scenes as panels of one multi-viewport scene.
+
+    Parameters
+    ----------
+    scenes : iterable of dict
+        Scene for each panel.
+    ncols : int, optional
+        Number of columns in the panel grid.
+    link_cameras : bool, optional
+        Synchronize panel cameras.
+    titles : sequence of str, optional
+        Titles in panel order.
+
+    Returns
+    -------
+    scene : dict
+        Scene containing the supplied panels.
+    """
     return {
         "panels": list(scenes),
         "options": {"ncols": ncols, "link": link_cameras, "titles": titles},
@@ -635,7 +717,18 @@ def _scene_to_dict(scene):
 
 
 def to_json(scene):
-    """Serializes a scene, packing arrays as base64 float32 / uint32."""
+    """Serializes a scene, packing arrays as base64 float32 / uint32.
+
+    Parameters
+    ----------
+    scene : dict
+        Scene or grid of scenes to serialize.
+
+    Returns
+    -------
+    json : str
+        Serialized scene with packed layer arrays.
+    """
     if "panels" in scene:
         return _json.dumps(
             {

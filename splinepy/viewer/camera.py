@@ -16,6 +16,8 @@ def turntable(
 
     Parameters
     ----------
+    scene : dict
+        Scene whose bounds determine the orbit.
     n: int
         Number of frames.
     elevation: float
@@ -29,6 +31,11 @@ def turntable(
         a full turn loops seamlessly).
     start: float
         Starting azimuth in degrees.
+
+    Returns
+    -------
+    cameras : list of dict
+        Position, target, and up vector for each frame.
     """
     lo, hi = _bounds(scene)
     center = (lo + hi) / 2

@@ -49,11 +49,30 @@ class KnotVector(_np.ndarray):
             raise
 
     def numpy(self):
-        """Returns a copy as plain numpy array."""
+        """Returns a copy as plain numpy array.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        knots : numpy.ndarray
+        """
         return _np.array(self, dtype="float64", copy=True).view(_np.ndarray)
 
     def unique(self):
-        """Returns unique knots (within tolerance)."""
+        """Returns unique knots (within tolerance).
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        knots : numpy.ndarray
+            Unique knots in ascending order.
+        """
         a = _np.asarray(self)
         if len(a) == 0:
             return a.copy()
@@ -61,7 +80,17 @@ class KnotVector(_np.ndarray):
         return a[keep].copy()
 
     def multiplicities(self):
-        """Returns multiplicity of each unique knot."""
+        """Returns multiplicity of each unique knot.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        counts : numpy.ndarray
+            Multiplicities in the order returned by unique.
+        """
         a = _np.asarray(self)
         if len(a) == 0:
             return _np.empty(0, dtype="int32")
@@ -71,7 +100,19 @@ class KnotVector(_np.ndarray):
         return _np.diff(_np.append(starts, len(a))).astype("int32")
 
     def scale(self, minimum, maximum):
-        """Linearly maps the knots, inplace, to [minimum, maximum]."""
+        """Linearly maps the knots, inplace, to [minimum, maximum].
+
+        Parameters
+        ----------
+        minimum : float
+            New lower knot bound.
+        maximum : float
+            New upper knot bound.
+
+        Returns
+        -------
+        None
+        """
         a = _np.asarray(self)
         if len(a) == 0 or minimum >= maximum:
             return None
@@ -82,7 +123,18 @@ class KnotVector(_np.ndarray):
 
     def find_span(self, u):
         """Returns the index i of the knot span with knots[i] <= u < knots[i+1].
-        Queries outside the range are clipped to the first / last span."""
+        Queries outside the range are clipped to the first / last span.
+
+        Parameters
+        ----------
+        u : float
+            Parameter to locate.
+
+        Returns
+        -------
+        span : int
+            Zero-based knot span index.
+        """
         a = _np.asarray(self)
         n = len(a) - 1
         if n < 1:

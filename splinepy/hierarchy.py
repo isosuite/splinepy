@@ -104,6 +104,24 @@ class HBSpline:
         per axis. Coefficients are ordered by level, then by tensor index with
         axis zero varying fastest. :meth:`active_keys` returns the packed keys
         in the same order.
+
+        Parameters
+        ----------
+        degrees : array-like
+            Spline degree along each axis.
+        levels : sequence of sequences
+            Knot vectors indexed by level and axis.
+        leaf_cells : array-like
+            Leaf level and nonempty span indices.
+        control_points : array-like
+            Coefficients in active basis order.
+        weights : array-like, optional
+            Rational weights in active basis order.
+
+        Returns
+        -------
+        spline : HBSpline
+            Constructed hierarchy.
         """
         result = cls.__new__(cls)
         result._initialize(degrees, levels, leaf_cells, control_points, weights)
@@ -111,7 +129,22 @@ class HBSpline:
 
     @staticmethod
     def active_keys(degrees, levels, leaf_cells):
-        """Return the packed active keys for the prescribed leaf partition."""
+        """Return the packed active keys for the prescribed leaf partition.
+
+        Parameters
+        ----------
+        degrees : array-like
+            Spline degree along each axis.
+        levels : sequence of sequences
+            Knot vectors indexed by level and axis.
+        leaf_cells : array-like
+            Leaf level and nonempty span indices.
+
+        Returns
+        -------
+        keys : numpy.ndarray
+            Read-only packed keys in coefficient order.
+        """
         _, active = splinepy_core._hierarchy_layout(
             _integers(degrees, "degrees"),
             tuple(tuple(level) for level in levels),
@@ -121,7 +154,18 @@ class HBSpline:
 
     @classmethod
     def from_bspline(cls, spline):
-        """Copy a BSpline or NURBS into a single-level hierarchy."""
+        """Copy a BSpline or NURBS into a single-level hierarchy.
+
+        Parameters
+        ----------
+        spline : BSpline or NURBS
+            Tensor spline to convert.
+
+        Returns
+        -------
+        spline : HBSpline
+            Single-level hierarchy with the same geometry.
+        """
         if not spline.has_knot_vectors:
             raise TypeError("from_bspline expects a BSpline or NURBS")
         target = cls
@@ -136,46 +180,142 @@ class HBSpline:
 
     @property
     def degrees(self):
+        """Return the degree along each parametric axis.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        degrees : numpy.ndarray
+        """
         return self._data[0]
 
     @property
     def levels(self):
-        """Read-only knot vectors, indexed by level and axis."""
+        """Read-only knot vectors, indexed by level and axis.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        levels : tuple
+        """
         return self._data[1]
 
     @property
     def leaves(self):
-        """Sorted packed leaf keys."""
+        """Sorted packed leaf keys.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        keys : numpy.ndarray
+        """
         return self._data[2]
 
     @property
     def active_functions(self):
-        """Sorted packed active function keys."""
+        """Sorted packed active function keys.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        keys : numpy.ndarray
+        """
         return self._data[3]
 
     @property
     def control_points(self):
+        """Return the read-only coefficients in active basis order.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        control_points : numpy.ndarray
+        """
         return self._data[4]
 
     @property
     def weights(self):
+        """Return rational weights in active basis order.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        weights : numpy.ndarray or None
+        """
         return self._data[5]
 
     @property
     def is_rational(self):
+        """Report whether the hierarchy is rational.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        rational : bool
+        """
         return self._rational
 
     @property
     def para_dim(self):
+        """Return the number of parametric axes.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        dimension : int
+        """
         return self.degrees.size
 
     @property
     def dim(self):
+        """Return the physical dimension.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        dimension : int
+        """
         return self.control_points.shape[1]
 
     @property
     def parametric_bounds(self):
-        """Return the lower and upper parameter bounds."""
+        """Return the lower and upper parameter bounds.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        bounds : (2, para_dim) numpy.ndarray
+        """
         return np.array(
             [
                 [
@@ -191,19 +331,46 @@ class HBSpline:
 
     @property
     def extraction(self):
-        """Read-only views of the CSR extraction arrays in leaf order."""
+        """Read-only views of the CSR extraction arrays in leaf order.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        extraction : dict
+        """
         return self._cache.extraction()
 
     @property
     def extract(self):
-        """Access leaf Bezier and multipatch exports."""
+        """Access leaf Bezier and multipatch exports.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        extractor : HierarchyExtractor
+        """
         from splinepy.helpme.extract import HierarchyExtractor
 
         return HierarchyExtractor(self)
 
     @property
     def create(self):
-        """Access spline construction helpers."""
+        """Access spline construction helpers.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        creator : Creator
+        """
         from splinepy.helpme.create import Creator
 
         return Creator(self)
@@ -216,13 +383,35 @@ class HBSpline:
         return self.extract.multipatch()
 
     def show(self, **kwargs):
-        """Display the hierarchy through splinepy's visualization backends."""
+        """Display the hierarchy through splinepy's visualization backends.
+
+        Parameters
+        ----------
+        **kwargs
+            Options forwarded to splinepy.show.
+
+        Returns
+        -------
+        viewer : Viewer, vedo.Plotter, dict or None
+            Visualization result for the selected backend.
+        """
         from splinepy import show
 
         return show(self, **kwargs)
 
     def showable(self, **kwargs):
-        """Return showable objects for the hierarchy."""
+        """Return showable objects for the hierarchy.
+
+        Parameters
+        ----------
+        **kwargs
+            Options forwarded to splinepy.show.
+
+        Returns
+        -------
+        items : dict
+            Backend objects for the hierarchy.
+        """
         return self.show(return_showable=True, **kwargs)
 
     @staticmethod
@@ -243,7 +432,16 @@ class HBSpline:
 
     @property
     def leaf_cells(self):
-        """Read-only rows of level and span indices, in packed leaf order."""
+        """Read-only rows of level and span indices, in packed leaf order.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        cells : numpy.ndarray
+        """
         data, cache = self._state
         return _immutable(self._cells(data[0], data[1], cache.extraction()))
 
@@ -266,7 +464,17 @@ class HBSpline:
         return np.unique(indices.astype(np.uintp, copy=False))
 
     def is_admissible(self, m=2):
-        """Check whether nonzero functions span at most m consecutive levels."""
+        """Check whether nonzero functions span at most m consecutive levels.
+
+        Parameters
+        ----------
+        m : int, optional
+            Maximum number of consecutive contributing levels.
+
+        Returns
+        -------
+        admissible : bool
+        """
         return self._cache.is_admissible(self._admissibility_class(m))
 
     def admissible_closure(self, marked, m=2, nthreads=None):
@@ -275,6 +483,20 @@ class HBSpline:
         Each returned leaf is split once. A partition that needs deeper splits
         to reach the requested class raises an error. :meth:`refine` can
         apply multiple generations of grading.
+
+        Parameters
+        ----------
+        marked : array-like
+            Current leaf indices to split.
+        m : int, optional
+            Required admissibility class.
+        nthreads : int, optional
+            Number of worker threads.
+
+        Returns
+        -------
+        indices : numpy.ndarray
+            Sorted current leaf indices, including those added for grading.
         """
         admissible = self._admissibility_class(m)
         data, cache = self._state
@@ -355,6 +577,26 @@ class HBSpline:
         callback that returns a boolean mask from leaf centers. With a level,
         indices are relative to leaves on that level and coordinate rows are
         also accepted. Use admissible=None for exactly the requested splits.
+
+        Parameters
+        ----------
+        elements : array-like, optional
+            Indices of marked leaves, or span-index rows when level is set.
+        level : int, optional
+            Restrict selection to this level.
+        box : array-like, optional
+            Lower and upper bounds of a parametric selection box.
+        where : callable, optional
+            Function returning a boolean mask from candidate leaf centers.
+        admissible : int or None, optional
+            Required admissibility class. None disables grading.
+        nthreads : int, optional
+            Number of worker threads.
+
+        Returns
+        -------
+        spline : HBSpline
+            The updated hierarchy.
         """
         m = 0 if admissible is None else self._admissibility_class(admissible)
         state = self._state
@@ -385,6 +627,28 @@ class HBSpline:
         spline convention: parameters, points, differences, distances,
         residuals, first derivatives and second derivatives. Derivatives
         use global coordinates and residuals use the leaf's unit box.
+
+        Parameters
+        ----------
+        queries : (n, dim) array-like
+            Physical points to project.
+        initial_guess_sample_resolutions : array-like, optional
+            Samples per parametric axis on each leaf.
+        tolerance : float, optional
+            Convergence tolerance.
+        max_iterations : int, optional
+            Iteration limit. Use -1 for the kernel default.
+        tight_search_bounds : bool, optional
+            Restrict the local search around the initial guess.
+        nthreads : int, optional
+            Number of worker threads.
+        return_verbose : bool, optional
+            Include projection diagnostics.
+
+        Returns
+        -------
+        result : numpy.ndarray or tuple
+            Closest parameters, or the parameters and diagnostics described above.
         """
         data, cache = self._state
         if initial_guess_sample_resolutions is None:
@@ -401,7 +665,21 @@ class HBSpline:
         )
 
     def evaluate(self, queries, nthreads=None, out=None):
-        """Evaluate the geometry at queries of shape (n, para_dim)."""
+        """Evaluate the geometry at queries of shape (n, para_dim).
+
+        Parameters
+        ----------
+        queries : (n, para_dim) array-like
+            Parametric evaluation points.
+        nthreads : int, optional
+            Number of worker threads.
+        out : numpy.ndarray, optional
+            Buffer for the result.
+
+        Returns
+        -------
+        points : (n, dim) numpy.ndarray
+        """
         return self.derivative(
             queries, np.zeros(self.para_dim, dtype=np.int32), nthreads, out
         )
@@ -415,7 +693,24 @@ class HBSpline:
         return orders
 
     def derivative(self, queries, orders, nthreads=None, out=None):
-        """Evaluate one or several derivative multi-indices."""
+        """Evaluate one or several derivative multi-indices.
+
+        Parameters
+        ----------
+        queries : (n, para_dim) array-like
+            Parametric evaluation points.
+        orders : array-like
+            One derivative multi-index or a row of orders per multi-index.
+        nthreads : int, optional
+            Number of worker threads.
+        out : numpy.ndarray, optional
+            Buffer for the result.
+
+        Returns
+        -------
+        derivatives : numpy.ndarray
+            Physical derivatives for each query and requested order.
+        """
         queries = np.asarray(queries, dtype=np.float64, order="C")
         orders = self._derivative_orders(orders)
         if isinstance(out, np.ndarray):
@@ -426,7 +721,21 @@ class HBSpline:
         return self._cache.evaluate(queries, orders, _thread_count(nthreads), out)
 
     def jacobian(self, queries, nthreads=None, out=None):
-        """Return the Jacobian with shape (n, dim, para_dim)."""
+        """Return the Jacobian with shape (n, dim, para_dim).
+
+        Parameters
+        ----------
+        queries : (n, para_dim) array-like
+            Parametric evaluation points.
+        nthreads : int, optional
+            Number of worker threads.
+        out : numpy.ndarray, optional
+            Buffer for the result.
+
+        Returns
+        -------
+        jacobians : (n, dim, para_dim) numpy.ndarray
+        """
         queries = np.asarray(queries, dtype=np.float64, order="C")
         if isinstance(out, np.ndarray) and np.may_share_memory(queries, out):
             queries = queries.copy()
@@ -465,6 +774,22 @@ class HBSpline:
 
         Rows are padded to the largest support in the query batch. Unused
         entries have value zero and support index -1.
+
+        Parameters
+        ----------
+        queries : (n, para_dim) array-like
+            Parametric evaluation points.
+        orders : array-like
+            One derivative multi-index or a row of orders per multi-index.
+        nthreads : int, optional
+            Number of worker threads.
+        out : tuple of numpy.ndarray, optional
+            Buffers for basis values and support indices.
+
+        Returns
+        -------
+        derivatives, indices : tuple of numpy.ndarray
+            Basis derivatives and corresponding global indices.
         """
         if out is None:
             out = (None, None)
@@ -479,25 +804,87 @@ class HBSpline:
         )
 
     def basis_and_support(self, queries, nthreads=None, out=None):
-        """Return basis values and global support indices."""
+        """Return basis values and global support indices.
+
+        Parameters
+        ----------
+        queries : (n, para_dim) array-like
+            Parametric evaluation points.
+        nthreads : int, optional
+            Number of worker threads.
+        out : tuple of numpy.ndarray, optional
+            Buffers for basis values and support indices.
+
+        Returns
+        -------
+        values, indices : tuple of numpy.ndarray
+            Basis values and corresponding global indices.
+        """
         return self.basis_derivative_and_support(
             queries, np.zeros(self.para_dim, dtype=np.int32), nthreads, out
         )
 
     def basis(self, queries, nthreads=None, out=None):
-        """Return basis values with zero padding."""
+        """Return basis values with zero padding.
+
+        Parameters
+        ----------
+        queries : (n, para_dim) array-like
+            Parametric evaluation points.
+        nthreads : int, optional
+            Number of worker threads.
+        out : numpy.ndarray, optional
+            Buffer for the result.
+
+        Returns
+        -------
+        values : numpy.ndarray
+            Basis values padded with zero.
+        """
         return self.basis_derivative(
             queries, np.zeros(self.para_dim, dtype=np.int32), nthreads, out
         )
 
     def support(self, queries, nthreads=None, out=None):
-        """Return global basis indices with -1 padding."""
+        """Return global basis indices with -1 padding.
+
+        Parameters
+        ----------
+        queries : (n, para_dim) array-like
+            Parametric evaluation points.
+        nthreads : int, optional
+            Number of worker threads.
+        out : numpy.ndarray, optional
+            Buffer for the result.
+
+        Returns
+        -------
+        indices : numpy.ndarray
+            Global basis indices padded with -1.
+        """
         return self._basis_query(
             queries, None, nthreads, None, out, return_support=True
         )[1]
 
     def basis_derivative(self, queries, orders, nthreads=None, out=None):
-        """Return basis derivatives with zero padding."""
+        """Return basis derivatives with zero padding.
+
+        Parameters
+        ----------
+        queries : (n, para_dim) array-like
+            Parametric evaluation points.
+        orders : array-like
+            One derivative multi-index or a row of orders per multi-index.
+        nthreads : int, optional
+            Number of worker threads.
+        out : numpy.ndarray, optional
+            Buffer for the result.
+
+        Returns
+        -------
+        derivatives : numpy.ndarray
+            Basis derivatives padded with zero.
+        """
         return self._basis_query(
             queries,
             self._derivative_orders(orders),
@@ -521,7 +908,16 @@ class THBSpline(HBSpline):
 
     @property
     def rationalthb(self):
-        """Copy this hierarchy as a rational THB spline with the same geometry."""
+        """Copy this hierarchy as a rational THB spline with the same geometry.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        spline : RationalTHBSpline
+        """
         weights = (
             self.weights if self.is_rational else np.ones(len(self.control_points))
         )
@@ -555,6 +951,30 @@ class THBSpline(HBSpline):
         coordinates for rational splines. With method="exact", the merge is
         accepted only if the old coefficients lie in the coarser space to
         the given relative tolerance on each homogeneous component.
+
+        Parameters
+        ----------
+        elements : array-like, optional
+            Indices of marked leaves, or span-index rows when level is set.
+        level : int, optional
+            Restrict selection to this level.
+        box : array-like, optional
+            Lower and upper bounds of a parametric selection box.
+        where : callable, optional
+            Function returning a boolean mask from candidate leaf centers.
+        admissible : int or None, optional
+            Required admissibility class. None skips the admissibility check.
+        method : {"l2", "exact"}, optional
+            Coefficient transfer method.
+        tolerance : float, optional
+            Relative tolerance for accepting an exact transfer.
+        nthreads : int, optional
+            Number of worker threads.
+
+        Returns
+        -------
+        spline : THBSpline
+            The updated hierarchy.
         """
         from splinepy._coarsen import merge_siblings, transfer
 

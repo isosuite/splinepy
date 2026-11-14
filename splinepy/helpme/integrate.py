@@ -41,6 +41,7 @@ def _get_integral_measure(spline):
     if spline.dim == spline.para_dim:
 
         def measure(spline_patch, positions):
+            """Compute the geometry measure at the requested points."""
             return _np.linalg.det(spline_patch.jacobian(positions))
 
         return measure
@@ -48,6 +49,7 @@ def _get_integral_measure(spline):
     elif spline.dim > spline.para_dim:
 
         def measure(spline_patch, positions):
+            """Compute the geometry measure at the requested points."""
             jacs = spline_patch.jacobian(positions)
             return _np.sqrt(
                 _np.linalg.det(_np.einsum("oji,ojk->oik", jacs, jacs))
@@ -161,6 +163,20 @@ def parametric_function(spline, function, orders=None):
 
     The callback receives an array of shape (n, para_dim). Return one value
     per point, with optional trailing component dimensions.
+
+    Parameters
+    ----------
+    spline : Spline
+        Geometry to integrate over.
+    function : callable
+        Vectorized integrand evaluated at quadrature points.
+    orders : array-like, optional
+        Gaussian quadrature order per parametric axis.
+
+    Returns
+    -------
+    integral : float or numpy.ndarray
+        Integral of each component over the spline geometry.
     """
     return _integrate(spline, orders, function)
 
@@ -170,6 +186,20 @@ def physical_function(spline, function, orders=None):
 
     The callback receives an array of shape (n, dim). Return one value per
     point, with optional trailing component dimensions.
+
+    Parameters
+    ----------
+    spline : Spline
+        Geometry to integrate over.
+    function : callable
+        Vectorized integrand evaluated at quadrature points.
+    orders : array-like, optional
+        Gaussian quadrature order per parametric axis.
+
+    Returns
+    -------
+    integral : float or numpy.ndarray
+        Integral of each component over the spline geometry.
     """
     return _integrate(spline, orders, function, physical=True)
 
@@ -333,6 +363,10 @@ class Transformation:
         -----------
         element_id: int
             ID of element in spline's element. ID-array is 1D
+
+        Returns
+        -------
+        None
         """
         assert element_id >= 0
         assert element_id < self._n_elems
@@ -340,35 +374,90 @@ class Transformation:
     @property
     def all_supports(self):
         """Supports of all quadrature points.
-        List of <n_elements> entries of support"""
+        List of <n_elements> entries of support
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        supports : numpy.ndarray or None
+        """
         return self._all_supports
 
     @property
     def all_quad_points(self):
         """Quadrature points of all elements.
-        Dimensions [<n_elements>, <n_quad_pts>, 2]"""
+        Dimensions [<n_elements>, <n_quad_pts>, 2]
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        points : numpy.ndarray or None
+        """
         return self._all_element_quad_points
 
     @property
     def all_jacobians(self):
         """Jacobians of all elements.
-        Dimensions [<n_elements> <n_quad_pts>, <para_dim>, <para_dim>]"""
+        Dimensions [<n_elements> <n_quad_pts>, <para_dim>, <para_dim>]
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        jacobians : numpy.ndarray or None
+        """
         return self._all_jacobians
 
     @property
     def all_jacobian_inverses(self):
         """Inverses of Jacobians of all elements.
-        Dimensions [<n_elements> <n_quad_pts>, <para_dim>, <para_dim>]"""
+        Dimensions [<n_elements> <n_quad_pts>, <para_dim>, <para_dim>]
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        inverses : numpy.ndarray or None
+        """
         return self._all_jacobian_inverses
 
     @property
     def all_jacobian_determinants(self):
         """Determinants of Jacobians of all elements.
-        Dimensions [<n_elements> <n_quad_pts>]"""
+        Dimensions [<n_elements> <n_quad_pts>]
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        determinants : numpy.ndarray or None
+        """
         return self._all_jacobian_determinants
 
     @property
     def quadrature_weights(self):
+        """Return Gaussian quadrature weights on the reference element.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        weights : numpy.ndarray
+        """
         return self._quad_weights
 
     def get_element_grid_id(self, element_id):
@@ -534,6 +623,10 @@ class Transformation:
         ----------
         recompute: bool (optional)
             If True, recompute the qudrature points. Default is no recomputation
+
+        Returns
+        -------
+        None
         """
         if self._all_element_quad_points is not None and not recompute:
             return
@@ -564,6 +657,10 @@ class Transformation:
         --------------
         recompute: bool (optional)
             If True, recomputes the supports. The default is no recomputation
+
+        Returns
+        -------
+        None
         """
         if self._all_supports is not None and not recompute:
             return
@@ -586,6 +683,10 @@ class Transformation:
         ----------
         recompute: bool (optional)
             If True, recomputes the Jacobians. Default option is no recomputation
+
+        Returns
+        -------
+        None
         """
         if self._all_jacobians is not None and not recompute:
             return
@@ -605,6 +706,10 @@ class Transformation:
         ----------
         recompute: bool (optional)
             If True, recompute Jacobians' inverses. Default is no recomputation
+
+        Returns
+        -------
+        None
         """
         if self._all_jacobian_inverses is not None and not recompute:
             return
@@ -630,6 +735,10 @@ class Transformation:
         ----------
         recompute: bool
             Recompute Jacobians' determinants
+
+        Returns
+        -------
+        None
         """
         if self._all_jacobian_determinants is not None and not recompute:
             return
@@ -651,6 +760,15 @@ class Transformation:
     def compute_all_element_measures(self, recompute=False):
         """Computes the measures of all elements in parametric space. Assumes
         tensor-product-like structure.
+
+        Parameters
+        ----------
+        recompute : bool, optional
+            Refresh previously cached results when true.
+
+        Returns
+        -------
+        None
         """
         if self._all_element_measures is not None and not recompute:
             return
@@ -728,6 +846,10 @@ class FieldIntegrator:
         orders: None or list<int>
             If given, these orders will be used for quadrature. Otherwise, default
             quadrature orders will be used.
+
+        Returns
+        -------
+        None
         """
         self._trafo = Transformation(
             self._helpee, self._solution_field, orders
@@ -740,15 +862,27 @@ class FieldIntegrator:
 
     def precompute_transformation(self):
         """Computes the quadrature points, jacobians and their determinants
-        of all elements in spline"""
+        of all elements in spline
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
         self._trafo.compute_all_supports()
         self._trafo.compute_all_element_jacobian_determinants()
         self._trafo.compute_all_element_measures()
 
     @property
     def supports(self):
-        """
-        Get the quadrature points' supports.
+        """Get the quadrature points' supports.
+
+        Parameters
+        ----------
+        None
 
         Returns
         -------
@@ -770,6 +904,10 @@ class FieldIntegrator:
             Function which defines how to assemble an element matrix
         matrixout: np.ndarray / scipy.sparse matrix
             Assembled matrix will be stored there. Default is global system matrix
+
+        Returns
+        -------
+        None
         """
         # Initialize system matrix if not already
         if self._global_system_matrix is None and matrixout is None:
@@ -828,6 +966,10 @@ class FieldIntegrator:
             Current solution vector. Needed for nonlinear forms
         vectorout: np.ndarray
             Assembled rhs vector will be stored there. Default is global rhs
+
+        Returns
+        -------
+        None
         """
         # Initialize rhs vector
         if self._global_rhs is None:
@@ -884,6 +1026,10 @@ class FieldIntegrator:
             Assembled matrix will be stored there. Default is global system matrix
         vectorout: np.ndarray
             Assembled rhs vector will be stored there. Default is global rhs
+
+        Returns
+        -------
+        None
         """
         # Initialize system matrix if not already
         if self._global_system_matrix is None and matrixout is None:
@@ -973,6 +1119,7 @@ class FieldIntegrator:
             mapper, quad_points, quad_weights, jacobian_det
         ):
             # Assemble system matrix
+            """Assemble the local mass matrix and right-hand side."""
             bf_values = mapper._field_reference.basis(quad_points)
             element_matrix = _np.einsum(
                 "qi,qj,q,q->ij",
@@ -1020,8 +1167,15 @@ class FieldIntegrator:
         return dof_values
 
     def check_if_assembled(self):
-        """
-        Check if system matrix and rhs are already assembled
+        """Check if system matrix and rhs are already assembled
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
         """
         if self._global_system_matrix is None or self._global_rhs is None:
             raise ValueError("System is not yet fully assembled")
@@ -1102,8 +1256,7 @@ class FieldIntegrator:
         south=False,
         west=False,
     ):
-        """
-        Assembles homogeneous Dirichlet boundary conditions
+        """Assembles homogeneous Dirichlet boundary conditions
 
         Parameters
         -------------
@@ -1115,6 +1268,10 @@ class FieldIntegrator:
         east: bool
         south: bool
         west: bool
+
+        Returns
+        -------
+        None
         """
         self.check_if_assembled()
 
@@ -1136,8 +1293,7 @@ class FieldIntegrator:
         south=False,
         west=False,
     ):
-        """
-        Applies Dirichlet boundary conditions via L2-projection.
+        """Applies Dirichlet boundary conditions via L2-projection.
 
         Firstly, the function is L2-projected on the whole domain, but only the DoFs
         corresponding to the boundaries are taken into account.
@@ -1158,6 +1314,10 @@ class FieldIntegrator:
         east: bool
         south: bool
         west: bool
+
+        Returns
+        -------
+        None
         """
         if not return_values:
             self.check_if_assembled()
@@ -1178,8 +1338,15 @@ class FieldIntegrator:
             self._global_rhs[indices] = dof_vector[indices]
 
     def solve_linear_system(self):
-        """
-        Solve linear system for system matrix and rhs
+        """Solve linear system for system matrix and rhs
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
         """
         self.check_if_assembled()
 
