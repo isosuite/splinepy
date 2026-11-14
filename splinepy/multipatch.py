@@ -472,7 +472,11 @@ class Multipatch(_SplinepyBase):
         for face, neighbor in enumerate(interfaces):
             if neighbor < 0:
                 continue
-            if neighbor >= len(interfaces) or neighbor == face or interfaces[neighbor] != face:
+            if (
+                neighbor >= len(interfaces)
+                or neighbor == face
+                or interfaces[neighbor] != face
+            ):
                 raise ValueError("Interface connectivity must be reciprocal")
             expected.add(tuple(sorted((face, neighbor))))
 
@@ -497,7 +501,9 @@ class Multipatch(_SplinepyBase):
                     knots = _np.asarray(patch.knot_vectors[axis])
                     end = knots[: degree + 1] if not side else knots[-degree - 1 :]
                     if not _np.all(end == end[0]):
-                        raise ValueError("Control-point editing requires clamped interfaces")
+                        raise ValueError(
+                            "Control-point editing requires clamped interfaces"
+                        )
                 shape = tuple(patch.control_mesh_resolutions)
                 grid = _np.arange(len(patch.control_points)).reshape(shape, order="F")
                 grids.append(grid.take([0 if not side else -1], axis=axis))
@@ -514,26 +520,38 @@ class Multipatch(_SplinepyBase):
                 if pa.degrees[axis] != pb.degrees[other]:
                     raise ValueError("Interface degrees do not match")
                 if pa.has_knot_vectors or pb.has_knot_vectors:
-                    ka = _np.asarray(pa.knot_vectors[axis] if pa.has_knot_vectors else
-                                     _np.repeat([0., 1.], pa.degrees[axis] + 1))
-                    kb = _np.asarray(pb.knot_vectors[other] if pb.has_knot_vectors else
-                                     _np.repeat([0., 1.], pb.degrees[other] + 1))
+                    ka = _np.asarray(
+                        pa.knot_vectors[axis]
+                        if pa.has_knot_vectors
+                        else _np.repeat([0.0, 1.0], pa.degrees[axis] + 1)
+                    )
+                    kb = _np.asarray(
+                        pb.knot_vectors[other]
+                        if pb.has_knot_vectors
+                        else _np.repeat([0.0, 1.0], pb.degrees[other] + 1)
+                    )
                     ka = (ka - ka[0]) / (ka[-1] - ka[0])
                     kb = (kb - kb[0]) / (kb[-1] - kb[0])
                     if not directions[axis]:
                         kb = 1 - kb[::-1]
-                    if ka.shape != kb.shape or not _np.allclose(ka, kb, rtol=0, atol=_settings.TOLERANCE):
+                    if ka.shape != kb.shape or not _np.allclose(
+                        ka, kb, rtol=0, atol=_settings.TOLERANCE
+                    ):
                         raise ValueError("Interface knot vectors do not match")
 
             left, right = left.ravel(), right.ravel()
             if grids[0].shape != grids[1].transpose(axes).shape or not _np.allclose(
-                pa.control_points[left], pb.control_points[right],
-                rtol=0, atol=_settings.TOLERANCE,
+                pa.control_points[left],
+                pb.control_points[right],
+                rtol=0,
+                atol=_settings.TOLERANCE,
             ):
                 raise ValueError("Interface control points do not match")
             wa = pa.weights[left].ravel() if pa.is_rational else _np.ones(len(left))
             wb = pb.weights[right].ravel() if pb.is_rational else _np.ones(len(right))
-            if not _np.allclose(wa / wa[0], wb / wb[0], rtol=0, atol=_settings.TOLERANCE):
+            if not _np.allclose(
+                wa / wa[0], wb / wb[0], rtol=0, atol=_settings.TOLERANCE
+            ):
                 raise ValueError("Interface weights do not match")
             for ia, ib in zip(left, right, strict=True):
                 first, second = (a, ia), (b, ib)
@@ -554,15 +572,19 @@ class Multipatch(_SplinepyBase):
             return
         proposed = {}
         seams = self._seam_control_points()
-        for patch_id, values in edits.items():
+        for patch_id, raw_values in edits.items():
             original = self._patches[patch_id].control_points
-            values = _np.asarray(values, dtype=float)
+            values = _np.asarray(raw_values, dtype=float)
             if values.shape != original.shape or not _np.isfinite(values).all():
-                raise ValueError("Expected finite control points with the original shape")
+                raise ValueError(
+                    "Expected finite control points with the original shape"
+                )
             for index in _np.flatnonzero(_np.any(values != original, axis=1)):
                 key = (patch_id, index)
                 for member in seams.get(key, (key,)):
-                    if member in proposed and not _np.array_equal(proposed[member], values[index]):
+                    if member in proposed and not _np.array_equal(
+                        proposed[member], values[index]
+                    ):
                         raise ValueError("Conflicting edits to a shared control point")
                     proposed[member] = values[index]
 

@@ -251,16 +251,19 @@ def test_edit_patch_control_points_propagates_reversed_seam():
     assert mp.sub_multipatch is not boundaries
 
     before = mp.control_points.copy()
-    with pytest.raises(ValueError, match="Conflicting edits"):
-        with mp.edit_patches_control_points([0, 1]) as (a, b):
-            a[1] += 1
-            b[2] -= 1
+    with (
+        pytest.raises(ValueError, match="Conflicting edits"),
+        mp.edit_patches_control_points([0, 1]) as (a, b),
+    ):
+        a[1] += 1
+        b[2] -= 1
     np.testing.assert_array_equal(mp.control_points, before)
 
-    with pytest.raises(RuntimeError, match="cancel"):
-        with mp.edit_patch_control_points(0) as points:
-            points[1] += 1
-            raise RuntimeError("cancel")
+    with pytest.raises(RuntimeError, match="cancel"), mp.edit_patch_control_points(
+        0
+    ) as points:
+        points[1] += 1
+        raise RuntimeError("cancel")
     np.testing.assert_array_equal(mp.control_points, before)
 
 
