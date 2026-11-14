@@ -105,3 +105,40 @@ def test_fit_surface_3d_approximation():
         approximated_points[:, -1],
         atol=1e-3,
     )
+
+
+def test_tensor_fit_4d_grid_and_reports_residual():
+    size = (4, 3, 5, 2)
+    axes = [np.linspace(-2, 3, count) for count in size]
+    u, v, w, t = splinepy.utils.data.cartesian_product(axes).T
+    points = (u * v + w**2 + 2 * t)[:, None]
+    fit = splinepy.helpme.fit.tensor(
+        points, size, degrees=[1, 1, 2, 1],
+        n_control_points=[2, 2, 3, 2], associated_queries=axes,
+        verbose_output=True,
+    )
+    assert fit["control_points"].shape == (24, 1)
+    np.testing.assert_allclose(fit["residual"], 0, atol=1e-11)
+
+
+def test_tensor_fit_fixed_rational_basis():
+    spline = splinepy.RationalBezier(
+        [1, 1], [[0, 0], [1, 0], [0, 1], [1, 1]], [1, 2, 3, 4]
+    )
+    axes = [np.linspace(0, 1, 4), np.linspace(0, 1, 5)]
+    queries = splinepy.utils.data.cartesian_product(axes)
+    points = spline.evaluate(queries)
+    template = spline.copy()
+    template.control_points[:] = 0
+    fitted, residual = splinepy.helpme.fit.tensor(
+        points, [4, 5], fitting_spline=template, associated_queries=axes
+    )
+    np.testing.assert_allclose(fitted.control_points, spline.control_points)
+    np.testing.assert_allclose(residual, 0, atol=1e-12)
+    assert not template.control_points.any()
+
+
+def test_parameterize_ignores_constant_grid_lines():
+    points = np.array([[0, 0], [0, 0], [0, 1], [2, 1]])
+    queries = splinepy.helpme.fit.parameterize(points, (2, 2), True)
+    np.testing.assert_array_equal(queries, [[[0], [1]], [[0], [1]]])

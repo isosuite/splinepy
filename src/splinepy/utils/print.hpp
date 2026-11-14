@@ -39,7 +39,7 @@ void PrintInfo(Args&&... args) {
 
 /// debug printer - only for debug build
 template<typename... Args>
-void PrintDebug(Args&&... args) {
+void PrintDebug([[maybe_unused]] Args&&... args) {
 #ifndef NDEBUG
   std::cout << "SPLINEPY DEBUG - ";
   ((std::cout << std::forward<Args>(args) << " "), ...);
