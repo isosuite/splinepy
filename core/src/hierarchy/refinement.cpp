@@ -23,9 +23,10 @@ RefinementMatrix1D detail::BuildRefinementMatrix1D(MemoryArena& arena,
                             Status::kOutOfBounds);
   }
 
-  RefinementMatrix1D result{coarse_size, static_cast<int32_t>(width),
-                           Buffer<int32_t>(fine_size),
-                           Buffer<double>(fine_size * width)};
+  RefinementMatrix1D result{coarse_size,
+                            static_cast<int32_t>(width),
+                            Buffer<int32_t>(fine_size),
+                            Buffer<double>(fine_size * width)};
   auto scope = arena.CreateScope();
   auto knots = arena.AllocateSpan<double>(fine.size());
   auto gap_size = fine_size - coarse_size;
@@ -57,11 +58,14 @@ RefinementMatrix1D detail::BuildRefinementMatrix1D(MemoryArena& arena,
     const auto position = span + 1;
     const auto crossed = position - gap_begin;
     if (crossed > 0) {
-      std::memmove(knots.data() + gap_begin, knots.data() + gap_begin + gap_size,
+      std::memmove(knots.data() + gap_begin,
+                   knots.data() + gap_begin + gap_size,
                    crossed * sizeof(double));
-      std::memmove(starts + gap_begin, starts + gap_begin + gap_size,
+      std::memmove(starts + gap_begin,
+                   starts + gap_begin + gap_size,
                    crossed * sizeof(int32_t));
-      std::memmove(ends + gap_begin, ends + gap_begin + gap_size,
+      std::memmove(ends + gap_begin,
+                   ends + gap_begin + gap_size,
                    crossed * sizeof(int32_t));
       std::memmove(values + gap_begin * width,
                    values + (gap_begin + gap_size) * width,
@@ -76,14 +80,16 @@ RefinementMatrix1D detail::BuildRefinementMatrix1D(MemoryArena& arena,
     for (int32_t row = span; row > span - degree; --row) {
       const double lo = knots[row];
       const auto hi_index = row + degree;
-      const double hi = knots[hi_index < position ? hi_index : hi_index + gap_size];
+      const double hi =
+          knots[hi_index < position ? hi_index : hi_index + gap_size];
       const double alpha = detail::KnotInsertionAlpha(knot, lo, hi);
       const auto start = alpha == 1.0 ? starts[row] : starts[row - 1];
       const auto end = alpha == 0.0 ? ends[row - 1] : ends[row];
       std::fill(scratch.begin(), scratch.end(), 0.0);
       if (alpha != 0.0) {
         for (int32_t col = starts[row]; col < ends[row]; ++col) {
-          scratch[col - start] = alpha * values[row * width + col - starts[row]];
+          scratch[col - start] =
+              alpha * values[row * width + col - starts[row]];
         }
       }
       if (alpha != 1.0) {
@@ -108,7 +114,8 @@ RefinementMatrix1D detail::BuildRefinementMatrix1D(MemoryArena& arena,
     if (starts[row] > last_start) {
       auto* first_value = values + row * width;
       const auto padding = starts[row] - last_start;
-      std::move_backward(first_value, first_value + (ends[row] - starts[row]),
+      std::move_backward(first_value,
+                         first_value + (ends[row] - starts[row]),
                          first_value + (ends[row] - last_start));
       std::fill_n(first_value, padding, 0.0);
       starts[row] = last_start;
@@ -122,8 +129,10 @@ RefinementMatrix1D BuildRefinementMatrix1D(int32_t degree,
                                            Span<const double> fine,
                                            const Options& options) {
   WorkspaceRef workspace(options, MemoryArena::kDefaultBlockSize, 1);
-  return detail::BuildRefinementMatrix1D(workspace->GetThreadArena(), degree,
-                                         coarse, fine);
+  return detail::BuildRefinementMatrix1D(workspace->GetThreadArena(),
+                                         degree,
+                                         coarse,
+                                         fine);
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

@@ -68,11 +68,13 @@ TEST(LeafElementBvh, TraversalPrunesSeparatedBezierLeaves) {
 
   const double query = 10.25;
   EXPECT_DOUBLE_EQ(bvh.ElementDistanceSquared(0, &query), 9.25 * 9.25);
-  EXPECT_EQ(bvh.Traverse(&query, [](int64_t leaf, double bound) {
-    EXPECT_EQ(leaf, 1);
-    EXPECT_DOUBLE_EQ(bound, 0.0);
-    return 0.0;
-  }), 1);
+  EXPECT_EQ(bvh.Traverse(&query,
+                         [](int64_t leaf, double bound) {
+                           EXPECT_EQ(leaf, 1);
+                           EXPECT_DOUBLE_EQ(bound, 0.0);
+                           return 0.0;
+                         }),
+            1);
 }
 
 TEST(LeafElementBvh, RejectsMalformedBezierData) {
@@ -214,5 +216,5 @@ TEST(ElementBvhTest, BezierIsOneElementAndNonPositiveWeightsAreRejected) {
   EXPECT_FALSE(ElementBvh(v).IsValid());
 }
 
-}  // namespace
-}  // namespace splinepy::core
+} // namespace
+} // namespace splinepy::core

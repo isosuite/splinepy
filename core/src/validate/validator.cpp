@@ -92,7 +92,8 @@ Status Validate(SplineBatchView batch, const Options& options) {
 
 void ThrowIfInvalid(const SplineView& view, const Options& options) {
   if (view.hierarchy) {
-    throw SplinepyException("Tensor spline validation requires a tensor spline");
+    throw SplinepyException(
+        "Tensor spline validation requires a tensor spline");
   }
   if (view.para_dim <= 0) {
     throw SplinepyException("Parametric dimension must be > 0",

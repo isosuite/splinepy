@@ -9,7 +9,10 @@ import numpy as np
 def merge_siblings(degrees, levels, cells, marked):
     """Merge complete marked sibling groups in one generation."""
     breaks = [
-        [np.unique(axis[int(p) : axis.size - int(p)]) for p, axis in zip(degrees, knots)]
+        [
+            np.unique(axis[int(p) : axis.size - int(p)])
+            for p, axis in zip(degrees, knots, strict=False)
+        ]
         for knots in levels
     ]
     groups = {}
@@ -19,7 +22,9 @@ def merge_siblings(degrees, levels, cells, marked):
             continue
         parent = tuple(
             int(np.searchsorted(coarse, fine[i], side="right")) - 1
-            for i, coarse, fine in zip(row[1:], breaks[level - 1], breaks[level])
+            for i, coarse, fine in zip(
+                row[1:], breaks[level - 1], breaks[level], strict=False
+            )
         )
         groups.setdefault((level - 1, *parent), []).append(tuple(row))
 
@@ -29,14 +34,18 @@ def merge_siblings(degrees, levels, cells, marked):
         level = parent[0]
         expected = prod(
             int(np.searchsorted(fine, coarse[i + 1]) - np.searchsorted(fine, coarse[i]))
-            for i, coarse, fine in zip(parent[1:], breaks[level], breaks[level + 1])
+            for i, coarse, fine in zip(
+                parent[1:], breaks[level], breaks[level + 1], strict=False
+            )
         )
         if len(children) == expected:
             removed.update(children)
             added.append(parent)
     if not added:
         return None
-    return np.asarray([tuple(row) for row in cells if tuple(row) not in removed] + added)
+    return np.asarray(
+        [tuple(row) for row in cells if tuple(row) not in removed] + added
+    )
 
 
 def _quadrature(degrees):
@@ -51,7 +60,9 @@ def _quadrature(degrees):
         values = np.column_stack(
             [comb(p, i) * x**i * (1 - x) ** (p - i) for i in range(p + 1)]
         )
-        bernstein = (bernstein[:, :, None] * values[:, None, :]).reshape(len(points), -1)
+        bernstein = (bernstein[:, :, None] * values[:, None, :]).reshape(
+            len(points), -1
+        )
     return points, weights, bernstein
 
 
@@ -129,7 +140,7 @@ def transfer(old_cache, data, target, method, tolerance, nthreads):
         homogeneous = np.column_stack((controls * w, w))
     source = np.empty((len(lower), len(nodes), homogeneous.shape[1]))
     offsets = extraction["offsets"]
-    for leaf, (start, stop) in enumerate(zip(offsets[:-1], offsets[1:])):
+    for leaf, (start, stop) in enumerate(zip(offsets[:-1], offsets[1:], strict=False)):
         active = extraction["active_indices"][start:stop]
         source[leaf] = basis @ bernstein[start:stop].T @ homogeneous[active]
     source = source.reshape(len(queries), -1)
@@ -137,7 +148,11 @@ def transfer(old_cache, data, target, method, tolerance, nthreads):
     values, indices = target.basis_and_support(queries, nthreads=nthreads)
     indices[indices < 0] = 0
     coefficients = _project(
-        indices, values, weights, source, target.active_functions.size,
+        indices,
+        values,
+        weights,
+        source,
+        target.active_functions.size,
         min(1e-13, tolerance / 10),
     )
     if method == "exact":

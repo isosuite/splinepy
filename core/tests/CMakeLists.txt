@@ -20,7 +20,7 @@ add_executable(
   test_buffer.cpp
   test_span.cpp
   test_validator.cpp
-    test_hierarchy.cpp
+  test_hierarchy.cpp
   test_parallel_for.cpp
   test_binomial.cpp
   test_bernstein.cpp

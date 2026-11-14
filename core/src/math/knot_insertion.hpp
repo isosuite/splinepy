@@ -15,4 +15,4 @@ inline double KnotInsertionAlpha(double knot, double lo, double hi) noexcept {
   return (knot * 0.5 - lo * 0.5) / (hi * 0.5 - lo * 0.5);
 }
 
-}  // namespace splinepy::core::detail
+} // namespace splinepy::core::detail

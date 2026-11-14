@@ -49,10 +49,10 @@ Buffer<uint64_t> EncodeLeaves(Span<const int32_t> degrees,
 /// Builds sorted active function keys. Leaves must be a sorted, complete,
 /// nonoverlapping partition of the level-zero parameter domain. Active sets
 /// are shared by HB and THB and depend only on the degrees and hierarchy.
-Buffer<Buffer<uint64_t>> BuildActiveSets(
-    Span<const Span<const int32_t>> degrees,
-    Span<const HierarchyView> hierarchies,
-    const Options& options = {});
+Buffer<Buffer<uint64_t>>
+BuildActiveSets(Span<const Span<const int32_t>> degrees,
+                Span<const HierarchyView> hierarchies,
+                const Options& options = {});
 
 /// Fine coefficients equal this matrix times coarse coefficients, including
 /// each coordinate of homogeneous coefficients. Each row starts at
@@ -69,4 +69,4 @@ RefinementMatrix1D BuildRefinementMatrix1D(int32_t degree,
                                            Span<const double> fine,
                                            const Options& options = {});
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

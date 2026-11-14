@@ -9,15 +9,15 @@
 namespace splinepy::core::detail {
 
 struct Axis {
-  Span<int32_t> boundaries;  // Finest span ordinal of each local boundary.
-  Span<int32_t> knot_cells;  // Local boundary ordinal of each knot, clipped.
-  Span<int32_t> first_knot;  // First knot index mapped to each local boundary.
+  Span<int32_t> boundaries; // Finest span ordinal of each local boundary.
+  Span<int32_t> knot_cells; // Local boundary ordinal of each knot, clipped.
+  Span<int32_t> first_knot; // First knot index mapped to each local boundary.
   int32_t functions;
 };
 
-template <class Traits>
+template<class Traits>
 struct Grid {
-  Span<Axis> axes;  // Level-major.
+  Span<Axis> axes; // Level-major.
   typename Traits::CellLayout cells;
   typename Traits::FunctionLayout functions;
   int32_t dim;
@@ -28,13 +28,13 @@ struct Grid {
   }
 };
 
-template <class Traits>
+template<class Traits>
 Grid<Traits> BuildGrid(MemoryArena& arena,
                        Span<const int32_t> degrees,
                        Span<const LevelKnotsView> levels) {
-  if (degrees.empty() || degrees.size() > INT32_MAX ||
-      levels.empty() || levels.size() > INT32_MAX ||
-      levels.size() > SIZE_MAX / sizeof(Axis) / degrees.size()) {
+  if (degrees.empty() || degrees.size() > INT32_MAX || levels.empty()
+      || levels.size() > INT32_MAX
+      || levels.size() > SIZE_MAX / sizeof(Axis) / degrees.size()) {
     throw SplinepyException("Invalid hierarchy dimensions");
   }
   const auto dim = static_cast<int32_t>(degrees.size());
@@ -44,19 +44,22 @@ Grid<Traits> BuildGrid(MemoryArena& arena,
   int64_t finest_functions = 1;
   for (int32_t level = count - 1; level >= 0; --level) {
     if (levels[level].size() != degrees.size()) {
-      throw SplinepyException("Knot vector count differs from hierarchy dimension");
+      throw SplinepyException(
+          "Knot vector count differs from hierarchy dimension");
     }
     for (int32_t axis = 0; axis < dim; ++axis) {
       const auto knots = levels[level][axis];
-      const auto functions = detail::ValidateHierarchyKnots(degrees[axis], knots);
+      const auto functions =
+          detail::ValidateHierarchyKnots(degrees[axis], knots);
       if (level + 1 < count) {
         detail::ValidateNested(degrees[axis], knots, levels[level + 1][axis]);
       }
       auto knot_cells = arena.AllocateSpan<int32_t>(knots.size());
       int32_t unique = 0;
       for (std::size_t i = 0; i < knots.size(); ++i) {
-        if (i > static_cast<std::size_t>(degrees[axis]) &&
-            i <= static_cast<std::size_t>(functions) && knots[i] != knots[i - 1]) {
+        if (i > static_cast<std::size_t>(degrees[axis])
+            && i <= static_cast<std::size_t>(functions)
+            && knots[i] != knots[i - 1]) {
           ++unique;
         }
         knot_cells[i] = unique;
@@ -95,12 +98,13 @@ Grid<Traits> BuildGrid(MemoryArena& arena,
   return {axes,
           MakeCellKeyLayout64(counts, count, arena.AllocateSpan<int32_t>(dim)),
           MakeFunctionKeyLayout64(finest_functions, count),
-          dim, count};
+          dim,
+          count};
 }
 
 inline bool AdvanceIndex(Span<int32_t> index,
-                  Span<const int32_t> first,
-                  Span<const int32_t> stop) {
+                         Span<const int32_t> first,
+                         Span<const int32_t> stop) {
   for (std::size_t axis = 0; axis < index.size(); ++axis) {
     if (++index[axis] < stop[axis]) {
       return true;
@@ -118,4 +122,4 @@ inline std::size_t CheckedProduct(std::size_t a, std::size_t b) {
   return a * b;
 }
 
-}  // namespace splinepy::core::detail
+} // namespace splinepy::core::detail

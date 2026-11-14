@@ -19,8 +19,8 @@ enum class KeyFormat : int32_t {
 /// Number of uint64_t words per key for a format.
 constexpr int32_t KeyWords(KeyFormat format) noexcept {
   switch (format) {
-    case KeyFormat::kKey64:
-      return 1;
+  case KeyFormat::kKey64:
+    return 1;
   }
   return 1;
 }
@@ -79,10 +79,10 @@ CellKeyLayout64 MakeCellKeyLayout64(Span<const int32_t> num_finest_elements,
 FunctionKeyLayout64 MakeFunctionKeyLayout64(int64_t num_finest_functions,
                                             int32_t num_levels);
 
-template <KeyFormat F>
+template<KeyFormat F>
 struct KeyTraits;
 
-template <>
+template<>
 struct KeyTraits<KeyFormat::kKey64> {
   using Key = uint64_t;
   using CellLayout = CellKeyLayout64;
@@ -109,13 +109,13 @@ struct KeyTraits<KeyFormat::kKey64> {
   }
 
   /// Returns the level and writes the padded indices.
-  static int32_t DecodeCell(const CellLayout& layout,
-                            Key key,
-                            int32_t* padded) noexcept {
+  static int32_t
+  DecodeCell(const CellLayout& layout, Key key, int32_t* padded) noexcept {
     const uint64_t level_mask =
         layout.level_bits == 0 ? 0u : ((uint64_t{1} << layout.level_bits) - 1u);
     const int32_t level = static_cast<int32_t>(key & level_mask);
-    const uint64_t morton = layout.level_bits == 0 ? key : key >> layout.level_bits;
+    const uint64_t morton =
+        layout.level_bits == 0 ? key : key >> layout.level_bits;
     for (int32_t a = 0; a < layout.para_dim; ++a) {
       padded[a] = 0;
     }
@@ -134,8 +134,8 @@ struct KeyTraits<KeyFormat::kKey64> {
   static Key EncodeFunction(const FunctionLayout& layout,
                             int32_t level,
                             int64_t linear) noexcept {
-    return (static_cast<uint64_t>(level) << layout.index_bits) |
-           static_cast<uint64_t>(linear);
+    return (static_cast<uint64_t>(level) << layout.index_bits)
+           | static_cast<uint64_t>(linear);
   }
 
   static int32_t DecodeFunction(const FunctionLayout& layout,
@@ -149,14 +149,14 @@ struct KeyTraits<KeyFormat::kKey64> {
 };
 
 /// Calls fn(KeyTraits<F>{}) for the runtime format. One branch per kernel call.
-template <typename Fn>
+template<typename Fn>
 decltype(auto) DispatchKeyFormat(KeyFormat format, Fn&& fn) {
   switch (format) {
-    case KeyFormat::kKey64:
-      return fn(KeyTraits<KeyFormat::kKey64>{});
+  case KeyFormat::kKey64:
+    return fn(KeyTraits<KeyFormat::kKey64>{});
   }
   throw SplinepyException("Unknown hierarchy key format",
                           Status::kInvalidArgument);
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

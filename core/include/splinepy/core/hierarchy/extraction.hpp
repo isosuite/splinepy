@@ -14,8 +14,8 @@ struct ThbCacheData {
   Buffer<int32_t> active_levels;
   Buffer<double> values;
   Buffer<int32_t> leaf_levels;
-  Buffer<int32_t> first_knots;  // Leaf-major, one knot slice start per axis.
-  Buffer<double> bounds;       // Leaf-major, lower bounds followed by upper bounds.
+  Buffer<int32_t> first_knots; // Leaf-major, one knot slice start per axis.
+  Buffer<double> bounds; // Leaf-major, lower bounds followed by upper bounds.
   Buffer<int32_t> axis_bits;
   Buffer<Buffer<double>> finest_breaks;
   int32_t level_bits{0};
@@ -24,10 +24,11 @@ struct ThbCacheData {
 };
 
 Buffer<ThbCacheData> BuildThbCaches(SplineBatchView splines,
-                                   const Options& options = {});
+                                    const Options& options = {});
 
-/// The local controls are a separate cache so geometry edits can reuse extraction.
-/// Use caches with the same hierarchy and geometry used to build them.
+/// The local controls are a separate cache so geometry edits can reuse
+/// extraction. Use caches with the same hierarchy and geometry used to build
+/// them.
 struct ThbGeometryData {
   Buffer<double> points;
   Buffer<double> weights;
@@ -58,4 +59,4 @@ Buffer<ThbBasisData> BasisThb(SplineBatchView splines,
                               Span<const int32_t> orders,
                               const Options& options = {});
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

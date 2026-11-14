@@ -32,4 +32,4 @@ ThbRefinementData RefineThb(const SplineView& spline,
                             int32_t admissible = 2,
                             const Options& options = {});
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

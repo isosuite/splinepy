@@ -5,13 +5,16 @@ namespace splinepy::core {
 CellKeyLayout64 MakeCellKeyLayout64(Span<const int32_t> counts,
                                     int32_t num_levels,
                                     Span<int32_t> axis_bits) {
-  if (counts.empty() || counts.size() > INT32_MAX ||
-      counts.size() != axis_bits.size() || num_levels < 1) {
+  if (counts.empty() || counts.size() > INT32_MAX
+      || counts.size() != axis_bits.size() || num_levels < 1) {
     throw SplinepyException("Invalid cell key dimensions");
   }
   const auto level_bits = BitWidth(num_levels - 1);
-  CellKeyLayout64 layout{static_cast<int32_t>(counts.size()), level_bits,
-                         0, level_bits, axis_bits};
+  CellKeyLayout64 layout{static_cast<int32_t>(counts.size()),
+                         level_bits,
+                         0,
+                         level_bits,
+                         axis_bits};
   for (std::size_t axis = 0; axis < counts.size(); ++axis) {
     if (counts[axis] < 1) {
       throw SplinepyException("Cell key axes must have positive extent");
@@ -36,9 +39,10 @@ FunctionKeyLayout64 MakeFunctionKeyLayout64(int64_t count, int32_t num_levels) {
   const auto level_bits = BitWidth(num_levels - 1);
   const auto index_bits = BitWidth(count - 1);
   if (level_bits + index_bits > 64) {
-    throw SplinepyException("Function key exceeds 64 bits", Status::kOutOfBounds);
+    throw SplinepyException("Function key exceeds 64 bits",
+                            Status::kOutOfBounds);
   }
   return {level_bits, index_bits, level_bits + index_bits};
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

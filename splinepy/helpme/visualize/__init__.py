@@ -79,7 +79,10 @@ def show(*objs, backend=None, **kwargs):
         global_parameters = (
             kwargs.get("parametric_space", False)
             or kwargs.get("texture") is not None
-            or any(callable(kwargs.get(key)) for key in ("data", "scalars", "arrows", "arrow_data"))
+            or any(
+                callable(kwargs.get(key))
+                for key in ("data", "scalars", "arrows", "arrow_data")
+            )
         )
         objs = (objs[0]._visualization_spline(global_parameters=global_parameters),)
 

@@ -35,7 +35,9 @@ def _validate_out(values, out):
         or not out.flags.c_contiguous
         or not out.flags.writeable
     ):
-        raise ValueError("out must be a writable C-contiguous array of the result shape and dtype")
+        raise ValueError(
+            "out must be a writable C-contiguous array of the result shape and dtype"
+        )
 
 
 def _copy_to_out(values, out):
@@ -68,7 +70,7 @@ class _HierarchyExtractor:
                 control_points=points_on_leaf.copy(),
                 weights=weights_on_leaf.copy(),
             )
-            for points_on_leaf, weights_on_leaf in zip(points, weights)
+            for points_on_leaf, weights_on_leaf in zip(points, weights, strict=False)
         ]
 
     def multipatch(self, nthreads=None):
@@ -95,8 +97,8 @@ class HBSpline:
         if degrees.ndim != 1 or not degrees.size or len(knots) != degrees.size:
             raise ValueError("expected one degree and knot vector per parametric axis")
         span_counts = []
-        for degree, axis in zip(degrees, knots):
-            degree = int(degree)
+        for degree_value, axis in zip(degrees, knots, strict=False):
+            degree = int(degree_value)
             if axis.ndim != 1 or axis.size < 2 * (degree + 1):
                 raise ValueError("invalid knot vector length")
             domain_knots = axis[degree : axis.size - degree]
@@ -122,10 +124,19 @@ class HBSpline:
                 if self._rational
                 else "use the rational hierarchy class to supply weights"
             )
-        weights = None if weights is None else _immutable(np.asarray(weights, dtype=np.float64))
+        weights = (
+            None
+            if weights is None
+            else _immutable(np.asarray(weights, dtype=np.float64))
+        )
         data = (
-            degrees, levels, _immutable(leaves), _immutable(active),
-            points, weights, self._truncate,
+            degrees,
+            levels,
+            _immutable(leaves),
+            _immutable(active),
+            points,
+            weights,
+            self._truncate,
         )
         self._state = data, splinepy_core._HierarchyCache(data)
 
@@ -138,7 +149,9 @@ class HBSpline:
         return self._state[1]
 
     @classmethod
-    def from_hierarchy(cls, degrees, levels, leaf_cells, control_points, *, weights=None):
+    def from_hierarchy(
+        cls, degrees, levels, leaf_cells, control_points, *, weights=None
+    ):
         """Build from nested knots, leaf cells and active coefficients.
 
         Each leaf row gives its level and one zero-based nonempty span index
@@ -165,10 +178,13 @@ class HBSpline:
         """Copy a BSpline or NURBS into a single-level hierarchy."""
         if not spline.has_knot_vectors:
             raise TypeError("from_bspline expects a BSpline or NURBS")
+        target = cls
         if spline.is_rational and not cls._rational:
-            cls = RationalTHBSpline if cls._truncate else RationalHBSpline
-        return cls(
-            spline.degrees, spline.knot_vectors, spline.control_points,
+            target = RationalTHBSpline if cls._truncate else RationalHBSpline
+        return target(
+            spline.degrees,
+            spline.knot_vectors,
+            spline.control_points,
             weights=spline.weights if spline.is_rational else None,
         )
 
@@ -215,8 +231,16 @@ class HBSpline:
     def parametric_bounds(self):
         """Return the lower and upper parameter bounds."""
         return np.array(
-            [[axis[p] for p, axis in zip(self.degrees, self.levels[0])],
-             [axis[-int(p) - 1] for p, axis in zip(self.degrees, self.levels[0])]]
+            [
+                [
+                    axis[p]
+                    for p, axis in zip(self.degrees, self.levels[0], strict=False)
+                ],
+                [
+                    axis[-int(p) - 1]
+                    for p, axis in zip(self.degrees, self.levels[0], strict=False)
+                ],
+            ]
         )
 
     @property
@@ -231,14 +255,20 @@ class HBSpline:
 
     def to_bspline(self, nthreads=None):
         """Materialize the exact finest-level BSpline or NURBS."""
-        from splinepy import BSpline, NURBS
+        from splinepy import NURBS, BSpline
 
         data, cache = self._state
         knots, points, weights = cache.to_bspline(_thread_count(nthreads))
-        properties = dict(
-            degrees=data[0].copy(), knot_vectors=knots, control_points=points
+        properties = {
+            "degrees": data[0].copy(),
+            "knot_vectors": knots,
+            "control_points": points,
+        }
+        return (
+            BSpline(**properties)
+            if weights is None
+            else NURBS(**properties, weights=weights)
         )
-        return BSpline(**properties) if weights is None else NURBS(**properties, weights=weights)
 
     def iga_data(self, basis="bspline", nthreads=None):
         """Return leaf extraction blocks and global geometry coefficients.
@@ -302,8 +332,10 @@ class HBSpline:
         cells[:, 0] = levels
         for level, knots in enumerate(knot_levels):
             mask = levels == level
-            for axis, (degree, vector) in enumerate(zip(degrees, knots)):
-                degree = int(degree)
+            for axis, (degree_value, vector) in enumerate(
+                zip(degrees, knots, strict=False)
+            ):
+                degree = int(degree_value)
                 breaks = np.unique(vector[degree : vector.size - degree])
                 cells[mask, axis + 1] = np.searchsorted(
                     breaks, extraction["bounds"][mask, 0, axis]
@@ -368,15 +400,25 @@ class HBSpline:
             if elements.ndim == 2 and level is not None:
                 coordinates = _integers(elements, "element coordinates")
                 if coordinates.shape[1] != self.para_dim:
-                    raise ValueError("element coordinates must match the parametric dimension")
+                    raise ValueError(
+                        "element coordinates must match the parametric dimension"
+                    )
                 cells = self._cells(degrees, knot_levels, extraction)[candidates, 1:]
-                lookup = {tuple(cell): leaf for cell, leaf in zip(cells, candidates)}
+                lookup = {
+                    tuple(cell): leaf
+                    for cell, leaf in zip(cells, candidates, strict=False)
+                }
                 try:
                     return np.unique(
-                        np.asarray([lookup[tuple(cell)] for cell in coordinates], dtype=np.uintp)
+                        np.asarray(
+                            [lookup[tuple(cell)] for cell in coordinates],
+                            dtype=np.uintp,
+                        )
                     )
                 except KeyError as error:
-                    raise ValueError("element coordinates do not identify a current leaf") from error
+                    raise ValueError(
+                        "element coordinates do not identify a current leaf"
+                    ) from error
             return candidates[self._leaf_indices(elements, candidates.size)]
 
         bounds = extraction["bounds"][candidates]
@@ -387,7 +429,9 @@ class HBSpline:
                 or not np.isfinite(box).all()
                 or not np.all(box[0] < box[1])
             ):
-                raise ValueError("box must contain finite, increasing lower and upper bounds")
+                raise ValueError(
+                    "box must contain finite, increasing lower and upper bounds"
+                )
             mask = ((bounds[:, 0] < box[1]) & (bounds[:, 1] > box[0])).all(axis=1)
         else:
             centers = 0.5 * bounds[:, 0] + 0.5 * bounds[:, 1]
@@ -397,7 +441,13 @@ class HBSpline:
         return candidates[mask]
 
     def refine(
-        self, elements=None, level=None, *, box=None, where=None, admissible=2,
+        self,
+        elements=None,
+        level=None,
+        *,
+        box=None,
+        where=None,
+        admissible=2,
         nthreads=None,
     ):
         """Split marked leaves in place and return this spline.
@@ -453,7 +503,9 @@ class HBSpline:
 
     def evaluate(self, queries, nthreads=None, out=None):
         """Evaluate the geometry at queries of shape (n, para_dim)."""
-        return self.derivative(queries, np.zeros(self.para_dim, dtype=np.int32), nthreads, out)
+        return self.derivative(
+            queries, np.zeros(self.para_dim, dtype=np.int32), nthreads, out
+        )
 
     def _derivative_orders(self, orders):
         orders = _integers(orders, "orders")
@@ -480,7 +532,9 @@ class HBSpline:
 
     def jacobian(self, queries, nthreads=None, out=None):
         """Return the Jacobian with shape (n, dim, para_dim)."""
-        derivatives = self.derivative(queries, np.eye(self.para_dim, dtype=np.int32), nthreads)
+        derivatives = self.derivative(
+            queries, np.eye(self.para_dim, dtype=np.int32), nthreads
+        )
         if self.para_dim == 1:
             jacobian = derivatives[..., None]
         else:
@@ -513,7 +567,10 @@ class HBSpline:
         else:
             basis = np.stack(
                 [padded(values)]
-                + [padded(self._cache.basis(queries, order, threads)[2]) for order in orders[1:]],
+                + [
+                    padded(self._cache.basis(queries, order, threads)[2])
+                    for order in orders[1:]
+                ],
                 axis=1,
             )
         if out is None:
@@ -540,7 +597,9 @@ class HBSpline:
 
     def basis_derivative(self, queries, orders, nthreads=None, out=None):
         """Return basis derivatives with zero padding."""
-        return _copy_to_out(self.basis_derivative_and_support(queries, orders, nthreads)[0], out)
+        return _copy_to_out(
+            self.basis_derivative_and_support(queries, orders, nthreads)[0], out
+        )
 
 
 class RationalHBSpline(HBSpline):
@@ -555,8 +614,16 @@ class THBSpline(HBSpline):
     _truncate = True
 
     def coarsen(
-        self, elements=None, level=None, *, box=None, where=None,
-        admissible=2, method="l2", tolerance=1e-10, nthreads=None,
+        self,
+        elements=None,
+        level=None,
+        *,
+        box=None,
+        where=None,
+        admissible=2,
+        method="l2",
+        tolerance=1e-10,
+        nthreads=None,
     ):
         """Merge complete marked sibling groups in place and return this spline.
 

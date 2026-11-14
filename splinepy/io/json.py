@@ -11,9 +11,13 @@ from splinepy import settings as _settings
 from splinepy.utils.log import debug as _debug
 
 
-
 def _hierarchy_types():
-    from splinepy.hierarchy import HBSpline, RationalHBSpline, RationalTHBSpline, THBSpline
+    from splinepy.hierarchy import (
+        HBSpline,
+        RationalHBSpline,
+        RationalTHBSpline,
+        THBSpline,
+    )
 
     return {
         cls.__name__: cls

@@ -36,7 +36,9 @@ TEST(Hierarchy, KeyRoundTripsAndCapacity) {
   const auto functions = MakeFunctionKeyLayout64(INT64_MAX, 2);
   int64_t index;
   EXPECT_EQ(Traits::DecodeFunction(
-                functions, Traits::EncodeFunction(functions, 1, INT64_MAX - 1), &index),
+                functions,
+                Traits::EncodeFunction(functions, 1, INT64_MAX - 1),
+                &index),
             1);
   EXPECT_EQ(index, INT64_MAX - 1);
   EXPECT_THROW(MakeFunctionKeyLayout64(INT64_MAX, 3), SplinepyException);
@@ -82,13 +84,17 @@ void CheckRefinement(int32_t degree,
   for (int32_t i = 0; i <= 100; ++i) {
     queries.push_back(lo + (hi - lo) * (i / 100.0));
   }
-  queries.insert(queries.end(), fine.begin() + degree, fine.begin() + fine_size + 1);
+  queries.insert(queries.end(),
+                 fine.begin() + degree,
+                 fine.begin() + fine_size + 1);
   for (double u : queries) {
     std::fill(expected.begin(), expected.end(), 0.0);
     std::fill(actual.begin(), actual.end(), 0.0);
     const auto coarse_span = FindSpan(coarse_size, degree, u, coarse);
     EvaluateBSplineBasis(coarse_span, u, degree, coarse, basis);
-    std::copy(basis.begin(), basis.end(), expected.begin() + coarse_span - degree);
+    std::copy(basis.begin(),
+              basis.end(),
+              expected.begin() + coarse_span - degree);
     const auto fine_span = FindSpan(fine_size, degree, u, fine);
     EvaluateBSplineBasis(fine_span, u, degree, fine, basis);
     for (int32_t row = fine_span - degree; row <= fine_span; ++row) {
@@ -101,15 +107,33 @@ void CheckRefinement(int32_t degree,
       }
     }
     for (int32_t i = 0; i < coarse_size; ++i) {
-      EXPECT_NEAR(actual[i], expected[i], 2e-14) << "basis " << i << ", u " << u;
+      EXPECT_NEAR(actual[i], expected[i], 2e-14)
+          << "basis " << i << ", u " << u;
     }
   }
 }
 
 TEST(Hierarchy, RefinementPreservesBasisWithNonuniformAndRepeatedKnots) {
   const std::array<double, 11> coarse{0, 0, 0, 0, 0.2, 0.2, 0.7, 1, 1, 1, 1};
-  const std::array<double, 19> fine{
-      0, 0, 0, 0, 0.1, 0.2, 0.2, 0.2, 0.2, 0.3, 0.5, 0.7, 0.7, 0.8, 0.9, 1, 1, 1, 1};
+  const std::array<double, 19> fine{0,
+                                    0,
+                                    0,
+                                    0,
+                                    0.1,
+                                    0.2,
+                                    0.2,
+                                    0.2,
+                                    0.2,
+                                    0.3,
+                                    0.5,
+                                    0.7,
+                                    0.7,
+                                    0.8,
+                                    0.9,
+                                    1,
+                                    1,
+                                    1,
+                                    1};
   CheckRefinement(3, coarse, fine);
   CheckRefinement(3, coarse, coarse);
   CheckRefinement(0,
@@ -129,7 +153,8 @@ TEST(Hierarchy, RefinementPreservesBasisAcrossKnotMultiplicityPatterns) {
       for (int32_t i = 1; i < 12; ++i) {
         const double knot = i / 12.0;
         const auto coarse_count = random() % (degree + 2);
-        const auto fine_count = coarse_count + random() % (degree + 2 - coarse_count);
+        const auto fine_count =
+            coarse_count + random() % (degree + 2 - coarse_count);
         coarse.insert(coarse.end(), coarse_count, knot);
         fine.insert(fine.end(), fine_count, knot);
       }
@@ -209,8 +234,8 @@ TEST(Hierarchy, QuadraticLShapeActiveSetAndPartitionOfUnity) {
       std::array<double, 2> hierarchical_homogeneous{};
       for (int32_t j = 0; j < matrix.row_width; ++j) {
         for (int32_t i = 0; i < matrix.row_width; ++i) {
-          const auto weight = matrix.values[y * matrix.row_width + j] *
-                              matrix.values[x * matrix.row_width + i];
+          const auto weight = matrix.values[y * matrix.row_width + j]
+                              * matrix.values[x * matrix.row_width + i];
           if (weight == 0.0) {
             continue;
           }
@@ -247,9 +272,11 @@ TEST(Hierarchy, ThreeLevelsWithUnequalChildCounts) {
   const std::array<Span<const double>, 1> ka{a}, kb{b}, kc{c};
   const std::array<LevelKnotsView, 3> levels{ka, kb, kc};
   const std::array<int32_t, 1> zero{0}, one{1}, two{2};
-  const std::array<LeafCellView, 5> cells{
-      LeafCellView{2, two}, LeafCellView{0, one}, LeafCellView{1, zero},
-      LeafCellView{2, one}, LeafCellView{1, two}};
+  const std::array<LeafCellView, 5> cells{LeafCellView{2, two},
+                                          LeafCellView{0, one},
+                                          LeafCellView{1, zero},
+                                          LeafCellView{2, one},
+                                          LeafCellView{1, two}};
   auto leaves = EncodeLeaves(degree, levels, cells);
   const std::array<Span<const int32_t>, 1> degrees{degree};
   std::array<HierarchyView, 1> hierarchy{HierarchyView{levels, leaves}};
@@ -285,7 +312,7 @@ TEST(Hierarchy, OwningStorageSuppliesViewsInSixDimensions) {
   auto second = first;
   second.back() = 1;
   const std::array<LeafCellView, 2> cells{LeafCellView{1, second},
-                                         LeafCellView{1, first}};
+                                          LeafCellView{1, first}};
   const auto grid_view = data.View(levels, axes);
   data.leaves = EncodeLeaves(degree, grid_view.level_knots, cells);
   const std::array<HierarchyView, 1> hierarchy{data.View(levels, axes)};
@@ -300,7 +327,7 @@ TEST(Hierarchy, OwningStorageSuppliesViewsInSixDimensions) {
 }
 
 class HierarchyQueryTest : public ::testing::Test {
- protected:
+protected:
   const std::array<int32_t, 1> degree{1}, zero{0}, one{1}, two{2};
   const std::array<double, 5> coarse{0, 0, 0.5, 1, 1};
   const std::array<double, 7> fine{0, 0, 0.1, 0.2, 0.5, 1, 1};
@@ -308,7 +335,8 @@ class HierarchyQueryTest : public ::testing::Test {
   const std::array<LevelKnotsView, 2> levels{a, b};
   const std::array<double, 5> polynomial{4, 5, 3, 3.2, 3.4};
   const std::array<double, 5> weights{1.5, 2, 1, 1.1, 1.2};
-  static constexpr std::array<double, 9> queries{0, 0.02, 0.1, 0.19, 0.2, 0.49, 0.5, 0.51, 1};
+  static constexpr std::array<double, 9>
+      queries{0, 0.02, 0.1, 0.19, 0.2, 0.49, 0.5, 0.51, 1};
   std::array<double, 5> rational{};
   Buffer<uint64_t> leaves, active;
   HierarchyView hierarchy;
@@ -319,9 +347,10 @@ class HierarchyQueryTest : public ::testing::Test {
   std::array<ThbGeometryData, 2> geometry;
 
   void SetUp() override {
-    const std::array<LeafCellView, 4> cells{
-        LeafCellView{0, one}, LeafCellView{1, zero},
-        LeafCellView{1, one}, LeafCellView{1, two}};
+    const std::array<LeafCellView, 4> cells{LeafCellView{0, one},
+                                            LeafCellView{1, zero},
+                                            LeafCellView{1, one},
+                                            LeafCellView{1, two}};
     leaves = EncodeLeaves(degree, levels, cells);
     hierarchy = {levels, leaves};
     const Span<const int32_t> degrees(degree);
@@ -355,7 +384,8 @@ TEST_F(HierarchyQueryTest, BatchedExtractionAndQueries) {
   const auto& spline = splines[0];
   const auto single_cache = BuildThbCaches({&spline, 1}, options);
   ASSERT_EQ(caches[0].values.size(), single_cache[0].values.size());
-  EXPECT_TRUE(std::equal(caches[0].values.begin(), caches[0].values.end(),
+  EXPECT_TRUE(std::equal(caches[0].values.begin(),
+                         caches[0].values.end(),
                          single_cache[0].values.begin()));
   const std::array<Span<const double>, 1> query_batch{queries};
   std::array<double, queries.size()> polynomial_out{}, rational_out{};
@@ -363,12 +393,14 @@ TEST_F(HierarchyQueryTest, BatchedExtractionAndQueries) {
 
   for (const auto& order : {zero, one, two}) {
     EvaluateThb(splines, caches, geometry, query_batch, order, output, options);
-    const auto basis = BasisThb(splines, caches, geometry, query_batch, order, options);
+    const auto basis =
+        BasisThb(splines, caches, geometry, query_batch, order, options);
     for (std::size_t i = 0; i < queries.size(); ++i) {
       const auto u = queries[i];
       const auto w = 1 + u;
-      const auto expected = order[0] == 0 ? 3 + 2 * u : (order[0] == 1 ? 2.0 : 0.0);
-      const auto rational_expected = order[0] == 0 ? expected / w
+      const auto expected =
+          order[0] == 0 ? 3 + 2 * u : (order[0] == 1 ? 2.0 : 0.0);
+      const auto rational_expected = order[0] == 0   ? expected / w
                                      : order[0] == 1 ? -1 / (w * w)
                                                      : 2 / (w * w * w);
       EXPECT_NEAR(polynomial_out[i], expected, 2e-13);
@@ -376,9 +408,12 @@ TEST_F(HierarchyQueryTest, BatchedExtractionAndQueries) {
       for (std::size_t patch = 0; patch < basis.size(); ++patch) {
         double sum = 0.0;
         double value = 0.0;
-        for (auto row = basis[patch].offsets[i]; row < basis[patch].offsets[i + 1]; ++row) {
+        for (auto row = basis[patch].offsets[i];
+             row < basis[patch].offsets[i + 1];
+             ++row) {
           sum += basis[patch].values[row];
-          value += basis[patch].values[row] * splines[patch].Point(basis[patch].support[row], 0);
+          value += basis[patch].values[row]
+                   * splines[patch].Point(basis[patch].support[row], 0);
         }
         EXPECT_NEAR(sum, order[0] == 0 ? 1.0 : 0.0, 2e-13);
         EXPECT_NEAR(value, output[patch][i], 2e-13);
@@ -391,16 +426,18 @@ TEST_F(HierarchyQueryTest, FinestTensorExportPreservesGeometry) {
   for (std::size_t patch = 0; patch < splines.size(); ++patch) {
     const auto& source = splines[patch];
     const auto& cache = caches[patch];
-    const auto tensor = HierarchyToBSpline(source, cache, geometry[patch], options);
+    const auto tensor =
+        HierarchyToBSpline(source, cache, geometry[patch], options);
     const auto tensor_values = Evaluate(tensor.View(), queries, options);
     ASSERT_EQ(tensor.knot_vectors[0].size(), fine.size());
-    EXPECT_TRUE(std::equal(fine.begin(), fine.end(), tensor.knot_vectors[0].begin()));
+    EXPECT_TRUE(
+        std::equal(fine.begin(), fine.end(), tensor.knot_vectors[0].begin()));
     for (std::size_t i = 0; i < queries.size(); ++i) {
       const auto affine = 3 + 2 * queries[i];
-      const auto expected = source.IsRational() ? affine / (1 + queries[i]) : affine;
+      const auto expected =
+          source.IsRational() ? affine / (1 + queries[i]) : affine;
       EXPECT_NEAR(tensor_values[i], expected, 2e-14);
     }
-
   }
 }
 
@@ -413,16 +450,25 @@ TEST_F(HierarchyQueryTest, LeafProximityInvertsAnalyticGeometry) {
       const auto affine = 3 + 2 * queries[i];
       physical[i] = source.IsRational() ? affine / (1 + queries[i]) : affine;
     }
-    const auto proximity = BuildHierarchyProximity(source, cache, geometry[patch], options);
-    EXPECT_EQ(proximity.bvh.NumElements(), static_cast<int64_t>(cache.leaf_levels.size()));
+    const auto proximity =
+        BuildHierarchyProximity(source, cache, geometry[patch], options);
+    EXPECT_EQ(proximity.bvh.NumElements(),
+              static_cast<int64_t>(cache.leaf_levels.size()));
     const std::array<int32_t, 1> resolution{4};
-    const auto closest = HierarchyProximities(source, cache, proximity, physical,
-                                              resolution, 1e-13, -1, false, true, options);
+    const auto closest = HierarchyProximities(source,
+                                              cache,
+                                              proximity,
+                                              physical,
+                                              resolution,
+                                              1e-13,
+                                              -1,
+                                              false,
+                                              true,
+                                              options);
     for (std::size_t i = 0; i < queries.size(); ++i) {
       EXPECT_NEAR(closest.parameters[i], queries[i], 1e-10);
       EXPECT_NEAR(closest.distances[i], 0.0, 1e-12);
     }
-
   }
 }
 
@@ -431,17 +477,21 @@ TEST_F(HierarchyQueryTest, BernsteinExtractionAndBezierGeometry) {
     const auto& source = splines[patch];
     const auto& cache = caches[patch];
     const auto extraction = BernsteinExtraction(source, cache, options);
-    const auto bezier = BezierLeafGeometry(source, cache, geometry[patch], options);
+    const auto bezier =
+        BezierLeafGeometry(source, cache, geometry[patch], options);
     ASSERT_EQ(extraction.size(), cache.values.size());
     for (std::size_t leaf = 0; leaf < cache.leaf_levels.size(); ++leaf) {
       const std::array<double, 1> local_query{0.3};
-      const auto u = cache.bounds[2 * leaf] +
-                     local_query[0] * (cache.bounds[2 * leaf + 1] - cache.bounds[2 * leaf]);
+      const auto u =
+          cache.bounds[2 * leaf]
+          + local_query[0]
+                * (cache.bounds[2 * leaf + 1] - cache.bounds[2 * leaf]);
       auto local = source;
       local.hierarchy = nullptr;
       local.knot_vectors = {};
       local.num_control_points = cache.local_size;
-      local.control_points_data = bezier.points.data() + leaf * cache.local_size;
+      local.control_points_data =
+          bezier.points.data() + leaf * cache.local_size;
       local.weights_data = source.IsRational()
                                ? bezier.weights.data() + leaf * cache.local_size
                                : nullptr;
@@ -450,7 +500,8 @@ TEST_F(HierarchyQueryTest, BernsteinExtractionAndBezierGeometry) {
       EXPECT_NEAR(Evaluate(local, local_query, options)[0], expected, 2e-14);
       for (std::size_t col = 0; col < cache.local_size; ++col) {
         double sum = 0.0;
-        for (auto row = cache.offsets[leaf]; row < cache.offsets[leaf + 1]; ++row) {
+        for (auto row = cache.offsets[leaf]; row < cache.offsets[leaf + 1];
+             ++row) {
           sum += extraction[row * cache.local_size + col];
         }
         EXPECT_NEAR(sum, 1.0, 1e-14);
@@ -465,9 +516,10 @@ TEST(Hierarchy, RefinementPreservesRationalGeometryWithAndWithoutTruncation) {
   const std::array<Span<const double>, 1> axes{knots};
   const std::array<LevelKnotsView, 1> levels{axes};
   const std::array<std::array<int32_t, 1>, 4> indices{{{0}, {1}, {2}, {3}}};
-  const std::array<LeafCellView, 4> cells{
-      LeafCellView{0, indices[0]}, LeafCellView{0, indices[1]},
-      LeafCellView{0, indices[2]}, LeafCellView{0, indices[3]}};
+  const std::array<LeafCellView, 4> cells{LeafCellView{0, indices[0]},
+                                          LeafCellView{0, indices[1]},
+                                          LeafCellView{0, indices[2]},
+                                          LeafCellView{0, indices[3]}};
   const auto leaves = EncodeLeaves(degree, levels, cells);
   const std::array<Span<const int32_t>, 1> degrees{degree};
   const std::array<double, 5> points{-2, 0, 1, 3, 5};
@@ -497,7 +549,8 @@ TEST(Hierarchy, RefinementPreservesRationalGeometryWithAndWithoutTruncation) {
 
     const auto extraction = BuildThbCaches({&spline, 1}, options);
     const auto geometry = BuildThbGeometry(spline, extraction[0]);
-    auto result = RefineThb(spline, extraction[0], geometry, marked, 0, options);
+    auto result =
+        RefineThb(spline, extraction[0], geometry, marked, 0, options);
     EXPECT_EQ(result.hierarchy.leaves.size(), 5u);
     EXPECT_EQ(result.hierarchy.level_knots.size(), 2u);
     EXPECT_EQ(result.weights.size(), 6u);
@@ -513,20 +566,35 @@ TEST(Hierarchy, RefinementPreservesRationalGeometryWithAndWithoutTruncation) {
     refined.weights_data = result.weights.data();
     refined.num_control_points = result.weights.size();
     const auto refined_geometry = BuildThbGeometry(refined, result.extraction);
-    const auto closure = ThbAdmissibleClosure(refined, result.extraction, marked, 2, options);
+    const auto closure =
+        ThbAdmissibleClosure(refined, result.extraction, marked, 2, options);
     ASSERT_EQ(closure.size(), truncate ? 2u : 3u);
     EXPECT_EQ(closure[0], 0u);
     EXPECT_EQ(closure[1], 1u);
-    const auto graded = RefineThb(refined, result.extraction, refined_geometry,
-                                  marked, 2, options);
+    const auto graded = RefineThb(refined,
+                                  result.extraction,
+                                  refined_geometry,
+                                  marked,
+                                  2,
+                                  options);
     EXPECT_TRUE(IsThbAdmissible(graded.extraction, 2));
 
     std::array<double, queries.size()> before{}, after{};
     Span<double> before_view(before), after_view(after);
-    EvaluateThb({&spline, 1}, extraction, {&geometry, 1}, query_batch, order,
-                {&before_view, 1}, options);
-    EvaluateThb({&refined, 1}, {&result.extraction, 1}, {&refined_geometry, 1},
-                query_batch, order, {&after_view, 1}, options);
+    EvaluateThb({&spline, 1},
+                extraction,
+                {&geometry, 1},
+                query_batch,
+                order,
+                {&before_view, 1},
+                options);
+    EvaluateThb({&refined, 1},
+                {&result.extraction, 1},
+                {&refined_geometry, 1},
+                query_batch,
+                order,
+                {&after_view, 1},
+                options);
     for (std::size_t i = 0; i < queries.size(); ++i) {
       EXPECT_NEAR(before[i], after[i], 2e-14);
     }
@@ -551,5 +619,5 @@ TEST(Hierarchy, TensorValidationRejectsHierarchyEvenWhenCountsMatch) {
   EXPECT_THROW(ThrowIfInvalid(view), SplinepyException);
 }
 
-}  // namespace
-}  // namespace splinepy::core
+} // namespace
+} // namespace splinepy::core
