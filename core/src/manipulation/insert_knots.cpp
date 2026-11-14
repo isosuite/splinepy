@@ -10,10 +10,17 @@
 
 namespace splinepy::core {
 
-SplineData InsertKnots(const SplineView& spline,
-                       int32_t axis,
-                       Span<const double> knots_to_insert,
-                       const Options& options) {
+namespace {
+
+/// Single-spline kernel; scratch comes from the caller-provided arena so batch
+/// workers can each use their own.
+SplineData InsertKnotsWithArena(MemoryArena& arena,
+                                const SplineView& spline,
+                                int32_t axis,
+                                Span<const double> knots_to_insert,
+                                const Options& options) {
+  auto scope = arena.CreateScope();
+
   if (options.validate) {
     ThrowIfInvalid(spline);
     if (axis < 0 || axis >= spline.para_dim) {
@@ -132,7 +139,8 @@ SplineData InsertKnots(const SplineView& spline,
     std::vector<double> out_axis_knots;
     Buffer<double> out_cps;
 
-    detail::InsertKnotAlongAxisND(spline.para_dim,
+    detail::InsertKnotAlongAxisND(arena,
+                                  spline.para_dim,
                                   coord_dim,
                                   spline.degrees,
                                   kv_views,
@@ -177,18 +185,44 @@ SplineData InsertKnots(const SplineView& spline,
   return result;
 }
 
+} // namespace
+
+SplineData InsertKnots(const SplineView& spline,
+                       int32_t axis,
+                       Span<const double> knots_to_insert,
+                       const Options& options) {
+  detail::LocalArena local(options);
+  return InsertKnotsWithArena(local.arena(),
+                              spline,
+                              axis,
+                              knots_to_insert,
+                              options);
+}
+
 SplineBatchData InsertKnots(SplineBatchView batch,
                             int32_t axis,
                             Span<const double> knots_to_insert,
                             const Options& options) {
   SplineBatchData result(batch.size());
-  ParallelFor(static_cast<int64_t>(0),
-              static_cast<int64_t>(batch.size()),
-              options.nthreads,
-              [&](int64_t i) {
-                result[i] =
-                    InsertKnots(batch[i], axis, knots_to_insert, options);
-              });
+
+  // One arena per worker; created up front so workers never grow the pool.
+  const int nthreads = std::max(options.nthreads, 1);
+  Workspace local_workspace(16 * 1024, nthreads);
+  Workspace* ws =
+      options.workspace != nullptr ? options.workspace : &local_workspace;
+  ws->GetThreadArena(nthreads - 1);
+
+  ParallelForWithThreadId(static_cast<int64_t>(0),
+                          static_cast<int64_t>(batch.size()),
+                          nthreads,
+                          [&](int64_t i, int thread_id) {
+                            result[i] = InsertKnotsWithArena(
+                                ws->GetThreadArena(thread_id),
+                                batch[i],
+                                axis,
+                                knots_to_insert,
+                                options);
+                          });
   return result;
 }
 

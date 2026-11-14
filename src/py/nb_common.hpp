@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -80,6 +81,74 @@ nb::object MakeNumPyArray3D(const T* data, size_t d0, size_t d1, size_t d2) {
   nb::capsule owner(ptr, [](void* p) noexcept { delete[] static_cast<T*>(p); });
   return nb::cast(
       nb::ndarray<nb::numpy, T, nb::shape<3>>(ptr, 3, shape, owner));
+}
+
+/// numpy ufunc style output. With `out` given, results are written into that
+/// array in place and it is returned (it has to be a writable C-contiguous
+/// array of element type T and exactly the expected shape; nothing is converted
+/// or copied behind the caller's back). Without `out`, a fresh array is
+/// allocated.
+template<typename T>
+class OutArray {
+public:
+  OutArray(const nb::object& out, std::initializer_list<size_t> shape)
+      : shape_(shape) {
+    size_ = 1;
+    for (const size_t s : shape_) {
+      size_ *= s;
+    }
+
+    if (!out.is_none()) {
+      nb::ndarray<T, nb::c_contig, nb::device::cpu> array;
+      if (!nb::try_cast(out, array, /*convert=*/false)) {
+        throw std::invalid_argument("out must be a writable, C-contiguous "
+                                    "numpy array of the dtype of the result.");
+      }
+      bool matches = array.ndim() == shape_.size();
+      for (size_t i = 0; matches && i < shape_.size(); ++i) {
+        matches = array.shape(i) == shape_[i];
+      }
+      if (!matches) {
+        std::string expected;
+        for (size_t i = 0; i < shape_.size(); ++i) {
+          expected += (i ? ", " : "") + std::to_string(shape_[i]);
+        }
+        throw std::invalid_argument("out has the wrong shape, expected ("
+                                    + expected + ").");
+      }
+      ptr_ = array.data();
+      result_ = out;
+      return;
+    }
+
+    ptr_ = new T[size_];
+    nb::capsule owner(ptr_,
+                      [](void* p) noexcept { delete[] static_cast<T*>(p); });
+    result_ = nb::cast(
+        nb::ndarray<nb::numpy, T>(ptr_, shape_.size(), shape_.data(), owner));
+  }
+
+  T* data() const { return ptr_; }
+  size_t size() const { return size_; }
+  nb::object result() const { return result_; }
+
+private:
+  std::vector<size_t> shape_;
+  size_t size_{1};
+  T* ptr_{nullptr};
+  nb::object result_;
+};
+
+/// out for functions with two results (e.g. basis and support): None or a
+/// sequence of two arrays.
+inline std::pair<nb::object, nb::object> SplitOutPair(const nb::object& out) {
+  if (out.is_none()) {
+    return {nb::none(), nb::none()};
+  }
+  if (!nb::isinstance<nb::sequence>(out) || nb::len(out) != 2) {
+    throw std::invalid_argument("out must be None or a tuple of two arrays.");
+  }
+  return {out[0], out[1]};
 }
 
 /// Helper holding temporary arrays and spans to safely present a SplineView.

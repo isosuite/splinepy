@@ -72,7 +72,7 @@ public:
                        std::size_t alignment = kDefaultAlignment)
       : block_size_(std::max(block_size, std::size_t{1024})),
         alignment_(alignment > 0 ? alignment : kDefaultAlignment) {
-    blocks_.emplace_back(Block{Buffer<uint8_t>(block_size_), 0});
+    blocks_.emplace_back(Block{Buffer<uint8_t>::Uninitialized(block_size_), 0});
   }
 
   ~MemoryArena() = default;
@@ -108,11 +108,12 @@ public:
         current_block_index_++;
         if (blocks_[current_block_index_].buffer.size() < bytes + eff_align) {
           blocks_[current_block_index_].buffer =
-              Buffer<uint8_t>(new_block_size);
+              Buffer<uint8_t>::Uninitialized(new_block_size);
         }
         blocks_[current_block_index_].offset = 0;
       } else {
-        blocks_.emplace_back(Block{Buffer<uint8_t>(new_block_size), 0});
+        blocks_.emplace_back(
+            Block{Buffer<uint8_t>::Uninitialized(new_block_size), 0});
         current_block_index_ = blocks_.size() - 1;
       }
 

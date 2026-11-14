@@ -7,122 +7,19 @@
 #include <vector>
 
 #include "splinepy/core/math/binomial.hpp"
+#include "splinepy/core/memory/workspace.hpp"
 #include "splinepy/core/validate/validator.hpp"
 
 namespace splinepy::core {
 namespace detail {
 
-struct FactorTable1D {
-  int32_t m{0};
-  int32_t n{0};
-  // factors[k][i - min_i]
-  std::vector<int32_t> min_i;
-  std::vector<int32_t> max_i;
-  std::vector<std::vector<double>> factors;
-};
-
-inline FactorTable1D BuildFactorTable(int32_t m, int32_t n) {
-  FactorTable1D table;
-  table.m = m;
-  table.n = n;
-  const int32_t k_max = m + n;
-  table.min_i.resize(k_max + 1);
-  table.max_i.resize(k_max + 1);
-  table.factors.resize(k_max + 1);
-
-  for (int32_t k = 0; k <= k_max; ++k) {
-    const int32_t i_low = std::max(0, k - n);
-    const int32_t i_high = std::min(k, m);
-    table.min_i[k] = i_low;
-    table.max_i[k] = i_high;
-    const int32_t count = i_high - i_low + 1;
-    table.factors[k].resize(count);
-
-    const double denom_bin = Binomial(m + n, k);
-    for (int32_t i = i_low; i <= i_high; ++i) {
-      const double num_bin = Binomial(m, i) * Binomial(n, k - i);
-      table.factors[k][i - i_low] =
-          (denom_bin != 0.0) ? (num_bin / denom_bin) : 0.0;
-    }
-  }
-  return table;
-}
-
-void MultiplyRecursive(int32_t depth,
-                       int32_t para_dim,
-                       const std::vector<FactorTable1D>& tables,
-                       const std::vector<int64_t>& a_strides,
-                       const std::vector<int64_t>& b_strides,
-                       const std::vector<int64_t>& r_strides,
-                       int64_t a_offset,
-                       int64_t b_offset,
-                       int64_t r_offset,
-                       double current_factor,
-                       const double* a_cps,
-                       int32_t a_dim,
-                       const double* b_cps,
-                       int32_t b_dim,
-                       int32_t res_dim,
-                       bool is_dot_product,
-                       double* out_cps) {
-  if (depth == para_dim) {
-    if (is_dot_product) {
-      double dot = 0.0;
-      for (int32_t c = 0; c < a_dim; ++c) {
-        dot += a_cps[a_offset * a_dim + c] * b_cps[b_offset * b_dim + c];
-      }
-      out_cps[r_offset * res_dim] += current_factor * dot;
-    } else if (a_dim == 1) {
-      const double s = a_cps[a_offset];
-      for (int32_t c = 0; c < res_dim; ++c) {
-        out_cps[r_offset * res_dim + c] +=
-            current_factor * s * b_cps[b_offset * b_dim + c];
-      }
-    } else if (b_dim == 1) {
-      const double s = b_cps[b_offset];
-      for (int32_t c = 0; c < res_dim; ++c) {
-        out_cps[r_offset * res_dim + c] +=
-            current_factor * a_cps[a_offset * a_dim + c] * s;
-      }
-    }
-    return;
-  }
-
-  const auto& table = tables[depth];
-  const int32_t k_max = table.m + table.n;
-
-  for (int32_t k = 0; k <= k_max; ++k) {
-    const int32_t i_low = table.min_i[k];
-    const int32_t i_high = table.max_i[k];
-    const int64_t next_r = r_offset + k * r_strides[depth];
-
-    for (int32_t i = i_low; i <= i_high; ++i) {
-      const double f = table.factors[k][i - i_low];
-      const int64_t next_a = a_offset + i * a_strides[depth];
-      const int64_t next_b = b_offset + (k - i) * b_strides[depth];
-
-      MultiplyRecursive(depth + 1,
-                        para_dim,
-                        tables,
-                        a_strides,
-                        b_strides,
-                        r_strides,
-                        next_a,
-                        next_b,
-                        next_r,
-                        current_factor * f,
-                        a_cps,
-                        a_dim,
-                        b_cps,
-                        b_dim,
-                        res_dim,
-                        is_dot_product,
-                        out_cps);
-    }
-  }
-}
-
-Buffer<double> MultiplyPolynomialCps(int32_t para_dim,
+/// Control points of the product of two Bezier polynomials, accumulated over
+/// all pairs (i, j) of control points: R_{i+j} += F(i, j) a_i b_j, where
+/// F(i, j) = prod_d C(m_d, i_d) C(n_d, j_d) / C(m_d + n_d, i_d + j_d).
+/// The first parametric dimension is contiguous in memory and runs in the
+/// innermost loop, everything else is enumerated by the two outer loops.
+Buffer<double> MultiplyPolynomialCps(MemoryArena& arena,
+                                     int32_t para_dim,
                                      Span<const int32_t> deg_a,
                                      Span<const int32_t> deg_b,
                                      const double* cps_a,
@@ -131,44 +28,144 @@ Buffer<double> MultiplyPolynomialCps(int32_t para_dim,
                                      int32_t dim_b,
                                      int32_t res_dim,
                                      bool is_dot_product) {
-  std::vector<FactorTable1D> tables(para_dim);
-  std::vector<int64_t> a_strides(para_dim);
-  std::vector<int64_t> b_strides(para_dim);
-  std::vector<int64_t> r_strides(para_dim);
-  a_strides[0] = 1;
-  b_strides[0] = 1;
-  r_strides[0] = 1;
+  auto scope = arena.CreateScope();
+  const std::size_t P = static_cast<std::size_t>(para_dim);
+  const std::size_t n_outer_dims = P - 1;
 
-  for (int32_t d = 0; d < para_dim; ++d) {
-    tables[d] = BuildFactorTable(deg_a[d], deg_b[d]);
-    if (d > 0) {
-      a_strides[d] = a_strides[d - 1] * (deg_a[d - 1] + 1);
-      b_strides[d] = b_strides[d - 1] * (deg_b[d - 1] + 1);
-      r_strides[d] = r_strides[d - 1] * (deg_a[d - 1] + deg_b[d - 1] + 1);
-    }
+  // dense factor tables F_d[i * (n_d + 1) + j]
+  std::size_t table_size = 0;
+  for (std::size_t d = 0; d < P; ++d) {
+    table_size += static_cast<std::size_t>(deg_a[d] + 1) * (deg_b[d] + 1);
   }
-
+  Span<double> tables = arena.AllocateSpan<double>(table_size);
+  Span<int64_t> strides = arena.AllocateSpan<int64_t>(3 * P); // a, b, result
+  Span<int64_t> a_strides = strides.subspan(0, P);
+  Span<int64_t> b_strides = strides.subspan(P, P);
+  Span<int64_t> r_strides = strides.subspan(2 * P, P);
+  std::size_t table_offset = 0;
+  Span<Span<double>> table_of = arena.AllocateSpan<Span<double>>(P);
+  auto table = [&](std::size_t d) -> Span<double>& { return table_of[d]; };
+  int64_t a_total = 1, b_total = 1;
+  for (std::size_t d = 0; d < P; ++d) {
+    const int32_t m = deg_a[d];
+    const int32_t n = deg_b[d];
+    table(d) =
+        tables.subspan(table_offset, static_cast<std::size_t>(m + 1) * (n + 1));
+    table_offset += static_cast<std::size_t>(m + 1) * (n + 1);
+    for (int32_t i = 0; i <= m; ++i) {
+      for (int32_t j = 0; j <= n; ++j) {
+        const double denom = Binomial(m + n, i + j);
+        table(d)[i * (n + 1) + j] =
+            (denom != 0.0) ? (Binomial(m, i) * Binomial(n, j) / denom) : 0.0;
+      }
+    }
+    a_strides[d] = a_total;
+    b_strides[d] = b_total;
+    r_strides[d] =
+        (d == 0) ? 1 : r_strides[d - 1] * (deg_a[d - 1] + deg_b[d - 1] + 1);
+    a_total *= m + 1;
+    b_total *= n + 1;
+  }
   const int64_t total_out_cps =
-      r_strides[para_dim - 1] * (deg_a[para_dim - 1] + deg_b[para_dim - 1] + 1);
+      r_strides[P - 1] * (deg_a[P - 1] + deg_b[P - 1] + 1);
   Buffer<double> out_cps(total_out_cps * res_dim, 0.0);
 
-  MultiplyRecursive(0,
-                    para_dim,
-                    tables,
-                    a_strides,
-                    b_strides,
-                    r_strides,
-                    0,
-                    0,
-                    0,
-                    1.0,
-                    cps_a,
-                    dim_a,
-                    cps_b,
-                    dim_b,
-                    res_dim,
-                    is_dot_product,
-                    out_cps.data());
+  // all index combinations of the dimensions 1 ... P - 1, for a and b
+  const int64_t n_a_outer = a_total / (deg_a[0] + 1);
+  const int64_t n_b_outer = b_total / (deg_b[0] + 1);
+  Span<int32_t> a_digits =
+      arena.AllocateSpan<int32_t>(n_a_outer * n_outer_dims);
+  Span<int32_t> b_digits =
+      arena.AllocateSpan<int32_t>(n_b_outer * n_outer_dims);
+  Span<int64_t> a_offset = arena.AllocateSpan<int64_t>(n_a_outer);
+  Span<int64_t> b_offset = arena.AllocateSpan<int64_t>(n_b_outer);
+  auto enumerate = [&](Span<const int32_t> deg,
+                       Span<const int64_t> stride,
+                       int64_t count,
+                       Span<int32_t> digits,
+                       Span<int64_t> offset) {
+    for (int64_t k = 0; k < count; ++k) {
+      int64_t rem = k;
+      int64_t off = 0;
+      for (std::size_t d = 1; d < P; ++d) {
+        const int32_t digit = static_cast<int32_t>(rem % (deg[d] + 1));
+        rem /= deg[d] + 1;
+        digits[k * n_outer_dims + d - 1] = digit;
+        off += digit * stride[d];
+      }
+      offset[k] = off;
+    }
+  };
+  enumerate(deg_a, a_strides, n_a_outer, a_digits, a_offset);
+  enumerate(deg_b, b_strides, n_b_outer, b_digits, b_offset);
+
+  const int32_t m0 = deg_a[0];
+  const int32_t n0 = deg_b[0];
+  const double* f0 = table(0).data();
+  double* out = out_cps.data();
+  const bool scalar = !is_dot_product && dim_a == 1 && dim_b == 1;
+
+  for (int64_t ia = 0; ia < n_a_outer; ++ia) {
+    for (int64_t jb = 0; jb < n_b_outer; ++jb) {
+      double w = 1.0;
+      int64_t r_base = 0;
+      for (std::size_t d = 1; d < P; ++d) {
+        const int32_t i = a_digits[ia * n_outer_dims + d - 1];
+        const int32_t j = b_digits[jb * n_outer_dims + d - 1];
+        w *= table(d)[i * (deg_b[d] + 1) + j];
+        r_base += (i + j) * r_strides[d];
+      }
+      const int64_t a_base = a_offset[ia];
+      const int64_t b_base = b_offset[jb];
+
+      if (scalar) {
+        const double* b = cps_b + b_base;
+        for (int32_t i = 0; i <= m0; ++i) {
+          const double s = w * cps_a[a_base + i];
+          const double* f = f0 + i * (n0 + 1);
+          double* r = out + r_base + i;
+          for (int32_t j = 0; j <= n0; ++j) {
+            r[j] += s * f[j] * b[j];
+          }
+        }
+      } else if (is_dot_product) {
+        for (int32_t i = 0; i <= m0; ++i) {
+          const double* pa = cps_a + (a_base + i) * dim_a;
+          for (int32_t j = 0; j <= n0; ++j) {
+            const double* pb = cps_b + (b_base + j) * dim_b;
+            double dot = 0.0;
+            for (int32_t c = 0; c < dim_a; ++c) {
+              dot += pa[c] * pb[c];
+            }
+            out[r_base + i + j] += w * f0[i * (n0 + 1) + j] * dot;
+          }
+        }
+      } else if (dim_a == 1) {
+        for (int32_t i = 0; i <= m0; ++i) {
+          const double s = w * cps_a[a_base + i];
+          for (int32_t j = 0; j <= n0; ++j) {
+            const double sf = s * f0[i * (n0 + 1) + j];
+            const double* pb = cps_b + (b_base + j) * dim_b;
+            double* r = out + (r_base + i + j) * res_dim;
+            for (int32_t c = 0; c < res_dim; ++c) {
+              r[c] += sf * pb[c];
+            }
+          }
+        }
+      } else {
+        for (int32_t i = 0; i <= m0; ++i) {
+          const double* pa = cps_a + (a_base + i) * dim_a;
+          for (int32_t j = 0; j <= n0; ++j) {
+            const double sf = w * f0[i * (n0 + 1) + j] * cps_b[b_base + j];
+            double* r = out + (r_base + i + j) * res_dim;
+            for (int32_t c = 0; c < res_dim; ++c) {
+              r[c] += sf * pa[c];
+            }
+          }
+        }
+      }
+    }
+  }
 
   return out_cps;
 }
@@ -233,7 +230,13 @@ Multiply(const SplineView& a, const SplineView& b, const Options& options) {
     }
   }
 
-  Buffer<double> num_cps = detail::MultiplyPolynomialCps(para_dim,
+  // Scratch of the calling thread (see WorkspaceRef): concurrent callers must
+  // not share one options.workspace.
+  WorkspaceRef ws_ref(options, 16 * 1024, 1);
+  MemoryArena& arena = ws_ref->GetThreadArena(0);
+
+  Buffer<double> num_cps = detail::MultiplyPolynomialCps(arena,
+                                                         para_dim,
                                                          a.degrees,
                                                          b.degrees,
                                                          a_weighted.data(),
@@ -244,7 +247,8 @@ Multiply(const SplineView& a, const SplineView& b, const Options& options) {
                                                          is_dot_product);
 
   if (is_rational) {
-    Buffer<double> den_cps = detail::MultiplyPolynomialCps(para_dim,
+    Buffer<double> den_cps = detail::MultiplyPolynomialCps(arena,
+                                                           para_dim,
                                                            a.degrees,
                                                            b.degrees,
                                                            a_weights.data(),

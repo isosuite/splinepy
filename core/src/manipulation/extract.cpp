@@ -198,6 +198,30 @@ SplineBatchData ExtractBezierPatches(const SplineView& spline,
     cps_per_patch *= (static_cast<int64_t>(spline.degrees[d]) + 1);
   }
 
+  // First control point of every element along each axis. Neighbouring
+  // elements share their end point (C^0), unless the knot between them has
+  // multiplicity degree + 1 (C^-1): then both keep their own end point.
+  std::vector<std::vector<int64_t>> element_start(spline.para_dim);
+  for (int32_t d = 0; d < spline.para_dim; ++d) {
+    const auto& kv = decomposed.knot_vectors[d];
+    const int32_t p = spline.degrees[d];
+    element_start[d].push_back(0);
+    std::size_t first = 0;
+    while (first < kv.size()) {
+      std::size_t end = first;
+      while (end < kv.size() && std::abs(kv[end] - kv[first]) <= kEps) {
+        ++end;
+      }
+      const int64_t mult = static_cast<int64_t>(end - first);
+      const bool internal = first > 0 && end < kv.size();
+      if (internal) {
+        element_start[d].push_back(element_start[d].back() + p
+                                   + (mult > p ? 1 : 0));
+      }
+      first = end;
+    }
+  }
+
   // Local strides within a patch
   std::vector<int64_t> patch_cps_n(spline.para_dim);
   std::vector<int64_t> patch_cps_strides(spline.para_dim);
@@ -241,8 +265,7 @@ SplineBatchData ExtractBezierPatches(const SplineView& spline,
       for (int32_t d = 0; d < spline.para_dim; ++d) {
         const int64_t j_d = local_rem % patch_cps_n[d];
         local_rem /= patch_cps_n[d];
-        const int32_t step_d = (spline.degrees[d] == 0) ? 1 : spline.degrees[d];
-        const int64_t i_d = elem_idx[d] * step_d + j_d;
+        const int64_t i_d = element_start[d][elem_idx[d]] + j_d;
         global_cp_idx += i_d * decomp_strides[d];
       }
 

@@ -221,3 +221,83 @@ def test_close_form_derivative(np_rng):
         rationals.derivative(queries, orders),
         close_form.evaluate(queries),
     )
+
+
+def test_compose_batch_matches_compose():
+    """compose_batch shares the composed basis, results must equal compose."""
+    rng = np.random.default_rng(0)
+
+    def bezier(degrees, dim, rational):
+        n = int(np.prod(np.asarray(degrees) + 1))
+        cps = rng.uniform(size=(n, dim))
+        if rational:
+            return splinepy.RationalBezier(
+                degrees=degrees,
+                control_points=cps,
+                weights=rng.uniform(0.5, 1.5, size=n),
+            )
+        return splinepy.Bezier(degrees=degrees, control_points=cps)
+
+    for outer_rational in (False, True):
+        for inner_rational in (False, True):
+            outers = [bezier([2, 3], 3, outer_rational) for _ in range(3)]
+            inners = [bezier([2, 1], 2, inner_rational) for _ in range(4)]
+
+            for nthreads in (1, 4):
+                batch = splinepy.Bezier.compose_batch(
+                    outers, inners, nthreads=nthreads
+                )
+                assert len(batch) == 3 and all(len(row) == 4 for row in batch)
+                for o, outer in enumerate(outers):
+                    for i, inner in enumerate(inners):
+                        expected = outer.compose(inner)
+                        assert np.allclose(batch[o][i].cps, expected.cps)
+                        assert np.array_equal(
+                            batch[o][i].degrees, expected.degrees
+                        )
+                        if outer_rational or inner_rational:
+                            assert np.allclose(
+                                batch[o][i].weights, expected.weights
+                            )
+
+
+def test_compose_batch_sensitivities_and_derivative_match_single():
+    rng = np.random.default_rng(5)
+
+    def bezier(degrees, dim, rational):
+        n = int(np.prod(np.asarray(degrees) + 1))
+        cps = rng.uniform(size=(n, dim))
+        if rational:
+            return splinepy.RationalBezier(
+                degrees=degrees,
+                control_points=cps,
+                weights=rng.uniform(0.5, 1.5, size=n),
+            )
+        return splinepy.Bezier(degrees=degrees, control_points=cps)
+
+    for outer_rational in (False, True):
+        for inner_rational in (False, True):
+            outers = [bezier([2, 2], 2, outer_rational) for _ in range(3)]
+            inners = [bezier([1, 2], 2, inner_rational) for _ in range(2)]
+            inner_ders = [inner.derivative_spline([1, 0]) for inner in inners]
+
+            for nthreads in (1, 3):
+                composed, sens = splinepy.Bezier.compose_batch(
+                    outers, inners, compute_sensitivities=True, nthreads=nthreads
+                )
+                ders = splinepy.Bezier.composition_derivative_batch(
+                    outers, inners, inner_ders, nthreads=nthreads
+                )
+                for o, outer in enumerate(outers):
+                    for i, inner in enumerate(inners):
+                        exp_c, exp_s = outer.compose(
+                            inner, compute_sensitivities=True
+                        )
+                        assert np.allclose(composed[o][i].cps, exp_c.cps)
+                        assert len(sens[o][i]) == len(exp_s)
+                        for got, exp in zip(sens[o][i], exp_s, strict=True):
+                            assert np.allclose(got.cps, exp.cps)
+                        exp_d = outer.composition_derivative(
+                            inner, inner_ders[i]
+                        )
+                        assert np.allclose(ders[o][i].cps, exp_d.cps)

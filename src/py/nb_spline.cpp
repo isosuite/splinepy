@@ -93,7 +93,8 @@ nb::object SplineFromData(const splinepy::core::SplineData& data) {
       .attr("_spline_from_properties")(d);
 }
 
-nb::object Evaluate(nb::handle spline, nb::object queries, int nthreads) {
+nb::object
+Evaluate(nb::handle spline, nb::object queries, int nthreads, nb::object out) {
   SplineViewWrapper wrapper(spline);
   ContiguousAdapter<double> q_adapter(queries, "float64");
   const size_t para_dim = wrapper.view.para_dim;
@@ -101,10 +102,8 @@ nb::object Evaluate(nb::handle spline, nb::object queries, int nthreads) {
       static_cast<size_t>(q_adapter.size() / (para_dim > 0 ? para_dim : 1));
   const size_t dim = wrapper.view.dim;
 
-  size_t shape[2] = {n_queries, dim};
-  double* out_ptr = new double[n_queries * dim];
-  nb::capsule owner(out_ptr,
-                    [](void* p) noexcept { delete[] static_cast<double*>(p); });
+  OutArray<double> out_array(out, {n_queries, dim});
+  double* out_ptr = out_array.data();
 
   splinepy::core::Options options;
   options.nthreads = nthreads;
@@ -118,14 +117,14 @@ nb::object Evaluate(nb::handle spline, nb::object queries, int nthreads) {
         options);
   }
 
-  return nb::cast(
-      nb::ndarray<nb::numpy, double, nb::shape<2>>(out_ptr, 2, shape, owner));
+  return out_array.result();
 }
 
 nb::object Derivative(nb::handle spline,
                       nb::object queries,
                       nb::object orders,
-                      int nthreads) {
+                      int nthreads,
+                      nb::object out) {
   SplineViewWrapper wrapper(spline);
   ContiguousAdapter<double> q_adapter(queries, "float64");
   ContiguousAdapter<int32_t> ord_adapter(orders, "int32");
@@ -144,11 +143,8 @@ nb::object Derivative(nb::handle spline,
       splinepy::utils::PrintAndThrowError(
           "Orders length must match parametric dimension");
     }
-    size_t shape[2] = {n_queries, static_cast<size_t>(dim)};
-    double* out_ptr = new double[n_queries * dim];
-    nb::capsule owner(out_ptr, [](void* p) noexcept {
-      delete[] static_cast<double*>(p);
-    });
+    OutArray<double> out_array(out, {n_queries, static_cast<size_t>(dim)});
+    double* out_ptr = out_array.data();
     {
       nb::gil_scoped_release release;
       splinepy::core::Derivative(
@@ -160,8 +156,7 @@ nb::object Derivative(nb::handle spline,
           splinepy::core::Span<double>(out_ptr, n_queries * dim),
           options);
     }
-    return nb::cast(
-        nb::ndarray<nb::numpy, double, nb::shape<2>>(out_ptr, 2, shape, owner));
+    return out_array.result();
   } else {
     const size_t n_orders = ord_adapter.shape(0);
     const int ord_dim = static_cast<int>(ord_adapter.shape(1));
@@ -169,11 +164,9 @@ nb::object Derivative(nb::handle spline,
       splinepy::utils::PrintAndThrowError(
           "Orders length must match parametric dimension");
     }
-    size_t shape[3] = {n_queries, n_orders, static_cast<size_t>(dim)};
-    double* out_ptr = new double[n_queries * n_orders * dim];
-    nb::capsule owner(out_ptr, [](void* p) noexcept {
-      delete[] static_cast<double*>(p);
-    });
+    OutArray<double> out_array(out,
+                               {n_queries, n_orders, static_cast<size_t>(dim)});
+    double* out_ptr = out_array.data();
     const double* q_ptr = q_adapter.data();
     const int32_t* ord_ptr = ord_adapter.data();
 
@@ -199,12 +192,12 @@ nb::object Derivative(nb::handle spline,
                                         static_cast<int>(n_queries),
                                         nthreads);
     }
-    return nb::cast(
-        nb::ndarray<nb::numpy, double, nb::shape<3>>(out_ptr, 3, shape, owner));
+    return out_array.result();
   }
 }
 
-nb::object Jacobian(nb::handle spline, nb::object queries, int nthreads) {
+nb::object
+Jacobian(nb::handle spline, nb::object queries, int nthreads, nb::object out) {
   SplineViewWrapper wrapper(spline);
   ContiguousAdapter<double> q_adapter(queries, "float64");
   const size_t para_dim = wrapper.view.para_dim;
@@ -212,10 +205,8 @@ nb::object Jacobian(nb::handle spline, nb::object queries, int nthreads) {
       static_cast<size_t>(q_adapter.size() / (para_dim > 0 ? para_dim : 1));
   const size_t dim = wrapper.view.dim;
 
-  size_t shape[3] = {n_queries, dim, para_dim};
-  double* out_ptr = new double[n_queries * dim * para_dim];
-  nb::capsule owner(out_ptr,
-                    [](void* p) noexcept { delete[] static_cast<double*>(p); });
+  OutArray<double> out_array(out, {n_queries, dim, para_dim});
+  double* out_ptr = out_array.data();
 
   splinepy::core::Options options;
   options.nthreads = nthreads;
@@ -229,22 +220,20 @@ nb::object Jacobian(nb::handle spline, nb::object queries, int nthreads) {
         options);
   }
 
-  return nb::cast(
-      nb::ndarray<nb::numpy, double, nb::shape<3>>(out_ptr, 3, shape, owner));
+  return out_array.result();
 }
 
-nb::object Basis(nb::handle spline, nb::object queries, int nthreads) {
+nb::object
+Basis(nb::handle spline, nb::object queries, int nthreads, nb::object out) {
   SplineViewWrapper wrapper(spline);
   ContiguousAdapter<double> q_adapter(queries, "float64");
   const size_t para_dim = wrapper.view.para_dim;
   const size_t n_queries =
       static_cast<size_t>(q_adapter.size() / (para_dim > 0 ? para_dim : 1));
-  const size_t num_basis = wrapper.view.num_control_points;
+  const size_t num_basis = wrapper.view.NumSupports();
 
-  size_t shape[2] = {n_queries, num_basis};
-  double* out_ptr = new double[n_queries * num_basis];
-  nb::capsule owner(out_ptr,
-                    [](void* p) noexcept { delete[] static_cast<double*>(p); });
+  OutArray<double> out_array(out, {n_queries, num_basis});
+  double* out_ptr = out_array.data();
 
   splinepy::core::Options options;
   options.nthreads = nthreads;
@@ -258,12 +247,13 @@ nb::object Basis(nb::handle spline, nb::object queries, int nthreads) {
         options);
   }
 
-  return nb::cast(
-      nb::ndarray<nb::numpy, double, nb::shape<2>>(out_ptr, 2, shape, owner));
+  return out_array.result();
 }
 
-std::pair<nb::object, nb::object>
-BasisAndSupport(nb::handle spline, nb::object queries, int nthreads) {
+std::pair<nb::object, nb::object> BasisAndSupport(nb::handle spline,
+                                                  nb::object queries,
+                                                  int nthreads,
+                                                  nb::object out) {
   SplineViewWrapper wrapper(spline);
   ContiguousAdapter<double> q_adapter(queries, "float64");
   const size_t para_dim = wrapper.view.para_dim;
@@ -271,16 +261,12 @@ BasisAndSupport(nb::handle spline, nb::object queries, int nthreads) {
       static_cast<size_t>(q_adapter.size() / (para_dim > 0 ? para_dim : 1));
   const size_t num_basis_per_query = wrapper.view.NumSupports();
 
-  size_t shape[2] = {n_queries, num_basis_per_query};
-  double* out_basis = new double[n_queries * num_basis_per_query];
-  int32_t* out_support = new int32_t[n_queries * num_basis_per_query];
-
-  nb::capsule b_owner(out_basis, [](void* p) noexcept {
-    delete[] static_cast<double*>(p);
-  });
-  nb::capsule s_owner(out_support, [](void* p) noexcept {
-    delete[] static_cast<int32_t*>(p);
-  });
+  const auto [out_basis_obj, out_support_obj] = SplitOutPair(out);
+  OutArray<double> basis_array(out_basis_obj, {n_queries, num_basis_per_query});
+  OutArray<int32_t> support_array(out_support_obj,
+                                  {n_queries, num_basis_per_query});
+  double* out_basis = basis_array.data();
+  int32_t* out_support = support_array.data();
 
   splinepy::core::Options options;
   options.nthreads = nthreads;
@@ -297,20 +283,14 @@ BasisAndSupport(nb::handle spline, nb::object queries, int nthreads) {
         options);
   }
 
-  return {nb::cast(nb::ndarray<nb::numpy, double, nb::shape<2>>(out_basis,
-                                                                2,
-                                                                shape,
-                                                                b_owner)),
-          nb::cast(nb::ndarray<nb::numpy, int32_t, nb::shape<2>>(out_support,
-                                                                 2,
-                                                                 shape,
-                                                                 s_owner))};
+  return {basis_array.result(), support_array.result()};
 }
 
 nb::object BasisDerivative(nb::handle spline,
                            nb::object queries,
                            nb::object orders,
-                           int nthreads) {
+                           int nthreads,
+                           nb::object out) {
   SplineViewWrapper wrapper(spline);
   ContiguousAdapter<double> q_adapter(queries, "float64");
   ContiguousAdapter<int32_t> ord_adapter(orders, "int32");
@@ -326,11 +306,8 @@ nb::object BasisDerivative(nb::handle spline,
 
   if (ord_adapter.ndim() <= 1
       || (ord_adapter.ndim() == 2 && ord_adapter.shape(0) == 1)) {
-    size_t shape[2] = {n_queries, num_basis};
-    double* out_ptr = new double[n_queries * num_basis];
-    nb::capsule owner(out_ptr, [](void* p) noexcept {
-      delete[] static_cast<double*>(p);
-    });
+    OutArray<double> out_array(out, {n_queries, num_basis});
+    double* out_ptr = out_array.data();
     {
       nb::gil_scoped_release release;
       splinepy::core::BasisDerivative(
@@ -342,15 +319,11 @@ nb::object BasisDerivative(nb::handle spline,
           splinepy::core::Span<double>(out_ptr, n_queries * num_basis),
           options);
     }
-    return nb::cast(
-        nb::ndarray<nb::numpy, double, nb::shape<2>>(out_ptr, 2, shape, owner));
+    return out_array.result();
   } else {
     const size_t n_orders = ord_adapter.shape(0);
-    size_t shape[3] = {n_queries, n_orders, num_basis};
-    double* out_ptr = new double[n_queries * n_orders * num_basis];
-    nb::capsule owner(out_ptr, [](void* p) noexcept {
-      delete[] static_cast<double*>(p);
-    });
+    OutArray<double> out_array(out, {n_queries, n_orders, num_basis});
+    double* out_ptr = out_array.data();
     const double* q_ptr = q_adapter.data();
     const int32_t* ord_ptr = ord_adapter.data();
 
@@ -377,15 +350,15 @@ nb::object BasisDerivative(nb::handle spline,
                                         static_cast<int>(n_queries),
                                         nthreads);
     }
-    return nb::cast(
-        nb::ndarray<nb::numpy, double, nb::shape<3>>(out_ptr, 3, shape, owner));
+    return out_array.result();
   }
 }
 
 std::pair<nb::object, nb::object> BasisDerivativeAndSupport(nb::handle spline,
                                                             nb::object queries,
                                                             nb::object orders,
-                                                            int nthreads) {
+                                                            int nthreads,
+                                                            nb::object out) {
   SplineViewWrapper wrapper(spline);
   ContiguousAdapter<double> q_adapter(queries, "float64");
   ContiguousAdapter<int32_t> ord_adapter(orders, "int32");
@@ -399,10 +372,10 @@ std::pair<nb::object, nb::object> BasisDerivativeAndSupport(nb::handle spline,
   options.nthreads = nthreads;
   options.validate = false;
 
-  int32_t* out_support = new int32_t[n_queries * num_basis_per_query];
-  nb::capsule s_owner(out_support, [](void* p) noexcept {
-    delete[] static_cast<int32_t*>(p);
-  });
+  const auto [out_basis_obj, out_support_obj] = SplitOutPair(out);
+  OutArray<int32_t> support_array(out_support_obj,
+                                  {n_queries, num_basis_per_query});
+  int32_t* out_support = support_array.data();
   {
     nb::gil_scoped_release release;
     splinepy::core::Support(
@@ -412,20 +385,13 @@ std::pair<nb::object, nb::object> BasisDerivativeAndSupport(nb::handle spline,
                                       n_queries * num_basis_per_query),
         options);
   }
-  size_t s_shape[2] = {n_queries, num_basis_per_query};
-  auto supp_arr =
-      nb::cast(nb::ndarray<nb::numpy, int32_t, nb::shape<2>>(out_support,
-                                                             2,
-                                                             s_shape,
-                                                             s_owner));
+  auto supp_arr = support_array.result();
 
   if (ord_adapter.ndim() <= 1
       || (ord_adapter.ndim() == 2 && ord_adapter.shape(0) == 1)) {
-    size_t shape[2] = {n_queries, num_basis_per_query};
-    double* out_basis = new double[n_queries * num_basis_per_query];
-    nb::capsule b_owner(out_basis, [](void* p) noexcept {
-      delete[] static_cast<double*>(p);
-    });
+    OutArray<double> basis_array(out_basis_obj,
+                                 {n_queries, num_basis_per_query});
+    double* out_basis = basis_array.data();
     {
       nb::gil_scoped_release release;
       splinepy::core::BasisDerivative(
@@ -438,18 +404,12 @@ std::pair<nb::object, nb::object> BasisDerivativeAndSupport(nb::handle spline,
                                        n_queries * num_basis_per_query),
           options);
     }
-    return {nb::cast(nb::ndarray<nb::numpy, double, nb::shape<2>>(out_basis,
-                                                                  2,
-                                                                  shape,
-                                                                  b_owner)),
-            supp_arr};
+    return {basis_array.result(), supp_arr};
   } else {
     const size_t n_orders = ord_adapter.shape(0);
-    size_t shape[3] = {n_queries, n_orders, num_basis_per_query};
-    double* out_basis = new double[n_queries * n_orders * num_basis_per_query];
-    nb::capsule b_owner(out_basis, [](void* p) noexcept {
-      delete[] static_cast<double*>(p);
-    });
+    OutArray<double> basis_array(out_basis_obj,
+                                 {n_queries, n_orders, num_basis_per_query});
+    double* out_basis = basis_array.data();
     const double* q_ptr = q_adapter.data();
     const int32_t* ord_ptr = ord_adapter.data();
 
@@ -476,15 +436,12 @@ std::pair<nb::object, nb::object> BasisDerivativeAndSupport(nb::handle spline,
                                         static_cast<int>(n_queries),
                                         nthreads);
     }
-    return {nb::cast(nb::ndarray<nb::numpy, double, nb::shape<3>>(out_basis,
-                                                                  3,
-                                                                  shape,
-                                                                  b_owner)),
-            supp_arr};
+    return {basis_array.result(), supp_arr};
   }
 }
 
-nb::object Support(nb::handle spline, nb::object queries, int nthreads) {
+nb::object
+Support(nb::handle spline, nb::object queries, int nthreads, nb::object out) {
   SplineViewWrapper wrapper(spline);
   ContiguousAdapter<double> q_adapter(queries, "float64");
   const size_t para_dim = wrapper.view.para_dim;
@@ -492,11 +449,8 @@ nb::object Support(nb::handle spline, nb::object queries, int nthreads) {
       static_cast<size_t>(q_adapter.size() / (para_dim > 0 ? para_dim : 1));
   const size_t num_basis_per_query = wrapper.view.NumSupports();
 
-  size_t shape[2] = {n_queries, num_basis_per_query};
-  int32_t* out_ptr = new int32_t[n_queries * num_basis_per_query];
-  nb::capsule owner(out_ptr, [](void* p) noexcept {
-    delete[] static_cast<int32_t*>(p);
-  });
+  OutArray<int32_t> out_array(out, {n_queries, num_basis_per_query});
+  int32_t* out_ptr = out_array.data();
 
   splinepy::core::Options options;
   options.nthreads = nthreads;
@@ -510,11 +464,13 @@ nb::object Support(nb::handle spline, nb::object queries, int nthreads) {
         options);
   }
 
-  return nb::cast(
-      nb::ndarray<nb::numpy, int32_t, nb::shape<2>>(out_ptr, 2, shape, owner));
+  return out_array.result();
 }
 
-nb::object Sample(nb::handle spline, nb::object resolutions, int nthreads) {
+nb::object Sample(nb::handle spline,
+                  nb::object resolutions,
+                  int nthreads,
+                  nb::object out) {
   SplineViewWrapper wrapper(spline);
   const int para_dim = wrapper.view.para_dim;
   const int dim = wrapper.view.dim;
@@ -546,10 +502,8 @@ nb::object Sample(nb::handle spline, nb::object resolutions, int nthreads) {
   std::vector<double> queries_vec(total_points * para_dim);
   grid_points.Fill(queries_vec.data());
 
-  size_t shape[2] = {total_points, static_cast<size_t>(dim)};
-  double* out_ptr = new double[total_points * dim];
-  nb::capsule owner(out_ptr,
-                    [](void* p) noexcept { delete[] static_cast<double*>(p); });
+  OutArray<double> out_array(out, {total_points, static_cast<size_t>(dim)});
+  double* out_ptr = out_array.data();
 
   splinepy::core::Options options;
   options.nthreads = nthreads;
@@ -564,8 +518,7 @@ nb::object Sample(nb::handle spline, nb::object resolutions, int nthreads) {
         options);
   }
 
-  return nb::cast(
-      nb::ndarray<nb::numpy, double, nb::shape<2>>(out_ptr, 2, shape, owner));
+  return out_array.result();
 }
 
 void ElevateDegrees(nb::handle spline, nb::object para_dims) {
@@ -963,50 +916,59 @@ void init_nb_spline(nb::module_& m) {
         &Evaluate,
         nb::arg("spline"),
         nb::arg("queries"),
-        nb::arg("nthreads") = 1);
+        nb::arg("nthreads") = 1,
+        nb::arg("out") = nb::none());
   m.def("derivative",
         &Derivative,
         nb::arg("spline"),
         nb::arg("queries"),
         nb::arg("orders"),
-        nb::arg("nthreads") = 1);
+        nb::arg("nthreads") = 1,
+        nb::arg("out") = nb::none());
   m.def("jacobian",
         &Jacobian,
         nb::arg("spline"),
         nb::arg("queries"),
-        nb::arg("nthreads") = 1);
+        nb::arg("nthreads") = 1,
+        nb::arg("out") = nb::none());
   m.def("basis",
         &Basis,
         nb::arg("spline"),
         nb::arg("queries"),
-        nb::arg("nthreads") = 1);
+        nb::arg("nthreads") = 1,
+        nb::arg("out") = nb::none());
   m.def("basis_and_support",
         &BasisAndSupport,
         nb::arg("spline"),
         nb::arg("queries"),
-        nb::arg("nthreads") = 1);
+        nb::arg("nthreads") = 1,
+        nb::arg("out") = nb::none());
   m.def("basis_derivative",
         &BasisDerivative,
         nb::arg("spline"),
         nb::arg("queries"),
         nb::arg("orders"),
-        nb::arg("nthreads") = 1);
+        nb::arg("nthreads") = 1,
+        nb::arg("out") = nb::none());
   m.def("basis_derivative_and_support",
         &BasisDerivativeAndSupport,
         nb::arg("spline"),
         nb::arg("queries"),
         nb::arg("orders"),
-        nb::arg("nthreads") = 1);
+        nb::arg("nthreads") = 1,
+        nb::arg("out") = nb::none());
   m.def("support",
         &Support,
         nb::arg("spline"),
         nb::arg("queries"),
-        nb::arg("nthreads") = 1);
+        nb::arg("nthreads") = 1,
+        nb::arg("out") = nb::none());
   m.def("sample",
         &Sample,
         nb::arg("spline"),
         nb::arg("resolutions"),
-        nb::arg("nthreads") = 1);
+        nb::arg("nthreads") = 1,
+        nb::arg("out") = nb::none());
   m.def("elevate_degrees",
         &ElevateDegrees,
         nb::arg("spline"),

@@ -485,10 +485,6 @@ def test_extract_spline():
     ),
 )
 def test_extract_bases(spline, request):
-    # skip 3d splines for minimal builds
-    if splinepy.splinepy_core.is_minimal() and "3d" in spline:
-        return None
-
     spline = request.getfixturevalue(spline)
 
     # prepare query

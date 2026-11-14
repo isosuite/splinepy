@@ -136,4 +136,20 @@ TEST(WorkspaceTest, ConcurrentThreadArenaAccess) {
 }
 
 } // namespace
+TEST(WorkspaceTest, WorkspaceRefBorrowsOrReusesThreadDefault) {
+  Workspace mine(4096, 1);
+  Options with;
+  with.workspace = &mine;
+  WorkspaceRef borrowed(with, 4096, 1);
+  EXPECT_EQ(borrowed.get(), &mine);
+
+  // no workspace given: the same per-thread default every time, grown on demand
+  Options none;
+  WorkspaceRef first(none, 4096, 1);
+  WorkspaceRef second(none, 4096, 4);
+  EXPECT_EQ(first.get(), second.get());
+  EXPECT_NE(first.get(), &mine);
+  EXPECT_GE(second->NumThreadArenas(), 4u);
+}
+
 } // namespace splinepy::core

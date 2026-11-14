@@ -73,9 +73,8 @@ void Jacobian(const SplineView& spline,
   }
 
   // Workspace for zero-allocation scratch in jacobian evaluations
-  Workspace local_workspace(64 * 1024, options.nthreads);
-  Workspace* ws =
-      options.workspace != nullptr ? options.workspace : &local_workspace;
+  WorkspaceRef ws_ref(options, 64 * 1024, options.nthreads);
+  Workspace* ws = ws_ref.get();
 
   auto evaluate_single_jacobian = [&](int64_t q, int thread_id) {
     MemoryArena& arena = ws->GetThreadArena(thread_id);

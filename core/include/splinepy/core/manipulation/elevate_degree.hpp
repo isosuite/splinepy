@@ -28,4 +28,16 @@ SplineData ReduceDegree(const SplineView& spline,
                         int32_t amount = 1,
                         const Options& options = {});
 
+/// Batch versions: every spline is processed independently, in parallel over
+/// the batch when options.nthreads > 1. Each worker uses its own scratch, so
+/// options.workspace is not shared between workers.
+SplineBatchData ElevateDegrees(SplineBatchView batch,
+                               Span<const int32_t> amounts,
+                               const Options& options = {});
+
+SplineBatchData ReduceDegree(SplineBatchView batch,
+                             int32_t axis,
+                             int32_t amount = 1,
+                             const Options& options = {});
+
 } // namespace splinepy::core

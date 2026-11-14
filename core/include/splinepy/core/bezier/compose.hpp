@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 #include "splinepy/core/common.hpp"
 #include "splinepy/core/model/spline_data.hpp"
 #include "splinepy/core/model/spline_view.hpp"
@@ -16,6 +18,25 @@ SplineData Compose(const SplineView& outer,
                    const SplineView& inner,
                    const Options& options = {});
 
+/// Composes every outer with every inner: result[o * inners.size() + i] =
+/// outers[o] o inners[i].
+/// The composed Bernstein basis depends on the outer degrees and the inner
+/// spline, not on the outer control points. It is therefore built once per
+/// inner and shared by all outers, which must have identical para_dim, dim,
+/// degrees and rationality (e.g. the Bezier elements of one refined spline,
+/// each filled with the same microstructure patches). Runs on options.nthreads.
+SplineBatchData ComposeBatch(SplineBatchView outers,
+                             SplineBatchView inners,
+                             const Options& options = {});
+
+/// Batched ComposeSensitivities with the same pairing and requirements as
+/// ComposeBatch: result[o * inners.size() + i] holds the sensitivities
+/// (one scalar spline per outer control point) of outers[o] o inners[i].
+std::vector<SplineBatchData>
+ComposeSensitivitiesBatch(SplineBatchView outers,
+                          SplineBatchView inners,
+                          const Options& options = {});
+
 /// Computes the composition sensitivities of outer(inner(u)) with respect to
 /// the outer spline's control points: d(outer o inner) / d(outer_cp_i).
 /// Returns a batch of scalar Bezier splines (length =
@@ -31,5 +52,14 @@ SplineData CompositionDerivative(const SplineView& outer,
                                  const SplineView& inner,
                                  const SplineView& inner_derivative,
                                  const Options& options = {});
+
+/// Batched CompositionDerivative with the same pairing and requirements as
+/// ComposeBatch: result[o * inners.size() + i] is the derivative of
+/// outers[o] o inners[i] given inner_derivatives[i]. The derivative splines of
+/// the outers share one composed basis per inner and direction.
+SplineBatchData CompositionDerivativeBatch(SplineBatchView outers,
+                                           SplineBatchView inners,
+                                           SplineBatchView inner_derivatives,
+                                           const Options& options = {});
 
 } // namespace splinepy::core

@@ -218,6 +218,61 @@ TEST(ManipulationKernelsTest, ElevateAndReduceDegreeBSpline) {
       1e-14);
 }
 
+TEST(ManipulationKernelsTest, BatchElevateAndReduceMatchSingle) {
+  auto degrees = LoadBin<int32_t>("operations_bspline_orig_degrees.bin");
+  auto kv_0 = LoadBin<double>("operations_bspline_orig_kv_0.bin");
+  auto kv_1 = LoadBin<double>("operations_bspline_orig_kv_1.bin");
+  auto cps = LoadBin<double>("operations_bspline_orig_cps.bin");
+
+  Span<const double> kvs[2] = {Span<const double>(kv_0),
+                               Span<const double>(kv_1)};
+  SplineView spline;
+  spline.para_dim = 2;
+  spline.dim = 2;
+  spline.degrees = Span<const int32_t>(degrees);
+  spline.knot_vectors = Span<const Span<const double>>(kvs, 2);
+  spline.control_points_data = cps.data();
+  spline.num_control_points = cps.size() / 2;
+  spline.cp_stride = 2;
+  spline.dim_stride = 1;
+
+  // the same spline several times, so workers have something to share
+  const std::vector<SplineView> batch(7, spline);
+  const int32_t amounts[2] = {1, 2};
+  Options options;
+  options.nthreads = 3;
+
+  const SplineData expected =
+      ElevateDegrees(spline, Span<const int32_t>(amounts, 2));
+  const SplineBatchData elevated =
+      ElevateDegrees(SplineBatchView(batch),
+                     Span<const int32_t>(amounts, 2),
+                     options);
+  ASSERT_EQ(elevated.size(), batch.size());
+  for (const auto& e : elevated) {
+    EXPECT_EQ(e.degrees[0], expected.degrees[0]);
+    EXPECT_EQ(e.degrees[1], expected.degrees[1]);
+    EXPECT_EQ(
+        MaxAbsDiff(e.control_points.cspan(), expected.control_points.cspan()),
+        0.0);
+  }
+
+  std::vector<SplineView> elevated_views;
+  for (const auto& e : elevated) {
+    elevated_views.push_back(e.View());
+  }
+  const SplineData reduced_expected = ReduceDegree(expected.View(), 1, 2);
+  const SplineBatchData reduced =
+      ReduceDegree(SplineBatchView(elevated_views), 1, 2, options);
+  ASSERT_EQ(reduced.size(), elevated_views.size());
+  for (const auto& r : reduced) {
+    EXPECT_EQ(r.degrees[1], reduced_expected.degrees[1]);
+    EXPECT_EQ(MaxAbsDiff(r.control_points.cspan(),
+                         reduced_expected.control_points.cspan()),
+              0.0);
+  }
+}
+
 TEST(ManipulationKernelsTest, ExtractBoundaryBSpline) {
   auto orig_degrees = LoadBin<int32_t>("operations_bspline_orig_degrees.bin");
   auto orig_kv_0 = LoadBin<double>("operations_bspline_orig_kv_0.bin");

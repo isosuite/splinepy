@@ -2,10 +2,12 @@
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
 #include <stdexcept>
 #include <vector>
 
 #include "manipulation_helpers.hpp"
+#include "splinepy/core/concurrency/parallel_for.hpp"
 #include "splinepy/core/manipulation/insert_knots.hpp"
 #include "splinepy/core/manipulation/remove_knots.hpp"
 #include "splinepy/core/validate/validator.hpp"
@@ -14,63 +16,51 @@ namespace splinepy::core {
 
 namespace {
 
+/// First control point of every Bezier segment of a decomposed spline. Segments
+/// share their end point (C^0), unless the knot between them has multiplicity
+/// degree + 1 (C^-1): then both segments keep their own end point.
+/// jump[k] says whether the k-th internal knot is such a discontinuity.
+void SegmentStarts(Span<int64_t> starts,
+                   Span<const char> jump,
+                   int32_t degree) {
+  starts[0] = 0;
+  for (std::size_t s = 1; s < starts.size(); ++s) {
+    starts[s] = starts[s - 1] + degree + (jump[s - 1] ? 1 : 0);
+  }
+}
+
 /// Elevates a block of tensor-product control points along axis by 1 degree.
-void ElevateTensorProductAxisByOne(int32_t para_dim,
+void ElevateTensorProductAxisByOne(MemoryArena& arena,
+                                   int32_t para_dim,
                                    int32_t coord_dim,
                                    Span<const int32_t> in_degrees,
                                    int32_t axis,
                                    Span<const double> in_cps,
                                    Buffer<double>& out_cps) {
-  std::vector<int64_t> in_n(para_dim);
-  std::vector<int64_t> in_strides(para_dim);
-  in_strides[0] = 1;
-  for (int32_t d = 0; d < para_dim; ++d) {
-    in_n[d] = in_degrees[d] + 1;
-    if (d > 0) {
-      in_strides[d] = in_strides[d - 1] * in_n[d - 1];
-    }
-  }
+  auto scope = arena.CreateScope();
 
-  std::vector<int64_t> out_n = in_n;
-  out_n[axis] = in_n[axis] + 1;
-
-  std::vector<int64_t> out_strides(para_dim);
-  out_strides[0] = 1;
-  for (int32_t d = 1; d < para_dim; ++d) {
-    out_strides[d] = out_strides[d - 1] * out_n[d - 1];
-  }
-
-  const int64_t total_out = out_strides[para_dim - 1] * out_n[para_dim - 1];
-  out_cps.resize(total_out * coord_dim);
-
-  int64_t num_rows = 1;
-  for (int32_t d = 0; d < para_dim; ++d) {
-    if (d != axis) {
-      num_rows *= in_n[d];
-    }
-  }
+  auto in_n_of = [&](int32_t d) {
+    return static_cast<int64_t>(in_degrees[d]) + 1;
+  };
+  const detail::TensorLayout layout =
+      detail::TensorLayout::Make(arena,
+                                 para_dim,
+                                 axis,
+                                 coord_dim,
+                                 in_n_of,
+                                 in_n_of(axis) + 1);
+  out_cps.resize(layout.out_total * coord_dim);
 
   const int32_t p = in_degrees[axis];
   const double inv_p_plus_1 = 1.0 / static_cast<double>(p + 1);
 
-  const int64_t in_s = in_strides[axis] * coord_dim;
-  const int64_t out_s = out_strides[axis] * coord_dim;
+  const int64_t in_s = layout.in_s;
+  const int64_t out_s = layout.out_s;
 
-  for (int64_t r = 0; r < num_rows; ++r) {
+  for (int64_t r = 0; r < layout.num_rows; ++r) {
     int64_t in_base = 0;
     int64_t out_base = 0;
-    int64_t rem = r;
-
-    for (int32_t d = 0; d < para_dim; ++d) {
-      if (d == axis)
-        continue;
-      const int64_t idx_d = rem % in_n[d];
-      rem /= in_n[d];
-      in_base += idx_d * in_strides[d];
-      out_base += idx_d * out_strides[d];
-    }
-    in_base *= coord_dim;
-    out_base *= coord_dim;
+    layout.RowBases(r, in_base, out_base);
 
     // Q_0 = P_0
     for (int32_t c = 0; c < coord_dim; ++c) {
@@ -97,20 +87,22 @@ void ElevateTensorProductAxisByOne(int32_t para_dim,
 }
 
 /// Inverts degree elevation on a 1D row from degree p to p - 1 within
-/// tolerance.
-bool InvertElevateBezier1D(int32_t p,
+/// tolerance. out_cps must hold p * coord_dim doubles and not alias in_cps.
+bool InvertElevateBezier1D(MemoryArena& arena,
+                           int32_t p,
                            Span<const double> in_cps,
                            int32_t coord_dim,
                            double tolerance,
-                           Buffer<double>& out_cps) {
+                           Span<double> out_cps) {
   if (p < 1)
     return false;
+  auto scope = arena.CreateScope();
+
   const int32_t new_p = p - 1;
   const int32_t n_out = new_p + 1;
-  out_cps.resize(n_out * coord_dim);
 
-  std::vector<double> q_left(n_out * coord_dim);
-  std::vector<double> q_right(n_out * coord_dim);
+  Span<double> q_left = arena.AllocateSpan<double>(n_out * coord_dim);
+  Span<double> q_right = arena.AllocateSpan<double>(n_out * coord_dim);
 
   // Left inversion
   for (int32_t c = 0; c < coord_dim; ++c) {
@@ -184,6 +176,12 @@ SplineData ElevateDegree(const SplineView& spline,
     }
   }
 
+  detail::LocalArena local(options);
+  MemoryArena& arena = local.arena();
+  auto scope = arena.CreateScope();
+  Options opts = options;
+  opts.workspace = &local.workspace(); // nested kernels reuse the same scratch
+
   const bool is_rational = spline.IsRational();
   const int32_t coord_dim = is_rational ? (spline.dim + 1) : spline.dim;
 
@@ -207,18 +205,21 @@ SplineData ElevateDegree(const SplineView& spline,
       }
     }
 
-    std::vector<int32_t> current_degrees(spline.degrees.begin(),
-                                         spline.degrees.end());
+    Span<int32_t> current_degrees =
+        arena.AllocateSpan<int32_t>(spline.para_dim);
+    std::copy(spline.degrees.begin(),
+              spline.degrees.end(),
+              current_degrees.begin());
 
     for (int32_t step = 0; step < amount; ++step) {
       Buffer<double> next_cps;
-      ElevateTensorProductAxisByOne(
-          spline.para_dim,
-          coord_dim,
-          Span<const int32_t>(current_degrees.data(), current_degrees.size()),
-          axis,
-          working_cps.cspan(),
-          next_cps);
+      ElevateTensorProductAxisByOne(arena,
+                                    spline.para_dim,
+                                    coord_dim,
+                                    current_degrees,
+                                    axis,
+                                    working_cps.cspan(),
+                                    next_cps);
       working_cps = std::move(next_cps);
       current_degrees[axis] += 1;
     }
@@ -281,9 +282,9 @@ SplineData ElevateDegree(const SplineView& spline,
   SplineData bezier_decomposed;
   if (!knots_to_insert.empty()) {
     bezier_decomposed =
-        InsertKnots(spline, axis, Span<const double>(knots_to_insert), options);
+        InsertKnots(spline, axis, Span<const double>(knots_to_insert), opts);
   } else {
-    bezier_decomposed = InsertKnots(spline, 0, {}, options);
+    bezier_decomposed = InsertKnots(spline, 0, {}, opts);
   }
 
   SplineView decomp_view = bezier_decomposed.View();
@@ -293,29 +294,26 @@ SplineData ElevateDegree(const SplineView& spline,
       static_cast<int32_t>(unique_internal_knots.size()) + 1;
   const int32_t p_new = p + amount;
 
-  // Compute number of control points along each axis for decomposed spline
-  std::vector<int64_t> in_n(spline.para_dim);
-  std::vector<int64_t> in_strides(spline.para_dim);
-  in_strides[0] = 1;
-  for (int32_t d = 0; d < spline.para_dim; ++d) {
-    in_n[d] = decomp_view.NumControlPointsPerAxis(d);
-    if (d > 0) {
-      in_strides[d] = in_strides[d - 1] * in_n[d - 1];
-    }
+  // C^-1 knots (multiplicity p + 1) keep separate end points on both sides
+  Span<char> jump = arena.AllocateSpan<char>(num_segments);
+  for (std::size_t k = 0; k < internal_mults.size(); ++k) {
+    jump[k] = internal_mults[k] > p;
   }
+  Span<int64_t> in_start = arena.AllocateSpan<int64_t>(num_segments);
+  Span<int64_t> out_start = arena.AllocateSpan<int64_t>(num_segments);
+  SegmentStarts(in_start, jump, p);
+  SegmentStarts(out_start, jump, p_new);
 
-  std::vector<int64_t> out_n = in_n;
-  out_n[axis] = static_cast<int64_t>(num_segments) * p_new + 1;
+  // Control point layout of the decomposed spline and its elevated counterpart
+  const detail::TensorLayout layout = detail::TensorLayout::Make(
+      arena,
+      spline.para_dim,
+      axis,
+      coord_dim,
+      [&](int32_t d) { return decomp_view.NumControlPointsPerAxis(d); },
+      out_start[num_segments - 1] + p_new + 1);
 
-  std::vector<int64_t> out_strides(spline.para_dim);
-  out_strides[0] = 1;
-  for (int32_t d = 1; d < spline.para_dim; ++d) {
-    out_strides[d] = out_strides[d - 1] * out_n[d - 1];
-  }
-
-  const int64_t total_elevated_cps =
-      out_strides[spline.para_dim - 1] * out_n[spline.para_dim - 1];
-  Buffer<double> elevated_cps(total_elevated_cps * coord_dim);
+  Buffer<double> elevated_cps(layout.out_total * coord_dim);
 
   Buffer<double> decomp_homo;
   if (is_rational) {
@@ -327,61 +325,46 @@ SplineData ElevateDegree(const SplineView& spline,
                 decomp_homo.data());
   }
 
-  int64_t num_rows = 1;
-  for (int32_t d = 0; d < spline.para_dim; ++d) {
-    if (d != axis) {
-      num_rows *= in_n[d];
-    }
-  }
+  const int64_t in_s = layout.in_s;
+  const int64_t out_s = layout.out_s;
 
-  const int64_t in_s = in_strides[axis] * coord_dim;
-  const int64_t out_s = out_strides[axis] * coord_dim;
+  // Ping-pong rows for repeated elevation of one Bezier segment
+  Span<double> seg_a = arena.AllocateSpan<double>((p_new + 1) * coord_dim);
+  Span<double> seg_b = arena.AllocateSpan<double>((p_new + 1) * coord_dim);
 
-  // Elevate each segment for every 1D row
-  std::vector<double> seg_in((p + 1) * coord_dim);
-  Buffer<double> seg_elevated;
-
-  for (int64_t r = 0; r < num_rows; ++r) {
+  for (int64_t r = 0; r < layout.num_rows; ++r) {
     int64_t in_base = 0;
     int64_t out_base = 0;
-    int64_t rem = r;
-
-    for (int32_t d = 0; d < spline.para_dim; ++d) {
-      if (d == axis)
-        continue;
-      const int64_t idx_d = rem % in_n[d];
-      rem /= in_n[d];
-      in_base += idx_d * in_strides[d];
-      out_base += idx_d * out_strides[d];
-    }
-    in_base *= coord_dim;
-    out_base *= coord_dim;
+    layout.RowBases(r, in_base, out_base);
 
     for (int32_t seg = 0; seg < num_segments; ++seg) {
       // Gather segment control points
+      double* cur = seg_a.data();
+      double* nxt = seg_b.data();
       for (int32_t i = 0; i <= p; ++i) {
-        const double* src = decomp_homo.data() + in_base + (seg * p + i) * in_s;
+        const double* src =
+            decomp_homo.data() + in_base + (in_start[seg] + i) * in_s;
         for (int32_t c = 0; c < coord_dim; ++c) {
-          seg_in[i * coord_dim + c] = src[c];
+          cur[i * coord_dim + c] = src[c];
         }
       }
 
       // Elevate segment amount times
-      Buffer<double> cur_seg(seg_in.size());
-      std::copy(seg_in.begin(), seg_in.end(), cur_seg.begin());
-
       for (int32_t step = 0; step < amount; ++step) {
-        Buffer<double> next_seg;
-        detail::ElevateBezier1D(p + step, cur_seg.cspan(), coord_dim, next_seg);
-        cur_seg = std::move(next_seg);
+        detail::ElevateBezier1D(
+            p + step,
+            Span<const double>(cur, (p + step + 1) * coord_dim),
+            coord_dim,
+            Span<double>(nxt, (p + step + 2) * coord_dim));
+        std::swap(cur, nxt);
       }
 
       // Scatter elevated segment
       for (int32_t i = 0; i <= p_new; ++i) {
         double* dst =
-            elevated_cps.data() + out_base + (seg * p_new + i) * out_s;
+            elevated_cps.data() + out_base + (out_start[seg] + i) * out_s;
         for (int32_t c = 0; c < coord_dim; ++c) {
-          dst[c] = cur_seg[i * coord_dim + c];
+          dst[c] = cur[i * coord_dim + c];
         }
       }
     }
@@ -389,13 +372,15 @@ SplineData ElevateDegree(const SplineView& spline,
 
   // Construct new knot vector for decomposed elevated spline
   std::vector<double> elevated_axis_knots;
-  elevated_axis_knots.reserve((p_new + 1) * 2 + (num_segments - 1) * p_new);
+  elevated_axis_knots.reserve((p_new + 1) * 2
+                              + (num_segments - 1) * (p_new + 1));
   for (int32_t i = 0; i <= p_new; ++i) {
     elevated_axis_knots.push_back(u_min);
   }
-  for (double uk : unique_internal_knots) {
-    for (int32_t j = 0; j < p_new; ++j) {
-      elevated_axis_knots.push_back(uk);
+  for (std::size_t k = 0; k < unique_internal_knots.size(); ++k) {
+    const int32_t mult = p_new + (jump[k] ? 1 : 0);
+    for (int32_t j = 0; j < mult; ++j) {
+      elevated_axis_knots.push_back(unique_internal_knots[k]);
     }
   }
   for (int32_t i = 0; i <= p_new; ++i) {
@@ -446,7 +431,7 @@ SplineData ElevateDegree(const SplineView& spline,
   }
 
   if (!knots_to_remove.empty()) {
-    Options rem_options = options;
+    Options rem_options = opts;
     rem_options.tolerance =
         (options.tolerance > 0.0) ? options.tolerance : 1e-6;
     KnotRemovalResult rem_res = RemoveKnots(intermediate.View(),
@@ -470,16 +455,21 @@ SplineData ElevateDegrees(const SplineView& spline,
     }
   }
 
+  detail::LocalArena local(options);
+  Options opts = options;
+  opts.workspace =
+      &local.workspace(); // one scratch pool for all per-axis passes
+
   SplineData current;
   bool is_first = true;
 
   for (int32_t d = 0; d < spline.para_dim; ++d) {
     if (amounts[d] > 0) {
       if (is_first) {
-        current = ElevateDegree(spline, d, amounts[d], options);
+        current = ElevateDegree(spline, d, amounts[d], opts);
         is_first = false;
       } else {
-        current = ElevateDegree(current.View(), d, amounts[d], options);
+        current = ElevateDegree(current.View(), d, amounts[d], opts);
       }
     }
   }
@@ -511,6 +501,12 @@ SplineData ReduceDegree(const SplineView& spline,
     }
   }
 
+  detail::LocalArena local(options);
+  MemoryArena& arena = local.arena();
+  auto scope = arena.CreateScope();
+  Options opts = options;
+  opts.workspace = &local.workspace(); // nested kernels reuse the same scratch
+
   const double tol = (options.tolerance > 0.0) ? options.tolerance : 1e-8;
   const bool is_rational = spline.IsRational();
   const int32_t coord_dim = is_rational ? (spline.dim + 1) : spline.dim;
@@ -528,58 +524,37 @@ SplineData ReduceDegree(const SplineView& spline,
                   working_cps.data());
     }
 
-    std::vector<int32_t> current_degrees(spline.degrees.begin(),
-                                         spline.degrees.end());
+    Span<int32_t> current_degrees =
+        arena.AllocateSpan<int32_t>(spline.para_dim);
+    std::copy(spline.degrees.begin(),
+              spline.degrees.end(),
+              current_degrees.begin());
 
     for (int32_t step = 0; step < amount; ++step) {
+      auto step_scope = arena.CreateScope();
       const int32_t cur_p = current_degrees[axis];
-      std::vector<int64_t> in_n(spline.para_dim);
-      std::vector<int64_t> in_strides(spline.para_dim);
-      in_strides[0] = 1;
-      for (int32_t d = 0; d < spline.para_dim; ++d) {
-        in_n[d] = current_degrees[d] + 1;
-        if (d > 0)
-          in_strides[d] = in_strides[d - 1] * in_n[d - 1];
-      }
+      auto in_n_of = [&](int32_t d) {
+        return static_cast<int64_t>(current_degrees[d]) + 1;
+      };
+      const detail::TensorLayout layout =
+          detail::TensorLayout::Make(arena,
+                                     spline.para_dim,
+                                     axis,
+                                     coord_dim,
+                                     in_n_of,
+                                     in_n_of(axis) - 1);
+      Buffer<double> next_cps(layout.out_total * coord_dim);
 
-      std::vector<int64_t> out_n = in_n;
-      out_n[axis] = in_n[axis] - 1;
-      std::vector<int64_t> out_strides(spline.para_dim);
-      out_strides[0] = 1;
-      for (int32_t d = 1; d < spline.para_dim; ++d) {
-        out_strides[d] = out_strides[d - 1] * out_n[d - 1];
-      }
+      const int64_t in_s = layout.in_s;
+      const int64_t out_s = layout.out_s;
 
-      const int64_t total_out =
-          out_strides[spline.para_dim - 1] * out_n[spline.para_dim - 1];
-      Buffer<double> next_cps(total_out * coord_dim);
+      Span<double> row_in = arena.AllocateSpan<double>((cur_p + 1) * coord_dim);
+      Span<double> row_out = arena.AllocateSpan<double>(cur_p * coord_dim);
 
-      int64_t num_rows = 1;
-      for (int32_t d = 0; d < spline.para_dim; ++d) {
-        if (d != axis)
-          num_rows *= in_n[d];
-      }
-
-      const int64_t in_s = in_strides[axis] * coord_dim;
-      const int64_t out_s = out_strides[axis] * coord_dim;
-
-      std::vector<double> row_in((cur_p + 1) * coord_dim);
-      Buffer<double> row_out;
-
-      for (int64_t r = 0; r < num_rows; ++r) {
+      for (int64_t r = 0; r < layout.num_rows; ++r) {
         int64_t in_base = 0;
         int64_t out_base = 0;
-        int64_t rem = r;
-        for (int32_t d = 0; d < spline.para_dim; ++d) {
-          if (d == axis)
-            continue;
-          const int64_t idx_d = rem % in_n[d];
-          rem /= in_n[d];
-          in_base += idx_d * in_strides[d];
-          out_base += idx_d * out_strides[d];
-        }
-        in_base *= coord_dim;
-        out_base *= coord_dim;
+        layout.RowBases(r, in_base, out_base);
 
         for (int32_t i = 0; i <= cur_p; ++i) {
           const double* src = working_cps.data() + in_base + i * in_s;
@@ -588,12 +563,12 @@ SplineData ReduceDegree(const SplineView& spline,
           }
         }
 
-        const bool ok = InvertElevateBezier1D(
-            cur_p,
-            Span<const double>(row_in.data(), row_in.size()),
-            coord_dim,
-            tol,
-            row_out);
+        const bool ok = InvertElevateBezier1D(arena,
+                                              cur_p,
+                                              row_in,
+                                              coord_dim,
+                                              tol,
+                                              row_out);
         if (!ok) {
           throw std::runtime_error(
               "ReduceDegree: could not reduce degree within tolerance.");
@@ -666,9 +641,9 @@ SplineData ReduceDegree(const SplineView& spline,
   SplineData bezier_decomposed;
   if (!knots_to_insert.empty()) {
     bezier_decomposed =
-        InsertKnots(spline, axis, Span<const double>(knots_to_insert), options);
+        InsertKnots(spline, axis, Span<const double>(knots_to_insert), opts);
   } else {
-    bezier_decomposed = InsertKnots(spline, 0, {}, options);
+    bezier_decomposed = InsertKnots(spline, 0, {}, opts);
   }
 
   SplineView decomp_view = bezier_decomposed.View();
@@ -678,27 +653,25 @@ SplineData ReduceDegree(const SplineView& spline,
       static_cast<int32_t>(unique_internal_knots.size()) + 1;
   const int32_t p_new = p - amount;
 
-  std::vector<int64_t> in_n(spline.para_dim);
-  std::vector<int64_t> in_strides(spline.para_dim);
-  in_strides[0] = 1;
-  for (int32_t d = 0; d < spline.para_dim; ++d) {
-    in_n[d] = decomp_view.NumControlPointsPerAxis(d);
-    if (d > 0)
-      in_strides[d] = in_strides[d - 1] * in_n[d - 1];
+  // C^-1 knots (multiplicity p + 1) keep separate end points on both sides
+  Span<char> jump = arena.AllocateSpan<char>(num_segments);
+  for (std::size_t k = 0; k < internal_mults.size(); ++k) {
+    jump[k] = internal_mults[k] > p;
   }
+  Span<int64_t> in_start = arena.AllocateSpan<int64_t>(num_segments);
+  Span<int64_t> out_start = arena.AllocateSpan<int64_t>(num_segments);
+  SegmentStarts(in_start, jump, p);
+  SegmentStarts(out_start, jump, p_new);
 
-  std::vector<int64_t> out_n = in_n;
-  out_n[axis] = static_cast<int64_t>(num_segments) * p_new + 1;
+  const detail::TensorLayout layout = detail::TensorLayout::Make(
+      arena,
+      spline.para_dim,
+      axis,
+      coord_dim,
+      [&](int32_t d) { return decomp_view.NumControlPointsPerAxis(d); },
+      out_start[num_segments - 1] + p_new + 1);
 
-  std::vector<int64_t> out_strides(spline.para_dim);
-  out_strides[0] = 1;
-  for (int32_t d = 1; d < spline.para_dim; ++d) {
-    out_strides[d] = out_strides[d - 1] * out_n[d - 1];
-  }
-
-  const int64_t total_reduced_cps =
-      out_strides[spline.para_dim - 1] * out_n[spline.para_dim - 1];
-  Buffer<double> reduced_cps(total_reduced_cps * coord_dim);
+  Buffer<double> reduced_cps(layout.out_total * coord_dim);
 
   Buffer<double> decomp_homo;
   if (is_rational) {
@@ -710,62 +683,49 @@ SplineData ReduceDegree(const SplineView& spline,
                 decomp_homo.data());
   }
 
-  int64_t num_rows = 1;
-  for (int32_t d = 0; d < spline.para_dim; ++d) {
-    if (d != axis)
-      num_rows *= in_n[d];
-  }
+  const int64_t in_s = layout.in_s;
+  const int64_t out_s = layout.out_s;
 
-  const int64_t in_s = in_strides[axis] * coord_dim;
-  const int64_t out_s = out_strides[axis] * coord_dim;
+  // Ping-pong rows for repeated reduction of one Bezier segment
+  Span<double> seg_a = arena.AllocateSpan<double>((p + 1) * coord_dim);
+  Span<double> seg_b = arena.AllocateSpan<double>((p + 1) * coord_dim);
 
-  std::vector<double> seg_in((p + 1) * coord_dim);
-
-  for (int64_t r = 0; r < num_rows; ++r) {
+  for (int64_t r = 0; r < layout.num_rows; ++r) {
     int64_t in_base = 0;
     int64_t out_base = 0;
-    int64_t rem = r;
-
-    for (int32_t d = 0; d < spline.para_dim; ++d) {
-      if (d == axis)
-        continue;
-      const int64_t idx_d = rem % in_n[d];
-      rem /= in_n[d];
-      in_base += idx_d * in_strides[d];
-      out_base += idx_d * out_strides[d];
-    }
-    in_base *= coord_dim;
-    out_base *= coord_dim;
+    layout.RowBases(r, in_base, out_base);
 
     for (int32_t seg = 0; seg < num_segments; ++seg) {
+      double* cur = seg_a.data();
+      double* nxt = seg_b.data();
       for (int32_t i = 0; i <= p; ++i) {
-        const double* src = decomp_homo.data() + in_base + (seg * p + i) * in_s;
+        const double* src =
+            decomp_homo.data() + in_base + (in_start[seg] + i) * in_s;
         for (int32_t c = 0; c < coord_dim; ++c) {
-          seg_in[i * coord_dim + c] = src[c];
+          cur[i * coord_dim + c] = src[c];
         }
       }
 
-      Buffer<double> cur_seg(seg_in.size());
-      std::copy(seg_in.begin(), seg_in.end(), cur_seg.begin());
-
       for (int32_t step = 0; step < amount; ++step) {
-        Buffer<double> next_seg;
-        const bool ok = InvertElevateBezier1D(p - step,
-                                              cur_seg.cspan(),
-                                              coord_dim,
-                                              tol,
-                                              next_seg);
+        const bool ok = InvertElevateBezier1D(
+            arena,
+            p - step,
+            Span<const double>(cur, (p - step + 1) * coord_dim),
+            coord_dim,
+            tol,
+            Span<double>(nxt, (p - step) * coord_dim));
         if (!ok) {
           throw std::runtime_error(
               "ReduceDegree: could not reduce degree within tolerance.");
         }
-        cur_seg = std::move(next_seg);
+        std::swap(cur, nxt);
       }
 
       for (int32_t i = 0; i <= p_new; ++i) {
-        double* dst = reduced_cps.data() + out_base + (seg * p_new + i) * out_s;
+        double* dst =
+            reduced_cps.data() + out_base + (out_start[seg] + i) * out_s;
         for (int32_t c = 0; c < coord_dim; ++c) {
-          dst[c] = cur_seg[i * coord_dim + c];
+          dst[c] = cur[i * coord_dim + c];
         }
       }
     }
@@ -773,13 +733,15 @@ SplineData ReduceDegree(const SplineView& spline,
 
   // Construct new knot vector for decomposed reduced spline
   std::vector<double> reduced_axis_knots;
-  reduced_axis_knots.reserve((p_new + 1) * 2 + (num_segments - 1) * p_new);
+  reduced_axis_knots.reserve((p_new + 1) * 2
+                             + (num_segments - 1) * (p_new + 1));
   for (int32_t i = 0; i <= p_new; ++i) {
     reduced_axis_knots.push_back(u_min);
   }
-  for (double uk : unique_internal_knots) {
-    for (int32_t j = 0; j < p_new; ++j) {
-      reduced_axis_knots.push_back(uk);
+  for (std::size_t k = 0; k < unique_internal_knots.size(); ++k) {
+    const int32_t mult = p_new + (jump[k] ? 1 : 0);
+    for (int32_t j = 0; j < mult; ++j) {
+      reduced_axis_knots.push_back(unique_internal_knots[k]);
     }
   }
   for (int32_t i = 0; i <= p_new; ++i) {
@@ -829,7 +791,7 @@ SplineData ReduceDegree(const SplineView& spline,
   }
 
   if (!knots_to_remove.empty()) {
-    Options rem_options = options;
+    Options rem_options = opts;
     rem_options.tolerance = tol;
     KnotRemovalResult rem_res = RemoveKnots(intermediate.View(),
                                             axis,
@@ -839,6 +801,57 @@ SplineData ReduceDegree(const SplineView& spline,
   }
 
   return intermediate;
+}
+
+namespace {
+
+/// Runs fn(i, options) for every spline of a batch. Workers get a scratch
+/// workspace each and single threaded kernels, so nothing is shared.
+template<typename Fn>
+SplineBatchData
+ForEachSpline(SplineBatchView batch, const Options& options, Fn&& fn) {
+  SplineBatchData result(batch.size());
+  const int nthreads = std::max(options.nthreads, 1);
+
+  std::vector<std::unique_ptr<Workspace>> workspaces;
+  workspaces.reserve(nthreads);
+  for (int t = 0; t < nthreads; ++t) {
+    workspaces.push_back(std::make_unique<Workspace>(16 * 1024, 1));
+  }
+
+  ParallelForWithThreadId(static_cast<int64_t>(0),
+                          static_cast<int64_t>(batch.size()),
+                          nthreads,
+                          [&](int64_t i, int thread_id) {
+                            Options worker = options;
+                            worker.nthreads = 1;
+                            worker.workspace = workspaces[thread_id].get();
+                            result[i] = fn(batch[i], worker);
+                          });
+  return result;
+}
+
+} // namespace
+
+SplineBatchData ElevateDegrees(SplineBatchView batch,
+                               Span<const int32_t> amounts,
+                               const Options& options) {
+  return ForEachSpline(batch,
+                       options,
+                       [&](const SplineView& spline, const Options& worker) {
+                         return ElevateDegrees(spline, amounts, worker);
+                       });
+}
+
+SplineBatchData ReduceDegree(SplineBatchView batch,
+                             int32_t axis,
+                             int32_t amount,
+                             const Options& options) {
+  return ForEachSpline(batch,
+                       options,
+                       [&](const SplineView& spline, const Options& worker) {
+                         return ReduceDegree(spline, axis, amount, worker);
+                       });
 }
 
 } // namespace splinepy::core

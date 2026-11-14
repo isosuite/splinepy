@@ -26,6 +26,7 @@ SOFTWARE.
 #include <cmath>
 #include <limits>
 
+#include "splinepy/core/memory/workspace.hpp"
 #include "splinepy/core/multipatch/interfaces.hpp"
 #include "splinepy/core/queries/derivative.hpp"
 #include "splinepy/core/queries/evaluate.hpp"
@@ -39,16 +40,34 @@ namespace splinepy::proximity {
 
 namespace {
 
-/// Splines are validated once, when planting. Not in the hot loops.
-const splinepy::core::Options kNoValidation = []() {
-  splinepy::core::Options options;
-  options.validate = false;
+using splinepy::core::MemoryArena;
+using splinepy::core::Span;
+
+/// Scratch memory of the calling thread. Queries run concurrently on one const
+/// Proximity, so it can't live in there.
+splinepy::core::Workspace& QueryWorkspace() {
+  thread_local splinepy::core::Workspace workspace(16 * 1024, 1);
+  return workspace;
+}
+
+MemoryArena& QueryArena() { return QueryWorkspace().GetThreadArena(0); }
+
+/// Splines are validated once, when planting. Not in the hot loops. Hands the
+/// thread's workspace to the kernels, so that they don't set up their own for
+/// every single evaluation.
+const splinepy::core::Options& QueryOptions() {
+  thread_local const splinepy::core::Options options = []() {
+    splinepy::core::Options o;
+    o.validate = false;
+    o.workspace = &QueryWorkspace();
+    return o;
+  }();
   return options;
-}();
+}
 
 /// in-place Cholesky factorization (lower, row major) of a small symmetric
 /// matrix. Returns false if it is not positive definite.
-bool Cholesky(std::vector<double>& a, const int n, const double min_pivot) {
+bool Cholesky(Span<double> a, const int n, const double min_pivot) {
   for (int j{}; j < n; ++j) {
     double d = a[j * n + j];
     for (int k{}; k < j; ++k) {
@@ -71,11 +90,11 @@ bool Cholesky(std::vector<double>& a, const int n, const double min_pivot) {
 }
 
 /// solves L L^T x = b with factor from Cholesky()
-void CholeskySolve(const std::vector<double>& l,
+void CholeskySolve(Span<const double> l,
                    const int n,
-                   const std::vector<double>& b,
-                   std::vector<double>& x) {
-  x = b;
+                   Span<const double> b,
+                   Span<double> x) {
+  std::copy_n(b.begin(), n, x.begin());
   for (int i{}; i < n; ++i) {
     for (int k{}; k < i; ++k) {
       x[i] -= l[i * n + k] * x[k];
@@ -90,7 +109,7 @@ void CholeskySolve(const std::vector<double>& l,
   }
 }
 
-double Dot(const std::vector<double>& a, const std::vector<double>& b) {
+double Dot(Span<const double> a, Span<const double> b) {
   double r{};
   for (std::size_t i{}; i < a.size(); ++i) {
     r += a[i] * b[i];
@@ -99,19 +118,19 @@ double Dot(const std::vector<double>& a, const std::vector<double>& b) {
 }
 
 /// y = M x for row major n x n
-void MatVec(const std::vector<double>& m,
+void MatVec(Span<const double> m,
             const int n,
-            const std::vector<double>& x,
-            std::vector<double>& y) {
-  y.assign(n, 0.0);
+            Span<const double> x,
+            Span<double> y) {
   for (int i{}; i < n; ++i) {
+    y[i] = 0.0;
     for (int j{}; j < n; ++j) {
       y[i] += m[i * n + j] * x[j];
     }
   }
 }
 
-double MaxDiagonal(const std::vector<double>& m, const int n) {
+double MaxDiagonal(Span<const double> m, const int n) {
   double d{};
   for (int i{}; i < n; ++i) {
     d = std::max(d, std::abs(m[i * n + i]));
@@ -122,74 +141,78 @@ double MaxDiagonal(const std::vector<double>& m, const int n) {
 /// Trust region step of dogleg type for the model g^T s + .5 s^T M s with
 /// ||s|| <= radius. hessian_exact is preferred, hessian_gn (positive semi
 /// definite) is the fallback. Returns the model matrix that was used.
-const std::vector<double>& DoglegStep(const std::vector<double>& g,
-                                      const std::vector<double>& hessian_exact,
-                                      const std::vector<double>& hessian_gn,
-                                      const int n,
-                                      const double radius,
-                                      std::vector<double>& step) {
+/// All spans have n (n * n) entries. Scratch comes from the arena and is
+/// released on return.
+Span<const double> DoglegStep(MemoryArena& arena,
+                              Span<const double> g,
+                              Span<const double> hessian_exact,
+                              Span<const double> hessian_gn,
+                              const int n,
+                              const double radius,
+                              Span<double> step) {
   const double g_norm = std::sqrt(Dot(g, g));
-  step.assign(n, 0.0);
+  std::fill_n(step.begin(), n, 0.0);
   if (g_norm == 0.0) {
     return hessian_exact;
   }
 
+  auto scope = arena.CreateScope();
+  Span<double> chol = arena.AllocateSpan<double>(n * n);
+  Span<double> newton = arena.AllocateSpan<double>(n);
+  Span<double> neg_g = arena.AllocateSpan<double>(n);
+  Span<double> mg = arena.AllocateSpan<double>(n);
+  Span<double> cauchy = arena.AllocateSpan<double>(n);
+  Span<double> d = arena.AllocateSpan<double>(n);
+
   // newton point
-  std::vector<double> chol = hessian_exact;
+  std::copy_n(hessian_exact.begin(), n * n, chol.begin());
   const double scale_exact = std::max(MaxDiagonal(hessian_exact, n), 1e-300);
-  const double* model_ptr = nullptr;
-  std::vector<double> newton;
-  std::vector<double> neg_g(n);
   for (int i{}; i < n; ++i) {
     neg_g[i] = -g[i];
   }
 
   bool has_newton{false};
-  const std::vector<double>* model = &hessian_exact;
+  Span<const double> model = hessian_exact;
   if (Cholesky(chol, n, 1e-12 * scale_exact)) {
     has_newton = true;
   } else {
-    chol = hessian_gn;
+    std::copy_n(hessian_gn.begin(), n * n, chol.begin());
     const double ridge = 1e-10 * std::max(MaxDiagonal(hessian_gn, n), 1e-300);
     for (int i{}; i < n; ++i) {
       chol[i * n + i] += ridge;
     }
     if (Cholesky(chol, n, 1e-14 * ridge)) {
       has_newton = true;
-      model = &hessian_gn;
+      model = hessian_gn;
     }
   }
-  (void) model_ptr;
 
   if (has_newton) {
     CholeskySolve(chol, n, neg_g, newton);
     if (std::sqrt(Dot(newton, newton)) <= radius) {
-      step = newton;
-      return *model;
+      std::copy_n(newton.begin(), n, step.begin());
+      return model;
     }
   }
 
   // cauchy point along -g with the (possibly indefinite) model
-  std::vector<double> mg;
-  MatVec(*model, n, g, mg);
+  MatVec(model, n, g, mg);
   const double curvature = Dot(g, mg);
   double tau = radius / g_norm; // boundary by default
   if (curvature > 0.0) {
     tau = std::min(tau, (g_norm * g_norm) / curvature);
   }
-  std::vector<double> cauchy(n);
   for (int i{}; i < n; ++i) {
     cauchy[i] = -tau * g[i];
   }
 
   const double cauchy_norm = std::sqrt(Dot(cauchy, cauchy));
   if (!has_newton || cauchy_norm >= radius * (1.0 - 1e-12)) {
-    step = cauchy;
-    return *model;
+    std::copy_n(cauchy.begin(), n, step.begin());
+    return model;
   }
 
   // dogleg: |cauchy + t (newton - cauchy)| = radius
-  std::vector<double> d(n);
   for (int i{}; i < n; ++i) {
     d[i] = newton[i] - cauchy[i];
   }
@@ -201,7 +224,7 @@ const std::vector<double>& DoglegStep(const std::vector<double>& g,
   for (int i{}; i < n; ++i) {
     step[i] = cauchy[i] + std::min(std::max(t, 0.0), 1.0) * d[i];
   }
-  return *model;
+  return model;
 }
 
 } // namespace
@@ -219,7 +242,7 @@ void SearchData::SLSQPData::Setup(SearchData& d) {
   c = nullptr;    // no constraints
 
   // allocate and set g
-  g_space.Reallocate(n + 1);
+  g_space.SetData(d.arena->AllocateSpan<double>(n + 1).data(), n + 1);
   g_space[n] = 0.0;
   g = g_space.data(); // before calling, ccall CopyDerivativce() to fill this
 
@@ -237,12 +260,12 @@ void SearchData::SLSQPData::Setup(SearchData& d) {
                      + (((n + 1) * n) / 2) + 2 * m + 3 * n + 3 * n1_ + 1;
 
   // set w and lw
-  w_space.Reallocate(w_size);
+  w_space.SetData(d.arena->AllocateSpan<double>(w_size).data(), w_size);
   w = w_space.data();
   l_w = w_size;
 
   // set jw and l_jw
-  jw_space.Reallocate(mineq);
+  jw_space.SetData(d.arena->AllocateSpan<int>(mineq).data(), mineq);
   jw = jw_space.data();
   l_jw = mineq;
 
@@ -302,20 +325,27 @@ void SearchData::Setup(const int para_dim_,
                                      para_dim,
                                      dim);
 
-  // allocate aux real arrays
-  initial_guess.Reallocate(para_dim);
-  d2jdu2.Reallocate(para_dim, para_dim);
-  djdu.Reallocate(para_dim);
-  delta_guess.Reallocate(para_dim);
-  spline_gradient_AAt.Reallocate(para_dim, para_dim);
-  search_bounds.Reallocate(2, para_dim);
+  // scratch lives on the arena
+  initial_guess.SetData(arena->AllocateSpan<double>(para_dim).data(), para_dim);
+  d2jdu2.SetData(arena->AllocateSpan<double>(para_dim * para_dim).data(),
+                 para_dim,
+                 para_dim);
+  djdu.SetData(arena->AllocateSpan<double>(para_dim).data(), para_dim);
+  delta_guess.SetData(arena->AllocateSpan<double>(para_dim).data(), para_dim);
+  spline_gradient_AAt.SetData(
+      arena->AllocateSpan<double>(para_dim * para_dim).data(),
+      para_dim,
+      para_dim);
+  search_bounds.SetData(arena->AllocateSpan<double>(2 * para_dim).data(),
+                        2,
+                        para_dim);
 
   // get pointers to beginning of each bound
   lower_bound.SetData(search_bounds.begin(), para_dim);
   upper_bound.SetData(search_bounds.begin() + para_dim, para_dim);
 
   // allocate index arrays
-  clipped.Reallocate(para_dim);
+  clipped.SetData(arena->AllocateSpan<int>(para_dim).data(), para_dim);
 }
 
 void Proximity::GuessMinusQuery(const RealArray& guess,
@@ -325,7 +355,7 @@ void Proximity::GuessMinusQuery(const RealArray& guess,
       spline_,
       splinepy::core::Span<const double>(guess.data(), spline_.para_dim),
       splinepy::core::Span<double>(difference.data(), spline_.dim),
-      kNoValidation);
+      QueryOptions());
   difference.Subtract(query);
 }
 
@@ -337,7 +367,7 @@ void Proximity::GuessMinusQuery(const RealArray& guess,
       spline_,
       splinepy::core::Span<const double>(guess.data(), spline_.para_dim),
       splinepy::core::Span<double>(guess_phys.data(), spline_.dim),
-      kNoValidation);
+      QueryOptions());
   splinepy::utils::Subtract(guess_phys, query, difference);
 }
 
@@ -395,7 +425,7 @@ void Proximity::dJdu(const RealArray& guess,
         splinepy::core::Span<const double>(guess.data(), para_dim),
         splinepy::core::Span<const int32_t>(derivative_query.data(), para_dim),
         splinepy::core::Span<double>(gradient_row_view.data(), dim),
-        kNoValidation);
+        QueryOptions());
 
     // note that there's no negative here, thus not rhs yet
     djdu[i] = difference.InnerProduct(gradient_row_view);
@@ -435,7 +465,7 @@ void Proximity::d2Jdu2(const RealArray& guess,
         splinepy::core::Span<const double>(guess.data(), para_dim),
         splinepy::core::Span<const int32_t>(derivative_query.data(), para_dim),
         splinepy::core::Span<double>(derivative.data(), dim),
-        kNoValidation);
+        QueryOptions());
 
     // fill lhs_ij
     d2jdu2(i, j) =
@@ -527,7 +557,10 @@ bool Proximity::IsAcceptable(SearchData& data, const double reference_J) const {
 
   // second order condition on the free variables
   ComputeCostAndDerivatives(data, 2);
-  std::vector<int> free;
+  MemoryArena& arena = QueryArena();
+  auto scope = arena.CreateScope();
+  Span<int> free = arena.AllocateSpan<int>(data.para_dim);
+  int m{};
   for (int i{}; i < data.para_dim; ++i) {
     const double g = data.djdu[i];
     const double lo = data.lower_bound[i];
@@ -537,11 +570,10 @@ bool Proximity::IsAcceptable(SearchData& data, const double reference_J) const {
     if ((u <= lo + eps && g > 0.0) || (u >= hi - eps && g < 0.0)) {
       continue;
     }
-    free.push_back(i);
+    free[m++] = i;
   }
 
-  const int m = static_cast<int>(free.size());
-  std::vector<double> h(m * m);
+  Span<double> h = arena.AllocateSpan<double>(m * m);
   for (int i{}; i < m; ++i) {
     for (int j{}; j < m; ++j) {
       h[i * m + j] = data.d2jdu2(free[i], free[j]);
@@ -558,14 +590,19 @@ void Proximity::Dogleg(SearchData& d) const {
   d.status.stop_iteration = 0;
   const int n = d.para_dim;
 
+  MemoryArena& arena = QueryArena();
+  auto scope = arena.CreateScope();
+
   // parametric scaling: steps are measured relative to the search bounds
-  std::vector<double> range(n);
+  Span<double> range = arena.AllocateSpan<double>(n);
   for (int i{}; i < n; ++i) {
     range[i] = d.upper_bound[i] - d.lower_bound[i];
   }
 
   // local copies, so that rejected steps don't require new derivatives
-  std::vector<double> g(n), h(n * n), b(n * n);
+  Span<double> g = arena.AllocateSpan<double>(n);
+  Span<double> h = arena.AllocateSpan<double>(n * n);
+  Span<double> b = arena.AllocateSpan<double>(n * n);
   auto store_derivatives = [&]() {
     for (int i{}; i < n; ++i) {
       g[i] = d.djdu[i];
@@ -589,8 +626,13 @@ void Proximity::Dogleg(SearchData& d) const {
   bool stale{false}; // d holds values of a rejected trial point
 
   RealArray previous_guess(n);
-  std::vector<int> free;
-  std::vector<double> gs, hs, bs, step, step_scaled, hm_step;
+  Span<int> free = arena.AllocateSpan<int>(n);
+  Span<double> gs_all = arena.AllocateSpan<double>(n);
+  Span<double> hs_all = arena.AllocateSpan<double>(n * n);
+  Span<double> bs_all = arena.AllocateSpan<double>(n * n);
+  Span<double> step_all = arena.AllocateSpan<double>(n);
+  Span<double> step_scaled_all = arena.AllocateSpan<double>(n);
+  Span<double> hm_step_all = arena.AllocateSpan<double>(n);
 
   int it{};
   while (it < d.options.max_iter) {
@@ -602,7 +644,7 @@ void Proximity::Dogleg(SearchData& d) const {
     }
 
     // free variables
-    free.clear();
+    int m{};
     for (int i{}; i < n; ++i) {
       const double lo = d.lower_bound[i];
       const double hi = d.upper_bound[i];
@@ -612,17 +654,19 @@ void Proximity::Dogleg(SearchData& d) const {
           || (u >= hi - eps && g[i] < 0.0)) {
         continue;
       }
-      free.push_back(i);
+      free[m++] = i;
     }
-    const int m = static_cast<int>(free.size());
     if (m == 0) {
       break;
     }
 
-    // scaled reduced system
-    gs.assign(m, 0.0);
-    hs.assign(m * m, 0.0);
-    bs.assign(m * m, 0.0);
+    // scaled reduced system, in the first m (m * m) entries
+    const Span<double> gs = gs_all.subspan(0, m);
+    const Span<double> hs = hs_all.subspan(0, m * m);
+    const Span<double> bs = bs_all.subspan(0, m * m);
+    const Span<double> step = step_all.subspan(0, m);
+    const Span<double> step_scaled = step_scaled_all.subspan(0, m);
+    const Span<double> hm_step = hm_step_all.subspan(0, m);
     for (int i{}; i < m; ++i) {
       gs[i] = g[free[i]] * range[free[i]];
       for (int j{}; j < m; ++j) {
@@ -632,7 +676,8 @@ void Proximity::Dogleg(SearchData& d) const {
       }
     }
 
-    const auto& model = DoglegStep(gs, hs, bs, m, radius, step_scaled);
+    const Span<const double> model =
+        DoglegStep(arena, gs, hs, bs, m, radius, step_scaled);
 
     // apply projected step
     previous_guess = d.current_guess;
@@ -644,7 +689,6 @@ void Proximity::Dogleg(SearchData& d) const {
     UpdateAndClip(d);
 
     // the step that was actually taken, scaled
-    step.assign(m, 0.0);
     double taken_norm{};
     for (int i{}; i < m; ++i) {
       step[i] =
@@ -989,7 +1033,10 @@ void Proximity::SolveFrom(
   const int dim = spline_.dim;
 
   // initialize aux data for the search
-  SearchData data(para_dim,
+  MemoryArena& arena = QueryArena();
+  auto scope = arena.CreateScope();
+  SearchData data(arena,
+                  para_dim,
                   dim,
                   tolerance,
                   max_iterations,
@@ -1109,6 +1156,49 @@ bool Proximity::PlantBvh(const int* resolutions) {
     --(*largest);
   }
 
+  // the sampling grid of an element does not depend on the query, so keep its
+  // physical points if they are affordable
+  constexpr std::size_t kMaxCachedDoubles{16u << 20}; // 128 MB
+  bvh_sample_points_.clear();
+  std::size_t per_element{static_cast<std::size_t>(spline_.dim)};
+  for (const int n : bvh_samples_per_axis_) {
+    per_element *= static_cast<std::size_t>(n);
+  }
+  const auto n_elements = static_cast<std::size_t>(bvh->NumElements());
+  if (n_elements * per_element <= kMaxCachedDoubles) {
+    const int para_dim = spline_.para_dim;
+    const int dim = spline_.dim;
+    const auto& m = bvh_samples_per_axis_;
+    bvh_sample_points_.resize(n_elements * per_element);
+    std::vector<double> lower(para_dim), upper(para_dim), u(para_dim);
+    std::vector<int> index(para_dim);
+    for (std::size_t e{}; e < n_elements; ++e) {
+      bvh->ElementBounds(static_cast<int64_t>(e), lower.data(), upper.data());
+      std::fill(index.begin(), index.end(), 0);
+      double* xs = &bvh_sample_points_[e * per_element];
+      bool more{true};
+      while (more) {
+        for (int i{}; i < para_dim; ++i) {
+          u[i] = lower[i] + (upper[i] - lower[i]) * index[i] / (m[i] - 1);
+        }
+        splinepy::core::Evaluate(
+            spline_,
+            splinepy::core::Span<const double>(u.data(), para_dim),
+            splinepy::core::Span<double>(xs, dim),
+            QueryOptions());
+        xs += dim;
+        int d{};
+        for (; d < para_dim; ++d) {
+          if (++index[d] < m[d]) {
+            break;
+          }
+          index[d] = 0;
+        }
+        more = d < para_dim;
+      }
+    }
+  }
+
   bvh_ = std::move(bvh);
   return true;
 }
@@ -1118,20 +1208,28 @@ std::vector<Proximity::Start> Proximity::BvhStarts(const double* query) const {
   const int dim = spline_.dim;
   const auto& m = bvh_samples_per_axis_;
 
+  MemoryArena& arena = QueryArena();
+  auto scope = arena.CreateScope();
+
   std::vector<Start> starts;
-  std::vector<double> lower(para_dim), upper(para_dim), u(para_dim), x(dim);
-  std::vector<int> index(para_dim);
+  Span<double> lower = arena.AllocateSpan<double>(para_dim);
+  Span<double> upper = arena.AllocateSpan<double>(para_dim);
+  Span<double> u = arena.AllocateSpan<double>(para_dim);
+  Span<int> index = arena.AllocateSpan<int>(para_dim);
 
   // local sampling grid: first parametric dimension runs fastest
   std::size_t n_samples{1};
-  std::vector<std::size_t> stride(para_dim);
+  Span<std::size_t> stride = arena.AllocateSpan<std::size_t>(para_dim);
   for (int i{}; i < para_dim; ++i) {
     stride[i] = n_samples;
     n_samples *= static_cast<std::size_t>(m[i]);
   }
-  std::vector<double> distance_squared(n_samples), points(n_samples * dim);
+  Span<double> distance_squared = arena.AllocateSpan<double>(n_samples);
+  const bool cached = !bvh_sample_points_.empty();
+  Span<double> points =
+      cached ? Span<double>() : arena.AllocateSpan<double>(n_samples * dim);
 
-  auto next_index = [&](std::vector<int>& idx) {
+  auto next_index = [&](Span<int> idx) {
     int d{};
     while (d < para_dim) {
       if (++idx[d] < m[d]) {
@@ -1153,19 +1251,25 @@ std::vector<Proximity::Start> Proximity::BvhStarts(const double* query) const {
       [&](const int64_t element, const double lower_bound_squared) {
         bvh_->ElementBounds(element, lower.data(), upper.data());
 
-        // sample the element
+        // sample the element (physical points are cached if affordable)
         std::fill(index.begin(), index.end(), 0);
         std::size_t flat{};
+        const double* element_points =
+            cached ? &bvh_sample_points_[static_cast<std::size_t>(element)
+                                         * n_samples * dim]
+                   : points.data();
         do {
-          for (int i{}; i < para_dim; ++i) {
-            u[i] = coordinate(i, index[i]);
+          if (!cached) {
+            for (int i{}; i < para_dim; ++i) {
+              u[i] = coordinate(i, index[i]);
+            }
+            splinepy::core::Evaluate(
+                spline_,
+                splinepy::core::Span<const double>(u.data(), para_dim),
+                splinepy::core::Span<double>(points.data() + flat * dim, dim),
+                QueryOptions());
           }
-          double* xs = &points[flat * dim];
-          splinepy::core::Evaluate(
-              spline_,
-              splinepy::core::Span<const double>(u.data(), para_dim),
-              splinepy::core::Span<double>(xs, dim),
-              kNoValidation);
+          const double* xs = &element_points[flat * dim];
           double d2{};
           for (int i{}; i < dim; ++i) {
             d2 += (xs[i] - query[i]) * (xs[i] - query[i]);
@@ -1194,7 +1298,8 @@ std::vector<Proximity::Start> Proximity::BvhStarts(const double* query) const {
               }
               double gap{};
               for (int c{}; c < dim; ++c) {
-                const double dx = points[nb * dim + c] - points[flat * dim + c];
+                const double dx = element_points[nb * dim + c]
+                                  - element_points[flat * dim + c];
                 gap += dx * dx;
               }
               spacing = std::max(spacing, std::sqrt(gap));
@@ -1288,6 +1393,9 @@ void Proximity::VerboseQuery(
   const int para_dim = spline_.para_dim;
   const int dim = spline_.dim;
 
+  MemoryArena& arena = QueryArena();
+  auto scope = arena.CreateScope();
+
   if (!bvh_) {
     // single start from the kd-tree
     ConstRealArray goal;
@@ -1348,8 +1456,11 @@ void Proximity::VerboseQuery(
     return false;
   };
 
-  std::vector<double> t_guess(para_dim), t_nearest(dim), t_diff(dim),
-      t_first(para_dim * dim), t_second(para_dim * para_dim * dim);
+  Span<double> t_guess = arena.AllocateSpan<double>(para_dim);
+  Span<double> t_nearest = arena.AllocateSpan<double>(dim);
+  Span<double> t_diff = arena.AllocateSpan<double>(dim);
+  Span<double> t_first = arena.AllocateSpan<double>(para_dim * dim);
+  Span<double> t_second = arena.AllocateSpan<double>(para_dim * para_dim * dim);
   int n_starts{1};
   for (std::size_t i{1}; i < starts.size() && n_starts < max_starts_; ++i) {
     if (starts[i].lower_bound_squared >= distance * distance * (1.0 - 1e-12)
@@ -1371,7 +1482,7 @@ void Proximity::VerboseQuery(
               t_convergence,
               t_first.data(),
               t_second.data());
-    found.push_back(t_guess);
+    found.emplace_back(t_guess.begin(), t_guess.end());
 
     if (t_distance < distance) {
       distance = t_distance;
@@ -1394,11 +1505,12 @@ void Proximity::VerboseQuery(
   }
   const auto bounds = splinepy::core::ParametricBounds(spline_);
   constexpr int kPerAxis{5};
-  std::vector<double> lower(para_dim), upper(para_dim);
+  Span<double> lower = arena.AllocateSpan<double>(para_dim);
+  Span<double> upper = arena.AllocateSpan<double>(para_dim);
   std::size_t n_candidates{1};
   // along an axis that does not move the point (collapsed edge) the parametric
   // position is arbitrary, so look at all of it
-  std::vector<double> axis_norm(para_dim);
+  Span<double> axis_norm = arena.AllocateSpan<double>(para_dim, 0.0);
   double largest_norm{};
   for (int i{}; i < para_dim; ++i) {
     for (int k{}; k < dim; ++k) {
@@ -1428,7 +1540,8 @@ void Proximity::VerboseQuery(
     std::vector<double> u;
   };
   std::vector<Candidate> candidates;
-  std::vector<double> u(para_dim), x(dim);
+  Span<double> u = arena.AllocateSpan<double>(para_dim);
+  Span<double> x = arena.AllocateSpan<double>(dim);
   for (std::size_t flat{}; flat < n_candidates; ++flat) {
     std::size_t rest{flat};
     for (int i{}; i < para_dim; ++i) {
@@ -1440,7 +1553,7 @@ void Proximity::VerboseQuery(
         spline_,
         splinepy::core::Span<const double>(u.data(), para_dim),
         splinepy::core::Span<double>(x.data(), dim),
-        kNoValidation);
+        QueryOptions());
     double d2{}, apart2{};
     for (int i{}; i < dim; ++i) {
       d2 += (x[i] - query[i]) * (x[i] - query[i]);
@@ -1448,7 +1561,7 @@ void Proximity::VerboseQuery(
     }
     // samples that are the singular point itself lead nowhere
     if (apart2 > 1e-18 * scale * scale) {
-      candidates.push_back({d2, u});
+      candidates.push_back({d2, std::vector<double>(u.begin(), u.end())});
     }
   }
   std::sort(candidates.begin(),
@@ -1511,7 +1624,7 @@ void FillHessian(splinepy::core::SplineView spline,
         splinepy::core::Span<const double>(at.data(), para_dim),
         splinepy::core::Span<const int32_t>(derivative_query.data(), para_dim),
         splinepy::core::Span<double>(derivative.data(), dim),
-        kNoValidation);
+        QueryOptions());
 
     // reset derivative query
     --derivative_query[i];

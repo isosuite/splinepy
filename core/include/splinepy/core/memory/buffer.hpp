@@ -80,6 +80,23 @@ public:
     }
   }
 
+  /// Buffer of trivially constructible T whose elements are left uninitialized,
+  /// for scratch memory that is written before it is read.
+  static Buffer Uninitialized(size_type size,
+                              size_type alignment = kDefaultAlignment) {
+    static_assert(
+        std::is_trivially_default_constructible_v<T>,
+        "Uninitialized buffers need trivially constructible elements");
+    Buffer buffer;
+    buffer.alignment_ = alignment;
+    if (size > 0) {
+      buffer.data_ = static_cast<pointer>(
+          detail::AlignedAlloc(size * sizeof(T), alignment));
+      buffer.size_ = size;
+    }
+    return buffer;
+  }
+
   Buffer(size_type size, const T& val, size_type alignment = kDefaultAlignment)
       : data_(nullptr),
         size_(size),

@@ -133,6 +133,86 @@ nb::object Compose(nb::handle outer, nb::handle inner) {
   return SplineFromData(result);
 }
 
+/// Views of a Python list of splines. The holders keep a reference into
+/// themselves, so they are not movable and live on the heap.
+struct ViewList {
+  std::vector<std::unique_ptr<PySplineHolder>> holders;
+  std::vector<splinepy::core::SplineView> views;
+
+  explicit ViewList(nb::list splines) {
+    for (nb::handle h : splines) {
+      holders.push_back(std::make_unique<PySplineHolder>(h));
+      views.push_back(holders.back()->view);
+    }
+  }
+
+  splinepy::core::SplineBatchView Batch() const {
+    return splinepy::core::SplineBatchView(views.data(), views.size());
+  }
+  size_t size() const { return views.size(); }
+};
+
+/// result[o][i] from a flat list ordered o * n_inner + i
+template<typename Convert>
+nb::list ToGrid(size_t n_outer, size_t n_inner, Convert&& convert) {
+  nb::list out;
+  for (size_t o = 0; o < n_outer; ++o) {
+    nb::list row;
+    for (size_t i = 0; i < n_inner; ++i) {
+      row.append(convert(o * n_inner + i));
+    }
+    out.append(row);
+  }
+  return out;
+}
+
+nb::list ComposeBatch(nb::list outers, nb::list inners, int nthreads) {
+  ViewList outer_views(outers), inner_views(inners);
+  splinepy::core::Options options;
+  options.nthreads = nthreads;
+  auto results = splinepy::core::ComposeBatch(outer_views.Batch(),
+                                              inner_views.Batch(),
+                                              options);
+  return ToGrid(outer_views.size(), inner_views.size(), [&](size_t k) {
+    return SplineFromData(results[k]);
+  });
+}
+
+nb::list
+ComposeSensitivitiesBatch(nb::list outers, nb::list inners, int nthreads) {
+  ViewList outer_views(outers), inner_views(inners);
+  splinepy::core::Options options;
+  options.nthreads = nthreads;
+  auto results = splinepy::core::ComposeSensitivitiesBatch(outer_views.Batch(),
+                                                           inner_views.Batch(),
+                                                           options);
+  return ToGrid(outer_views.size(), inner_views.size(), [&](size_t k) {
+    nb::list sensitivities;
+    for (const auto& s : results[k]) {
+      sensitivities.append(SplineFromData(s));
+    }
+    return sensitivities;
+  });
+}
+
+nb::list CompositionDerivativeBatch(nb::list outers,
+                                    nb::list inners,
+                                    nb::list inner_derivatives,
+                                    int nthreads) {
+  ViewList outer_views(outers), inner_views(inners),
+      derivative_views(inner_derivatives);
+  splinepy::core::Options options;
+  options.nthreads = nthreads;
+  auto results =
+      splinepy::core::CompositionDerivativeBatch(outer_views.Batch(),
+                                                 inner_views.Batch(),
+                                                 derivative_views.Batch(),
+                                                 options);
+  return ToGrid(outer_views.size(), inner_views.size(), [&](size_t k) {
+    return SplineFromData(results[k]);
+  });
+}
+
 nb::list ComposeSensitivities(nb::handle outer, nb::handle inner) {
   PySplineHolder holder_outer(outer);
   PySplineHolder holder_inner(inner);
@@ -309,6 +389,22 @@ void init_nb_spline_extensions(nb::module_& m) {
   m.def("multiply", &Multiply, nb::arg("a"), nb::arg("b"));
   m.def("add", &Add, nb::arg("a"), nb::arg("b"));
   m.def("compose", &Compose, nb::arg("outer"), nb::arg("inner"));
+  m.def("compose_batch",
+        &ComposeBatch,
+        nb::arg("outers"),
+        nb::arg("inners"),
+        nb::arg("nthreads") = 1);
+  m.def("compose_sensitivities_batch",
+        &ComposeSensitivitiesBatch,
+        nb::arg("outers"),
+        nb::arg("inners"),
+        nb::arg("nthreads") = 1);
+  m.def("composition_derivative_batch",
+        &CompositionDerivativeBatch,
+        nb::arg("outers"),
+        nb::arg("inners"),
+        nb::arg("inner_derivatives"),
+        nb::arg("nthreads") = 1);
   m.def("compose_sensitivities",
         &ComposeSensitivities,
         nb::arg("outer"),

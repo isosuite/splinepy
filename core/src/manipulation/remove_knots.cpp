@@ -21,6 +21,10 @@ KnotRemovalResult RemoveKnots(const SplineView& spline,
     }
   }
 
+  detail::LocalArena local(options);
+  MemoryArena& arena = local.arena();
+  auto scope = arena.CreateScope();
+
   KnotRemovalResult result;
   result.removed.resize(knots_to_remove.size());
 
@@ -90,7 +94,8 @@ KnotRemovalResult RemoveKnots(const SplineView& spline,
     std::vector<double> out_axis_knots;
     Buffer<double> out_cps;
 
-    const bool success = detail::TryRemoveKnotAlongAxisND(spline.para_dim,
+    const bool success = detail::TryRemoveKnotAlongAxisND(arena,
+                                                          spline.para_dim,
                                                           coord_dim,
                                                           spline.degrees,
                                                           kv_views,

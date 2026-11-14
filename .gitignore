@@ -29,3 +29,6 @@ examples/not_upload/
 
 # Test data binary cache
 tests/data/golden/
+
+# editor swap files
+*.swp
