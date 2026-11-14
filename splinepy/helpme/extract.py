@@ -1,16 +1,12 @@
 from functools import wraps as _wraps
 
 import numpy as _np
-from gustaf import Edges as _Edges
-from gustaf import Faces as _Faces
-from gustaf import Vertices as _Vertices
-from gustaf import Volumes as _Volumes
-from gustaf.create.edges import from_data as _from_data
-from gustaf.utils import connec as _connec
-from gustaf.utils.arr import enforce_len as _enforce_len
+from splinepy.utils.data import _enforce_len
 
 from splinepy import settings as _settings
+from splinepy import splinepy_core as _splinepy_core
 from splinepy.helpme import visualize as _visualize
+
 from splinepy.utils import log as _log
 from splinepy.utils.data import cartesian_product as _cartesian_product
 
@@ -36,6 +32,9 @@ def edges(
     --------
     edges: Edges
     """
+    from gustaf import Edges as _Edges
+    from gustaf.utils import connec as _connec
+
     from splinepy import Multipatch as _Multipatch
 
     if spline.para_dim == 1:
@@ -123,6 +122,9 @@ def edges(
 
 def _uniform_3d_faces(spline, res):
     # Extract boundaries and sample from boundaries
+    from gustaf import Faces as _Faces
+    from gustaf.utils import connec as _connec
+
     if isinstance(spline, _settings.NAME_TO_TYPE["Multipatch"]):
         boundaries = spline.boundary_multipatch()
     else:
@@ -169,6 +171,9 @@ def faces(
     --------
     faces: faces
     """
+    from gustaf import Faces as _Faces
+    from gustaf.utils import connec as _connec
+
     from splinepy import Multipatch as _Multipatch
 
     if spline.para_dim == 2:
@@ -238,6 +243,9 @@ def volumes(spline, resolution, watertight=False):
     --------
     volumes: Volumes
     """
+    from gustaf import Volumes as _Volumes
+    from gustaf.utils import connec as _connec
+
     from splinepy import Multipatch as _Multipatch
 
     if spline.para_dim != 3 or spline.dim != 3:
@@ -294,6 +302,8 @@ def control_points(spline):
     --------
     cps_as_Vertices: Vertices
     """
+    from gustaf import Vertices as _Vertices
+
     return _Vertices(spline.control_points)
 
 
@@ -309,6 +319,9 @@ def control_edges(spline):
     --------
     edges: Edges
     """
+    from gustaf import Edges as _Edges
+    from gustaf.utils import connec as _connec
+
     from splinepy import Multipatch as _Multipatch
 
     if spline.para_dim != 1:
@@ -338,6 +351,9 @@ def control_faces(spline):
     --------
     faces: Faces
     """
+    from gustaf import Faces as _Faces
+    from gustaf.utils import connec as _connec
+
     from splinepy import Multipatch as _Multipatch
 
     if spline.para_dim != 2:
@@ -364,6 +380,9 @@ def control_volumes(spline):
     --------
     volumes: Volumes
     """
+    from gustaf import Volumes as _Volumes
+    from gustaf.utils import connec as _connec
+
     from splinepy import Multipatch as _Multipatch
 
     if spline.para_dim != 3:
@@ -427,22 +446,28 @@ def spline(spline, para_dim, split_plane):
     if not isinstance(spline, _Spline):
         raise TypeError("Unknown spline representation passed to sub spline")
 
-    # Check arguments for sanity
-    if para_dim > spline.para_dim:
-        raise ValueError(
-            "Requested parametric dimension exceeds spline's parametric"
-            " dimensionality."
-        )
+    if not isinstance(para_dim, (int, _np.integer)) or not (
+        0 <= para_dim < spline.para_dim
+    ):
+        raise ValueError("Invalid parametric dimension for sub-spline extraction.")
 
-    # create 1d array for easy type / size check
-    split_plane = _np.asanyarray(split_plane).ravel()
-    if not _np.issubdtype(split_plane.dtype, _np.floating):
-        raise ValueError("split_plane must be floating type.")
-
-    if split_plane.size > 2:
-        raise ValueError("split_plane must have size of 1 or 2.")
-
-    is_interval = len(split_plane) == 2
+    split_plane = _np.asarray(split_plane)
+    if not (
+        _np.issubdtype(split_plane.dtype, _np.floating)
+        or _np.issubdtype(split_plane.dtype, _np.integer)
+    ):
+        raise ValueError("Split coordinates must be real numbers.")
+    if split_plane.ndim > 1 or split_plane.size not in (1, 2):
+        raise ValueError("Expected a split coordinate or a pair of interval endpoints.")
+    split_plane = split_plane.reshape(-1)
+    lower, upper = spline.parametric_bounds[:, para_dim]
+    if not _np.all(_np.isfinite(split_plane)) or (
+        split_plane[0] < lower or split_plane[-1] > upper
+    ):
+        raise ValueError("Split coordinates must lie inside the parametric domain.")
+    is_interval = split_plane.size == 2
+    if is_interval and split_plane[0] >= split_plane[1]:
+        raise ValueError("Interval endpoints must be strictly increasing.")
 
     # Check if is bezier-type
     if not spline.has_knot_vectors:
@@ -450,37 +475,37 @@ def spline(spline, para_dim, split_plane):
     else:
         spline_copy = spline.copy()
 
-    for _ in range(spline_copy.degrees[para_dim] + 1):
-        # Will do nothing if spline already has sufficient number of knots
-        # at given position go to c^-1 extraction
-        spline_copy.insert_knots(para_dim, split_plane)
+    knots = spline_copy.knot_vectors[para_dim]
+    degree = spline_copy.degrees[para_dim]
+    # Snap near-knot requests before counting exact multiplicities.
+    coordinates = []
+    missing = []
+    for coordinate in split_plane:
+        nearest = knots[_np.argmin(abs(knots - coordinate))]
+        if abs(nearest - coordinate) <= _settings.TOLERANCE:
+            coordinate = nearest
+        coordinates.append(coordinate)
+        multiplicity = _np.count_nonzero(knots == coordinate)
+        missing.extend([coordinate] * max(0, degree + 1 - multiplicity))
+    if is_interval and coordinates[0] >= coordinates[1]:
+        raise ValueError("Interval endpoints resolve to the same knot.")
+    if missing:
+        _splinepy_core.insert_knots(spline_copy, para_dim, missing, tolerance=0)
 
-    # start and end id. indices correspond to [first dim][first appearance]
-    start_id = (
-        _np.where(
-            abs(spline_copy.knot_vectors[para_dim].numpy() - split_plane[0])
-            < _settings.TOLERANCE
-        )[0][-1]
-        - spline_copy.degrees[para_dim]
-    )
-
-    end_id = (
-        _np.where(
-            abs(spline_copy.knot_vectors[para_dim].numpy() - split_plane[-1])
-            < _settings.TOLERANCE
-        )[0][-1]
-        - spline_copy.degrees[para_dim]
-    )
+    knots = spline_copy.knot_vectors[para_dim]
+    split_ids = [
+        _np.searchsorted(knots, coordinate, side="right") - degree - 1
+        for coordinate in coordinates
+    ]
+    start_id = split_ids[0]
+    end_id = split_ids[-1]
 
     # Use MultiIndex for extraction
     mi = spline_copy.multi_index
     indices = [slice(None, None, None) for _ in range(spline_copy.para_dim)]
     if not is_interval:
         # Check if boundary
-        if (
-            abs(spline_copy.knot_vectors[para_dim][-1] - split_plane[-1])
-            < _settings.TOLERANCE
-        ):
+        if coordinates[0] == knots[-1]:
             start_id -= 1
         indices[para_dim] = start_id
     else:
@@ -559,6 +584,8 @@ def arrow_data(spline, adata_name):
     -------
     adata_edges: gus.Edges
     """
+    from gustaf.create.edges import from_data as _from_data
+
     if adata_name not in spline.spline_data:
         raise KeyError(
             f"given splines does not have arrow data - {adata_name}."
@@ -760,3 +787,96 @@ class Extractor:
     @_wraps(bases)
     def bases(self, *args, **kwargs):
         return bases(self._helpee, *args, **kwargs)
+
+
+class HierarchyExtractor:
+    """Leaf geometry and basis extraction for hierarchical splines."""
+
+    def __init__(self, spline):
+        self._spline = spline
+
+    def beziers(self, nthreads=None):
+        """Return one unit-box Bezier patch per leaf, in packed leaf order."""
+        from splinepy import Bezier, RationalBezier
+
+        data, cache = self._spline._state
+        threads = _settings.NTHREADS if nthreads is None else nthreads
+        points, weights = cache.bezier_geometry(threads)
+        degrees = data[0]
+        if weights is None:
+            return [
+                Bezier(degrees=degrees.copy(), control_points=points_on_leaf.copy())
+                for points_on_leaf in points
+            ]
+        return [
+            RationalBezier(
+                degrees=degrees.copy(),
+                control_points=points_on_leaf.copy(),
+                weights=weights_on_leaf.copy(),
+            )
+            for points_on_leaf, weights_on_leaf in zip(points, weights)
+        ]
+
+    def multipatch(self, nthreads=None):
+        """Return the leaf Beziers as a potentially nonconforming multipatch."""
+        from splinepy import Multipatch
+
+        return Multipatch(splines=self.beziers(nthreads))
+
+    def boundaries(self, boundary_ids=None):
+        """Extract exact outer boundaries as tensor splines."""
+        return self._spline.create.converted().extract.boundaries(boundary_ids)
+
+    def spline(self, splitting_plane=None, interval=None):
+        """Extract an exact slice or interval as a tensor spline."""
+        return self._spline.create.converted().extract.spline(splitting_plane, interval)
+
+    def bases(self, ids=None, parametric_view=True):
+        """Extract graphs of active hierarchical basis functions."""
+        hierarchy = self._spline
+        if ids is None:
+            ids = range(len(hierarchy.control_points))
+        elif not isinstance(ids, (list, tuple, _np.ndarray)):
+            raise TypeError(f"Bases ids ({type(ids)}) should be a list.")
+
+        geometry = hierarchy.create.converted()
+        if parametric_view:
+            geometry = geometry.create.parametric_view(axes=False, conform=True)
+        points = _np.empty((len(hierarchy.control_points), 1))
+        result = []
+        for i in ids:
+            points.fill(0)
+            points[i, 0] = 1
+            field = type(hierarchy).from_hierarchy(
+                hierarchy.degrees, hierarchy.levels, hierarchy.leaf_cells,
+                points, weights=hierarchy.weights,
+            ).create.converted()
+            graph = geometry.copy()
+            graph.control_points = _np.column_stack(
+                (geometry.control_points, field.control_points)
+            )
+            graph.show_options["control_points"] = False
+            graph.show_options["c"] = int(i)
+            result.append(graph)
+        return result
+
+    def basis_data(self, basis="bspline", nthreads=None):
+        """Return leaf basis extraction blocks and their global basis indices.
+
+        Block e is values[offsets[e]:offsets[e+1]], with matching rows in
+        active_indices. Columns follow axis-zero-fastest tensor order.
+        B-spline columns start at first_knots[e] in each level knot vector.
+        Bernstein columns use unit-box coordinates mapped by bounds[e].
+        Degrees, level knots, and weights are available on the parent spline.
+        For rational geometry, multiply each row by its global weight and
+        normalize by the sum of the weighted basis functions.
+        """
+        if basis not in ("bspline", "bernstein"):
+            raise ValueError("basis must be 'bspline' or 'bernstein'")
+        threads = _settings.NTHREADS if nthreads is None else nthreads
+        _, cache = self._spline._state
+        result = cache.extraction()
+        if basis == "bernstein":
+            result["values"] = cache.bernstein_extraction(threads)
+        result["basis"] = basis
+        return result

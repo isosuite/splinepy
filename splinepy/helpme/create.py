@@ -1,11 +1,19 @@
 from functools import wraps as _wraps
 
 import numpy as _np
-from gustaf.utils import arr as _arr
 
 from splinepy import settings as _settings
 from splinepy.utils import log as _log
 from splinepy.utils.data import make_matrix as _make_matrix
+
+
+def _rotation_matrix(axis, rotation):
+    sine, cosine = _np.sin(rotation), _np.cos(rotation)
+    if axis is None:
+        return _np.array([[cosine, -sine], [sine, cosine]])
+    x, y, z = _np.asarray(axis).ravel()
+    cross = _np.array([[0, -z, y], [z, 0, -x], [-y, x, 0]])
+    return _np.eye(3) + sine * cross + (1 - cosine) * (cross @ cross)
 
 
 def embedded(spline, new_dimension):
@@ -233,8 +241,8 @@ def revolved(
     factor = 1 / weight
 
     # Determine rotation matrix
-    rotation_matrix = _arr.rotation_matrix_around_axis(
-        axis=axis, rotation=rot_a, degree=False
+    rotation_matrix = _rotation_matrix(
+        axis=axis, rotation=rot_a
     ).T
 
     # Start Extrusion
@@ -573,19 +581,19 @@ def swept(
         )
 
         # calculate rotation matrix for cross-section normal vector
-        R1 = _arr.rotation_matrix_around_axis(
-            axis=[0, 1, 0], rotation=angle_of_cs_normal_1, degree=False
+        R1 = _rotation_matrix(
+            axis=[0, 1, 0], rotation=angle_of_cs_normal_1
         )
-        R2 = _arr.rotation_matrix_around_axis(
-            axis=[0, 0, 1], rotation=angle_of_cs_normal_2, degree=False
+        R2 = _rotation_matrix(
+            axis=[0, 0, 1], rotation=angle_of_cs_normal_2
         )
         R = _np.matmul(R2, R1)
 
     # rotate cross-section around trajectory tangent vector (e1) if wanted
     if rotation_adaption is not None:
         R = _np.matmul(
-            _arr.rotation_matrix_around_axis(
-                axis=[1, 0, 0], rotation=rotation_adaption, degree=False
+            _rotation_matrix(
+                axis=[1, 0, 0], rotation=rotation_adaption
             ),
             R,
         )
@@ -1022,7 +1030,7 @@ def arc(
 
     # Revolve - set degree to False, since all the angles are converted to rad
     arc_attrib = point_spline.create.revolved(
-        angle=angle, n_knot_spans=n_knot_spans, degree=False
+        angle=angle, n_knot_spans=n_knot_spans
     ).todict()
     # Remove the first parametric dimensions, which is only a point and
     # only used for the revolution
@@ -1381,6 +1389,52 @@ def pyramid(width, length, height):
     return p
 
 
+def converted(spline, target=None, *, nthreads=None):
+    """Convert an ordinary or hierarchical spline to a tensor representation.
+
+    Defaults to BSpline for polynomial geometry and NURBS for rational
+    geometry. Hierarchical inputs are flattened onto the finest knot grid
+    for these targets. The geometry is preserved and the refinement
+    hierarchy is discarded.
+
+    Targets "bezier" and "rationalbezier" always return a Multipatch of
+    elements. Hierarchical inputs use leaf elements. Each element has its
+    own local parameter domain.
+    """
+    from splinepy import BSpline, Multipatch, NURBS
+    from splinepy.hierarchy import HBSpline
+
+    if target is None:
+        target = "nurbs" if spline.is_rational else "bspline"
+    if target not in ("bspline", "nurbs", "bezier", "rationalbezier"):
+        raise ValueError(f"Unknown conversion target: {target!r}")
+    if spline.is_rational and target in ("bspline", "bezier"):
+        raise ValueError("Cannot convert a rational spline to a polynomial family")
+
+    hierarchical = isinstance(spline, HBSpline)
+    if target in ("bezier", "rationalbezier"):
+        patches = (
+            spline.extract.beziers(nthreads=nthreads)
+            if hierarchical
+            else spline.extract.beziers()
+        )
+        patches = [getattr(patch, target) for patch in patches]
+        return Multipatch(patches)
+
+    if not hierarchical:
+        return getattr(spline, target)
+
+    data, cache = spline._state
+    threads = _settings.NTHREADS if nthreads is None else nthreads
+    knots, points, weights = cache.to_bspline(threads)
+    degrees = data[0].copy()
+    if target == "bspline":
+        return BSpline(degrees, knots, points)
+    if weights is None:
+        weights = _np.ones(len(points))
+    return NURBS(degrees, knots, points, weights)
+
+
 class Creator:
     """Helper class to build new splines from existing geometries.
 
@@ -1393,6 +1447,10 @@ class Creator:
 
     def __init__(self, spl):
         self._helpee = spl
+
+    @_wraps(converted)
+    def converted(self, target=None, *, nthreads=None):
+        return converted(self._helpee, target, nthreads=nthreads)
 
     @_wraps(extruded)
     def extruded(self, *args, **kwargs):

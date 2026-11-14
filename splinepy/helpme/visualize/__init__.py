@@ -6,27 +6,27 @@ argument, else by ``splinepy.settings.SHOW_BACKEND``.
 """
 
 from splinepy import settings as _settings
-from splinepy.helpme.visualize.gustaf_backend import (
-    _sample_arrow_data as _sample_arrow_data,
-)
-from splinepy.helpme.visualize.gustaf_backend import (
-    _sample_spline as _sample_spline,
-)
-from splinepy.helpme.visualize.gustaf_backend import (
-    make_showable as make_showable,
-)
-from splinepy.helpme.visualize.gustaf_backend import (
-    show_vedo,
-)
 from splinepy.helpme.visualize.options import (
-    MultipatchShowOption as MultipatchShowOption,
-)
-from splinepy.helpme.visualize.options import (
-    SplineShowOption as SplineShowOption,
+    MultipatchShowOption,
+    SplineShowOption,
 )
 from splinepy.helpme.visualize.viewer_backend import show_viewer
 
 _BACKENDS = ("vedo", "viewer")
+
+
+def __getattr__(name):
+    if name in (
+        "_process_scalar_field",
+        "_sample_arrow_data",
+        "_sample_spline",
+        "make_showable",
+        "show_vedo",
+    ):
+        from splinepy.helpme.visualize import gustaf_backend
+
+        return getattr(gustaf_backend, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def show(*objs, backend=None, **kwargs):
@@ -79,10 +79,7 @@ def show(*objs, backend=None, **kwargs):
         global_parameters = (
             kwargs.get("parametric_space", False)
             or kwargs.get("texture") is not None
-            or any(
-                callable(kwargs.get(key))
-                for key in ("data", "scalars", "arrows", "arrow_data")
-            )
+            or any(callable(kwargs.get(key)) for key in ("data", "scalars", "arrows", "arrow_data"))
         )
         objs = (objs[0]._visualization_spline(global_parameters=global_parameters),)
 
@@ -106,13 +103,17 @@ def show(*objs, backend=None, **kwargs):
         open_browser = kwargs.pop("open", None)
         block = kwargs.pop("block", True)
         new_window = kwargs.pop("new_window", False)
-        return _finish(viewer.show(*objs, **kwargs), open_browser, block, new_window)
+        return _finish(
+            viewer.show(*objs, **kwargs), open_browser, block, new_window
+        )
 
     if len(objs) == 1 and hasattr(objs[0], "para_dim"):
         spline = objs[0]
         allowed_dim_combo = ((1, 2), (1, 3), (2, 2), (2, 3), (3, 3))
         if (spline.para_dim, spline.dim) not in allowed_dim_combo:
             raise ValueError("Sorry, can't show given spline.")
+        from splinepy.helpme.visualize.gustaf_backend import show_vedo
+
         return show_vedo(spline, **kwargs)
 
     import gustaf as _gus

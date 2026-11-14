@@ -107,7 +107,7 @@ def load(fname):
     return spline_list
 
 
-def export(fname, spline_list, list_name=None, base64encoding=False):
+def export(fname, spline_list, list_name=None, base64encoding=False, *, extraction_basis=None):
     """
     Exports a list of arbitrary splines in json-format
 
@@ -122,6 +122,9 @@ def export(fname, spline_list, list_name=None, base64encoding=False):
     base64encoding: bool
       Default is False. If True, encodes float type spline properties before
       saving.
+    extraction_basis : {"bspline", "bernstein"} or None
+      Include optional leaf extraction blocks in each hierarchical spline
+      record. Loading reconstructs the hierarchy from its geometry and topology.
 
     Returns
     -------
@@ -155,6 +158,12 @@ def export(fname, spline_list, list_name=None, base64encoding=False):
         is_hierarchy = type(i_spline) in hierarchy_types
         if is_hierarchy:
             i_spline_dict = _hierarchy_record(i_spline)
+            if extraction_basis is not None:
+                extraction = i_spline.extract.basis_data(extraction_basis)
+                i_spline_dict["extraction"] = {
+                    key: value.tolist() if isinstance(value, _np.ndarray) else value
+                    for key, value in extraction.items()
+                }
         elif isinstance(i_spline, _Spline):
             i_spline_dict = i_spline.todict(tolist=True)
         else:

@@ -6,15 +6,11 @@ try:
     from vedo import Plotter as _Plotter
     from vedo import color_map as _color_map
     from vedo.colors import get_color as _get_color
-except ImportError as err:
-    from gustaf.helpers.raise_if import ModuleImportRaiser
+except ImportError:
+    def _missing_vedo(*args, **kwargs):
+        raise ImportError("Vedo is required for SVG export. Install splinepy[all].")
 
-    _error_message_vedo_import = "Vedo library required for svg export"
-    _Plotter = ModuleImportRaiser(_error_message_vedo_import, err)
-    _color_map = ModuleImportRaiser(_error_message_vedo_import, err)
-    _get_color = ModuleImportRaiser(_error_message_vedo_import, err)
-
-from gustaf import Vertices as _Vertices
+    _Plotter = _color_map = _get_color = _missing_vedo
 
 from splinepy.utils.log import debug as _debug
 from splinepy.utils.log import warning as _warning
@@ -257,6 +253,8 @@ def _export_gustaf_object(
 
     Parameters
     """
+    from gustaf import Vertices as _Vertices
+
     r, g, b = _get_color(gus_object.show_options.get("c", "red"))
     a = gus_object.show_options.get("alpha", 1.0)
     radius = gus_object.show_options.get("r", 0.1)
@@ -1258,6 +1256,8 @@ def export(
     -------
     None
     """
+    from gustaf import Vertices as _Vertices
+
     from splinepy.spline import Spline
 
     # Check arguments
