@@ -37,6 +37,9 @@ SOFTWARE.
 
 namespace splinepy::proximity {
 
+/// Validate the base iteration budget before applying fallback multipliers.
+void ValidateIterationBudget(int max_iterations);
+
 using splinepy::core::Span;
 
 /// @brief Source of a single starting point for the local solvers, e.g. the

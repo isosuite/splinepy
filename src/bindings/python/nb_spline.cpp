@@ -686,6 +686,7 @@ void ProximityHandle::Query(nb::object queries,
                             bool aggressive_search_bounds,
                             int nthreads,
                             nb::tuple out) const {
+  proximity::ValidateIterationBudget(max_iterations);
   ContiguousAdapter<double> q_adapter(queries, "float64");
   const int para_dim = ParaDim();
   const int dim = Dim();
