@@ -6,6 +6,7 @@
 
 # use default options for ci
 ci:
+  autofix_prs: false
   autoupdate_branch: 'develop'
   autoupdate_schedule: "monthly"
   submodules: false
