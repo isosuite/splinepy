@@ -852,3 +852,13 @@ def test_create_convert_tensor_and_element_targets():
 
     with pytest.raises(ValueError, match="polynomial"):
         hierarchy.rationalthb.create.converted("bspline")
+
+
+@pytest.mark.parametrize("max_iterations", [-2, np.iinfo(np.int32).max // 25 + 1])
+def test_proximity_iteration_budget_is_validated_for_both_spline_types(max_iterations):
+    tensor = _tensor_spline(False)
+    hierarchy = splinepy.THBSpline.from_bspline(tensor)
+    query = tensor.evaluate([[0.3, 0.7]])
+    for spline in (tensor, hierarchy):
+        with pytest.raises(ValueError, match="max_iterations"):
+            spline.proximities(query, max_iterations=max_iterations)

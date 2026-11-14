@@ -28,6 +28,7 @@ SOFTWARE.
 #include <limits>
 #include <memory>
 #include <numeric>
+#include <stdexcept>
 
 #include "splinepy/core/memory/workspace.hpp"
 #include "splinepy/core/multipatch/interfaces.hpp"
@@ -1308,6 +1309,19 @@ void Proximity::Slsqp(SearchData& d) const {
   ComputeStatus(d, true);
 }
 
+namespace {
+constexpr int kLevenbergMarquardtBudgetMultiplier = 25;
+}
+
+void ValidateIterationBudget(int max_iterations) {
+  if (max_iterations < -1
+      || max_iterations > std::numeric_limits<int>::max()
+                              / kLevenbergMarquardtBudgetMultiplier) {
+    throw std::invalid_argument(
+        "max_iterations is outside the supported proximity range");
+  }
+}
+
 void Proximity::SolveFrom(
     const double* query,
     const double& tolerance,
@@ -1321,6 +1335,8 @@ void Proximity::SolveFrom(
     double& convergence_norm,
     double* first_derivatives /* spline jacobian */,
     double* second_derivatives /* spline hessian */) const {
+
+  ValidateIterationBudget(max_iterations);
 
   // get dims
   const int para_dim = spline_.para_dim;
@@ -1399,7 +1415,8 @@ void Proximity::SolveFrom(
       slsqp_ok = (data.SLSQP.mode == 0);
       break;
     case Solver::kLevenbergMarquart:
-      data.options.max_iter = base_max_iter * 25;
+      data.options.max_iter =
+          base_max_iter * kLevenbergMarquardtBudgetMultiplier;
       LevenbergMarquart(data);
       ComputeStatus(data, true);
       break;

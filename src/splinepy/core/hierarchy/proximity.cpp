@@ -74,10 +74,10 @@ HierarchyProximities(const SplineView& spline,
                      const Options& options) {
   if (!data.bvh.IsValid() || spline.para_dim <= 0 || spline.dim <= 0
       || data.bvh.ParaDim() != spline.para_dim || data.bvh.Dim() != spline.dim
-      || !std::isfinite(tolerance) || tolerance <= 0 || max_iterations < -1
-      || max_iterations > INT32_MAX / 25) {
+      || !std::isfinite(tolerance) || tolerance <= 0) {
     throw SplinepyException("Invalid hierarchy proximity options");
   }
+  proximity::ValidateIterationBudget(max_iterations);
   const auto pd = static_cast<std::size_t>(spline.para_dim);
   const auto dim = static_cast<std::size_t>(spline.dim);
   if (queries.size() % dim || resolutions.size() != pd
