@@ -7,6 +7,7 @@ add_library(
   splinepy/core/hierarchy/refinement.cpp
   splinepy/core/hierarchy/queries.cpp
   splinepy/core/hierarchy/refine.cpp
+  splinepy/core/hierarchy/coarsen.cpp
   splinepy/core/hierarchy/export.cpp
   splinepy/core/hierarchy/proximity.cpp
   splinepy/core/math/binomial.cpp
