@@ -34,16 +34,30 @@ def test_tensor_conversion(rational):
     expected = splinepy.RationalTHBSpline if rational else splinepy.THBSpline
     assert isinstance(hierarchy, expected)
     queries = _query_grid(tensor.knot_vectors)
-    orders = [[0, 0], [1, 0], [0, 1], [1, 1], [2, 0]]
+    orders = [[1, 1], [0, 0], [4, 0], [0, 4], [1, 1]]
     np.testing.assert_allclose(hierarchy.evaluate(queries), tensor.evaluate(queries))
+    expected_derivatives = np.stack(
+        [tensor.derivative(queries, order) for order in orders], axis=1
+    )
+    np.testing.assert_allclose(
+        tensor.derivative(queries, orders, nthreads=2), expected_derivatives, atol=1e-10
+    )
     np.testing.assert_allclose(
         hierarchy.derivative(queries, orders, nthreads=2),
-        tensor.derivative(queries, orders),
+        expected_derivatives,
         atol=1e-12,
     )
-    np.testing.assert_allclose(
-        hierarchy.jacobian(queries), tensor.jacobian(queries), atol=1e-12
+    derivative_out = np.full_like(expected_derivatives, np.nan)
+    assert (
+        hierarchy.derivative(queries, orders, nthreads=2, out=derivative_out)
+        is derivative_out
     )
+    np.testing.assert_allclose(derivative_out, expected_derivatives, atol=1e-12)
+
+    expected_jacobian = tensor.jacobian(queries)
+    jacobian_out = np.full_like(expected_jacobian, np.nan)
+    assert hierarchy.jacobian(queries, nthreads=2, out=jacobian_out) is jacobian_out
+    np.testing.assert_allclose(jacobian_out, expected_jacobian, atol=1e-12)
     values, indices = hierarchy.basis_and_support(queries)
     expected_values, expected_indices = tensor.basis_and_support(queries)
     np.testing.assert_array_equal(indices, expected_indices)
@@ -115,6 +129,26 @@ def test_three_level_truncation_preserves_geometry(rational):
             expected,
             atol=2e-10,
         )
+
+    orders = [[1, 1], [0, 0], [0, 2], [0, 0]]
+    expected_basis = np.stack(
+        [hierarchy.basis_derivative(queries, order) for order in orders], axis=1
+    )
+    expected_support = hierarchy.support(queries)
+    assert np.any(expected_support < 0)
+    basis_out = np.full_like(expected_basis, np.nan)
+    support_out = np.full_like(expected_support, -2)
+    basis, support = hierarchy.basis_derivative_and_support(
+        queries, orders, nthreads=3, out=(basis_out, support_out)
+    )
+    assert basis is basis_out
+    assert support is support_out
+    np.testing.assert_allclose(basis, expected_basis, atol=2e-12)
+    np.testing.assert_array_equal(support, expected_support)
+    assert hierarchy.support(queries, out=support_out) is support_out
+    assert hierarchy.basis_derivative(queries, orders, out=basis_out) is basis_out
+    np.testing.assert_array_equal(support_out, expected_support)
+    np.testing.assert_allclose(basis_out, expected_basis, atol=2e-12)
 
     extraction = hierarchy.extraction
     assert extraction["values"].shape[1] == 9
@@ -369,7 +403,7 @@ def _export_hierarchy(cls):
 )
 def test_hierarchy_exports_arbitrary_coefficients(cls):
     hierarchy = _export_hierarchy(cls)
-    tensor = hierarchy.to_bspline(nthreads=3)
+    tensor = hierarchy.create.converted(nthreads=3)
     expected_type = splinepy.NURBS if hierarchy.is_rational else splinepy.BSpline
     assert isinstance(tensor, expected_type)
     for actual, expected in zip(
@@ -388,7 +422,7 @@ def test_hierarchy_exports_arbitrary_coefficients(cls):
         atol=2e-11,
     )
 
-    patches = hierarchy.extract.bezier_patches(nthreads=3)
+    patches = hierarchy.extract.beziers(nthreads=3)
     multipatch = hierarchy.extract.multipatch(nthreads=3)
     assert len(patches) == len(multipatch.patches) == hierarchy.leaves.size
     expected_patch = (
@@ -416,8 +450,8 @@ def test_hierarchy_exports_arbitrary_coefficients(cls):
 
 def test_iga_blocks_reconstruct_basis_and_export_json(tmp_path):
     hierarchy = _export_hierarchy(splinepy.RationalTHBSpline)
-    bspline = hierarchy.iga_data()
-    bernstein = hierarchy.iga_data("bernstein", nthreads=2)
+    bspline = hierarchy.extract.basis_data()
+    bernstein = hierarchy.extract.basis_data("bernstein", nthreads=2)
     np.testing.assert_array_equal(bspline["offsets"], bernstein["offsets"])
     np.testing.assert_array_equal(
         bspline["active_indices"], bernstein["active_indices"]
@@ -430,11 +464,11 @@ def test_iga_blocks_reconstruct_basis_and_export_json(tmp_path):
         begin, end = bspline["offsets"][leaf : leaf + 2]
         level = bspline["levels"][leaf]
         first = bspline["first_knots"][leaf]
-        degrees = bspline["degrees"]
+        degrees = hierarchy.degrees
         knots = [
             axis[start : start + 2 * (p + 1)]
             for axis, start, p in zip(
-                bspline["level_knots"][level], first, degrees, strict=False
+                hierarchy.levels[level], first, degrees, strict=False
             )
         ]
         tensor = splinepy.BSpline(
@@ -461,18 +495,18 @@ def test_iga_blocks_reconstruct_basis_and_export_json(tmp_path):
             atol=2e-14,
         )
 
-    output = tmp_path / "iga.json"
-    hierarchy.export_iga(output, basis="bernstein")
-    data = json.loads(output.read_text())
+    output = tmp_path / "hierarchy.json"
+    splinepy.io.json.export(output, hierarchy, extraction_basis="bernstein")
+    record = json.loads(output.read_text())["SplineList"][0]
+    data = record["extraction"]
     assert data["basis"] == "bernstein"
     np.testing.assert_array_equal(data["offsets"], bernstein["offsets"])
     np.testing.assert_allclose(data["values"], bernstein["values"])
-    np.testing.assert_allclose(data["weights"], hierarchy.weights)
-    for actual, expected in zip(data["level_knots"], hierarchy.levels, strict=False):
-        for a, b in zip(actual, expected, strict=False):
-            np.testing.assert_array_equal(a, b)
+    np.testing.assert_allclose(record["weights"], hierarchy.weights)
+    (loaded,) = splinepy.io.json.load(output)
+    np.testing.assert_array_equal(loaded.control_points, hierarchy.control_points)
     with pytest.raises(ValueError, match="basis"):
-        hierarchy.iga_data("legendre")
+        hierarchy.extract.basis_data("legendre")
 
 
 @pytest.mark.parametrize(
@@ -492,12 +526,12 @@ def test_export_with_discontinuous_or_unclamped_knots(degree, knots, controls, q
     hierarchy.refine([0], admissible=None)
     queries = np.array(queries)[:, None]
     np.testing.assert_allclose(
-        hierarchy.to_bspline().evaluate(queries),
+        hierarchy.create.converted().evaluate(queries),
         hierarchy.evaluate(queries),
         atol=1e-14,
     )
     for patch, (lower, upper) in zip(
-        hierarchy.extract.bezier_patches(), hierarchy.extraction["bounds"], strict=False
+        hierarchy.extract.beziers(), hierarchy.extraction["bounds"], strict=False
     ):
         local = np.array([[0], [0.23], [0.71]])
         np.testing.assert_allclose(
@@ -714,3 +748,78 @@ def test_thb_coarsen_rejects_inadmissible_merge_atomically():
     assert hierarchy.leaves is before
     hierarchy.coarsen(elements=[[0], [1]], level=1, admissible=None, method="exact")
     assert not hierarchy.is_admissible()
+
+
+@pytest.mark.parametrize("cls", [splinepy.THBSpline, splinepy.RationalTHBSpline])
+def test_hierarchy_extract_tensor_operations(cls):
+    hierarchy = _export_hierarchy(cls)
+    v = np.array([[0.2], [0.7]])
+    (boundary,) = hierarchy.extract.boundaries([0])
+    np.testing.assert_allclose(
+        boundary.evaluate(v),
+        hierarchy.evaluate(np.column_stack((np.zeros(len(v)), v))),
+    )
+    section = hierarchy.extract.spline(0, 0.35)
+    queries = np.column_stack((np.full(len(v), 0.35), v))
+    np.testing.assert_allclose(section.evaluate(v), hierarchy.evaluate(queries))
+    basis, support = hierarchy.basis_and_support(queries)
+    active_id = int(support[0, 0])
+    (graph,) = hierarchy.extract.bases([active_id], parametric_view=False)
+    values = graph.evaluate(queries)
+    np.testing.assert_allclose(values[:, :-1], hierarchy.evaluate(queries))
+    np.testing.assert_allclose(
+        values[:, -1], np.sum(basis * (support == active_id), axis=1), atol=1e-14
+    )
+
+
+def test_tensor_and_rational_thb_conversions():
+    curve = splinepy.Bezier([2], [[0, 0], [0.5, 1], [1, 0]])
+    queries = np.linspace(0, 1, 9)[:, None]
+    for tensor in (curve, curve.bspline):
+        thb = tensor.thb
+        assert type(thb) is splinepy.THBSpline
+        np.testing.assert_allclose(
+            thb.create.converted("bspline").evaluate(queries), curve.evaluate(queries)
+        )
+        np.testing.assert_allclose(
+            tensor.rationalthb.evaluate(queries), curve.evaluate(queries)
+        )
+    for tensor in (curve.rationalbezier, curve.nurbs):
+        assert type(tensor.rationalthb) is splinepy.RationalTHBSpline
+        np.testing.assert_allclose(
+            tensor.rationalthb.create.converted("nurbs").evaluate(queries),
+            tensor.evaluate(queries),
+        )
+    thb = curve.thb
+    thb.refine([0])
+    rational = thb.rationalthb
+    np.testing.assert_array_equal(rational.leaf_cells, thb.leaf_cells)
+    np.testing.assert_allclose(rational.evaluate(queries), thb.evaluate(queries))
+    np.testing.assert_allclose(
+        rational.rationalthb.evaluate(queries), rational.evaluate(queries)
+    )
+
+
+def test_create_convert_tensor_and_element_targets():
+    curve = splinepy.Bezier([2], [[0, 0], [0.5, 1], [1, 0]])
+    tensor = curve.bspline
+    tensor.insert_knots(0, [0.3])
+    hierarchy = tensor.thb
+    hierarchy.refine([0])
+    queries = np.linspace(0, 1, 9)[:, None]
+
+    for source, count in ((curve, 1), (tensor, 2), (hierarchy, len(hierarchy.leaves))):
+        nurbs = source.create.converted("nurbs")
+        assert isinstance(nurbs, splinepy.NURBS)
+        np.testing.assert_allclose(nurbs.evaluate(queries), curve.evaluate(queries))
+        for target, family in (
+            ("bezier", splinepy.Bezier),
+            ("rationalbezier", splinepy.RationalBezier),
+        ):
+            patches = source.create.converted(target)
+            assert isinstance(patches, splinepy.Multipatch)
+            assert len(patches.patches) == count
+            assert all(isinstance(patch, family) for patch in patches.patches)
+
+    with pytest.raises(ValueError, match="polynomial"):
+        hierarchy.rationalthb.create.converted("bspline")

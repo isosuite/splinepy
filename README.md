@@ -10,11 +10,16 @@
 ## Install guide
 splinepy wheels are available for python3.8+ for MacOS, Linux, and Windows:
 ```bash
-# including all optional dependencies
+# including the legacy Vedo backend
 pip install "splinepy[all]"  # quotation marks required for some shells
 # or
 pip install splinepy
 ```
+
+The default viewer and spline operations work without Gustaf. Install
+`splinepy[gustaf]` for mesh extraction, FFD with Gustaf meshes, and MFEM
+Cartesian export. Install `splinepy[all]` for legacy Vedo rendering and SVG
+export.
 
 
 You can install it directly from the source:

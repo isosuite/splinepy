@@ -310,3 +310,29 @@ def test_grid_columns_are_left_to_the_page_by_default():
     a = splinepy.Bezier(degrees=[1], control_points=[[0, 0], [1, 1]])
     assert viewer.show(a, a, a, a).scene["options"]["ncols"] is None
     assert viewer.show(a, a, a, a, ncols=2).scene["options"]["ncols"] == 2
+
+
+def test_default_viewer_without_gustaf(tmp_path):
+    import subprocess
+    import sys
+    from textwrap import dedent
+
+    script = dedent("""
+        import sys
+
+        class BlockGustaf:
+            def find_spec(self, name, *args):
+                if name == "gustaf" or name.startswith("gustaf."):
+                    raise ModuleNotFoundError(name)
+
+        sys.meta_path.insert(0, BlockGustaf())
+        import splinepy
+
+        spline = splinepy.Bezier(
+            degrees=[1], control_points=[[0, 0], [1, 0]]
+        )
+        assert spline.sample(3).shape == (3, 2)
+        assert spline.show(open=False) is not None
+    """)
+    # Import the installed package rather than the source tree in CI.
+    subprocess.run([sys.executable, "-c", script], cwd=tmp_path, check=True)

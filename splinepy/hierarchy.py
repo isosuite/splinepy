@@ -1,6 +1,5 @@
 """Hierarchical B-splines with leaf-local tensor extraction."""
 
-import json
 from itertools import product
 from operator import index
 
@@ -27,59 +26,6 @@ def _thread_count(nthreads):
     return settings.NTHREADS if nthreads is None else nthreads
 
 
-def _validate_out(values, out):
-    if out is not None and (
-        not isinstance(out, np.ndarray)
-        or out.shape != values.shape
-        or out.dtype != values.dtype
-        or not out.flags.c_contiguous
-        or not out.flags.writeable
-    ):
-        raise ValueError(
-            "out must be a writable C-contiguous array of the result shape and dtype"
-        )
-
-
-def _copy_to_out(values, out):
-    if out is None:
-        return values
-    _validate_out(values, out)
-    out[...] = values
-    return out
-
-
-class _HierarchyExtractor:
-    def __init__(self, spline):
-        self._spline = spline
-
-    def bezier_patches(self, nthreads=None):
-        """Return one unit-box Bezier patch per leaf, in packed leaf order."""
-        from splinepy import Bezier, RationalBezier
-
-        data, cache = self._spline._state
-        points, weights = cache.bezier_geometry(_thread_count(nthreads))
-        degrees = data[0]
-        if weights is None:
-            return [
-                Bezier(degrees=degrees.copy(), control_points=points_on_leaf.copy())
-                for points_on_leaf in points
-            ]
-        return [
-            RationalBezier(
-                degrees=degrees.copy(),
-                control_points=points_on_leaf.copy(),
-                weights=weights_on_leaf.copy(),
-            )
-            for points_on_leaf, weights_on_leaf in zip(points, weights, strict=False)
-        ]
-
-    def multipatch(self, nthreads=None):
-        """Return the leaf Beziers as a potentially nonconforming multipatch."""
-        from splinepy import Multipatch
-
-        return Multipatch(splines=self.bezier_patches(nthreads))
-
-
 class HBSpline:
     """Polynomial hierarchical B-spline with axis-zero-fastest coefficients.
 
@@ -97,8 +43,8 @@ class HBSpline:
         if degrees.ndim != 1 or not degrees.size or len(knots) != degrees.size:
             raise ValueError("expected one degree and knot vector per parametric axis")
         span_counts = []
-        for degree_value, axis in zip(degrees, knots, strict=False):
-            degree = int(degree_value)
+        for raw_degree, axis in zip(degrees, knots, strict=False):
+            degree = int(raw_degree)
             if axis.ndim != 1 or axis.size < 2 * (degree + 1):
                 raise ValueError("invalid knot vector length")
             domain_knots = axis[degree : axis.size - degree]
@@ -251,68 +197,22 @@ class HBSpline:
     @property
     def extract(self):
         """Access leaf Bezier and multipatch exports."""
-        return _HierarchyExtractor(self)
+        from splinepy.helpme.extract import HierarchyExtractor
 
-    def to_bspline(self, nthreads=None):
-        """Materialize the exact finest-level BSpline or NURBS."""
-        from splinepy import NURBS, BSpline
+        return HierarchyExtractor(self)
 
-        data, cache = self._state
-        knots, points, weights = cache.to_bspline(_thread_count(nthreads))
-        properties = {
-            "degrees": data[0].copy(),
-            "knot_vectors": knots,
-            "control_points": points,
-        }
-        return (
-            BSpline(**properties)
-            if weights is None
-            else NURBS(**properties, weights=weights)
-        )
+    @property
+    def create(self):
+        """Access spline construction helpers."""
+        from splinepy.helpme.create import Creator
 
-    def iga_data(self, basis="bspline", nthreads=None):
-        """Return leaf extraction blocks and global geometry coefficients.
-
-        Block e is values[offsets[e]:offsets[e+1]], with matching rows in
-        active_indices. Columns follow axis-zero-fastest tensor order.
-        B-spline columns start at first_knots[e] in each level knot vector.
-        Bernstein columns use unit-box coordinates mapped by bounds[e].
-        For rational geometry, multiply each row by its global weight and
-        normalize by the sum of the weighted basis functions.
-        """
-        if basis not in ("bspline", "bernstein"):
-            raise ValueError("basis must be 'bspline' or 'bernstein'")
-        data, cache = self._state
-        result = cache.extraction()
-        if basis == "bernstein":
-            result["values"] = cache.bernstein_extraction(_thread_count(nthreads))
-        result.update(
-            basis=basis,
-            degrees=data[0],
-            level_knots=data[1],
-            active_functions=data[3],
-            control_points=data[4],
-            weights=data[5],
-        )
-        return result
-
-    def export_iga(self, fname, basis="bspline", nthreads=None):
-        """Write the IGA extraction data to a JSON file."""
-        data = self.iga_data(basis=basis, nthreads=nthreads)
-        data["level_knots"] = [
-            [axis.tolist() for axis in level] for level in data["level_knots"]
-        ]
-        for key, value in data.items():
-            if isinstance(value, np.ndarray):
-                data[key] = value.tolist()
-        with open(fname, "w", encoding="utf-8") as output:
-            json.dump(data, output, allow_nan=False)
+        return Creator(self)
 
     def _visualization_spline(self, *, global_parameters=False):
         # A finest-level tensor volume exposes the outer boundary without
         # rendering unmatched hanging faces from the leaf multipatch.
         if self.para_dim == 3 or global_parameters:
-            return self.to_bspline()
+            return self.create.converted()
         return self.extract.multipatch()
 
     def show(self, **kwargs):
@@ -332,10 +232,9 @@ class HBSpline:
         cells[:, 0] = levels
         for level, knots in enumerate(knot_levels):
             mask = levels == level
-            for axis, (degree_value, vector) in enumerate(
-                zip(degrees, knots, strict=False)
-            ):
-                degree = int(degree_value)
+            pairs = zip(degrees, knots, strict=False)
+            for axis, (raw_degree, vector) in enumerate(pairs):
+                degree = int(raw_degree)
                 breaks = np.unique(vector[degree : vector.size - degree])
                 cells[mask, axis + 1] = np.searchsorted(
                     breaks, extraction["bounds"][mask, 0, axis]
@@ -519,27 +418,47 @@ class HBSpline:
         """Evaluate one or several derivative multi-indices."""
         queries = np.asarray(queries, dtype=np.float64, order="C")
         orders = self._derivative_orders(orders)
-        threads = _thread_count(nthreads)
-        if len(orders) == 1:
-            if isinstance(out, np.ndarray) and np.may_share_memory(queries, out):
+        if isinstance(out, np.ndarray):
+            if np.may_share_memory(queries, out):
                 queries = queries.copy()
-            return self._cache.evaluate(queries, orders[0], threads, out)
-        values = np.stack(
-            [self._cache.evaluate(queries, order, threads, None) for order in orders],
-            axis=1,
-        )
-        return _copy_to_out(values, out)
+            if np.may_share_memory(orders, out):
+                orders = orders.copy()
+        return self._cache.evaluate(queries, orders, _thread_count(nthreads), out)
 
     def jacobian(self, queries, nthreads=None, out=None):
         """Return the Jacobian with shape (n, dim, para_dim)."""
-        derivatives = self.derivative(
-            queries, np.eye(self.para_dim, dtype=np.int32), nthreads
+        queries = np.asarray(queries, dtype=np.float64, order="C")
+        if isinstance(out, np.ndarray) and np.may_share_memory(queries, out):
+            queries = queries.copy()
+        return self._cache.jacobian(queries, _thread_count(nthreads), out)
+
+    def _basis_query(
+        self, queries, orders, nthreads, out_basis, out_support, *, return_support
+    ):
+        queries = np.asarray(queries, dtype=np.float64, order="C")
+        for out in (out_basis, out_support):
+            if out is None:
+                continue
+            if not isinstance(out, np.ndarray):
+                raise ValueError("out must be a NumPy array")
+            if np.may_share_memory(queries, out):
+                queries = queries.copy()
+            if orders is not None and np.may_share_memory(orders, out):
+                orders = orders.copy()
+        if (
+            out_basis is not None
+            and out_support is not None
+            and np.shares_memory(out_basis, out_support)
+        ):
+            raise ValueError("basis and support output arrays must not overlap")
+        return self._cache.basis(
+            queries,
+            orders,
+            _thread_count(nthreads),
+            out_basis,
+            out_support,
+            return_support,
         )
-        if self.para_dim == 1:
-            jacobian = derivatives[..., None]
-        else:
-            jacobian = np.ascontiguousarray(derivatives.swapaxes(1, 2))
-        return _copy_to_out(jacobian, out)
 
     def basis_derivative_and_support(self, queries, orders, nthreads=None, out=None):
         """Return basis derivatives and global support indices.
@@ -547,39 +466,17 @@ class HBSpline:
         Rows are padded to the largest support in the query batch. Unused
         entries have value zero and support index -1.
         """
-        queries = np.asarray(queries, dtype=np.float64, order="C")
-        orders = self._derivative_orders(orders)
-        threads = _thread_count(nthreads)
-        offsets, indices, values = self._cache.basis(queries, orders[0], threads)
-        counts = np.diff(offsets).astype(np.intp, copy=False)
-        width = int(counts.max(initial=0))
-        slots = np.arange(width) < counts[:, None]
-        support = np.full(slots.shape, -1, dtype=np.int64)
-        support[slots] = indices
-
-        def padded(raw):
-            basis = np.zeros(slots.shape, dtype=np.float64)
-            basis[slots] = raw
-            return basis
-
-        if len(orders) == 1:
-            basis = padded(values)
-        else:
-            basis = np.stack(
-                [padded(values)]
-                + [
-                    padded(self._cache.basis(queries, order, threads)[2])
-                    for order in orders[1:]
-                ],
-                axis=1,
-            )
         if out is None:
-            return basis, support
+            out = (None, None)
         if len(out) != 2:
             raise ValueError("out must contain two arrays")
-        _validate_out(basis, out[0])
-        _validate_out(support, out[1])
-        return _copy_to_out(basis, out[0]), _copy_to_out(support, out[1])
+        return self._basis_query(
+            queries,
+            self._derivative_orders(orders),
+            nthreads,
+            *out,
+            return_support=True,
+        )
 
     def basis_and_support(self, queries, nthreads=None, out=None):
         """Return basis values and global support indices."""
@@ -589,17 +486,26 @@ class HBSpline:
 
     def basis(self, queries, nthreads=None, out=None):
         """Return basis values with zero padding."""
-        return _copy_to_out(self.basis_and_support(queries, nthreads)[0], out)
+        return self.basis_derivative(
+            queries, np.zeros(self.para_dim, dtype=np.int32), nthreads, out
+        )
 
     def support(self, queries, nthreads=None, out=None):
         """Return global basis indices with -1 padding."""
-        return _copy_to_out(self.basis_and_support(queries, nthreads)[1], out)
+        return self._basis_query(
+            queries, None, nthreads, None, out, return_support=True
+        )[1]
 
     def basis_derivative(self, queries, orders, nthreads=None, out=None):
         """Return basis derivatives with zero padding."""
-        return _copy_to_out(
-            self.basis_derivative_and_support(queries, orders, nthreads)[0], out
-        )
+        return self._basis_query(
+            queries,
+            self._derivative_orders(orders),
+            nthreads,
+            out,
+            None,
+            return_support=False,
+        )[0]
 
 
 class RationalHBSpline(HBSpline):
@@ -612,6 +518,20 @@ class THBSpline(HBSpline):
     """Polynomial truncated hierarchical B-spline."""
 
     _truncate = True
+
+    @property
+    def rationalthb(self):
+        """Copy this hierarchy as a rational THB spline with the same geometry."""
+        weights = (
+            self.weights if self.is_rational else np.ones(len(self.control_points))
+        )
+        return RationalTHBSpline.from_hierarchy(
+            self.degrees,
+            self.levels,
+            self.leaf_cells,
+            self.control_points,
+            weights=weights,
+        )
 
     def coarsen(
         self,

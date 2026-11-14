@@ -8,8 +8,6 @@ from itertools import chain as _chain
 from itertools import repeat as _repeat
 
 import numpy as _np
-from gustaf.helpers.data import DataHolder as _DataHolder
-from gustaf.utils.arr import enforce_len as _enforce_len
 
 from splinepy._base import SplinepyBase as _SplinepyBase
 
@@ -27,6 +25,55 @@ __all__ = [
     "SplineDataAdaptor",
     "SplineData",
 ]
+
+
+def _enforce_len(value, length):
+    array = _np.asarray(value)
+    if array.ndim == 0:
+        return _np.repeat(array, length)
+    if len(array) != length:
+        raise ValueError(f"Expected {length} entries, got {len(array)}.")
+    return array
+
+
+class _DataHolder:
+    """Storage shared by spline and multipatch data adaptors."""
+
+    __slots__ = ("_helpee", "_saved")
+
+    def __init__(self, helpee):
+        self._helpee = helpee
+        self._saved = {}
+
+    def __getitem__(self, key):
+        return self._saved[key]
+
+    def __contains__(self, key):
+        return key in self._saved
+
+    def __len__(self):
+        return len(self._saved)
+
+    def get(self, key, default_values=None):
+        return self._saved.get(key, default_values)
+
+    def pop(self, key, default=None):
+        return self._saved.pop(key, default)
+
+    def clear(self):
+        self._saved.clear()
+
+    def keys(self):
+        return self._saved.keys()
+
+    def values(self):
+        return self._saved.values()
+
+    def items(self):
+        return self._saved.items()
+
+    def update(self, **kwargs):
+        self._saved.update(**kwargs)
 
 
 def enforce_contiguous(array, dtype=None, asarray=False):

@@ -5,7 +5,6 @@ Currently hardcoded for 2D-single-patch-splines.
 
 from ast import literal_eval
 
-import gustaf as _gus
 import numpy as _np
 
 from splinepy.io.ioutils import dict_to_spline as _dict_to_spline
@@ -316,6 +315,8 @@ def export_cartesian(
     -------
     None
     """
+    import gustaf as _gus
+
     from splinepy import Multipatch as _Multipatch
 
     # Check first spline

@@ -3,8 +3,6 @@
 Freeform Deformation!
 """
 
-import gustaf as _gus
-
 from splinepy import settings as _settings
 from splinepy._base import SplinepyBase as _SplinepyBase
 from splinepy.helpme.create import from_bounds as _from_bounds
@@ -118,7 +116,9 @@ class FFD(_SplinepyBase):
             return None
 
         # type check
-        if not isinstance(mesh, _gus.Vertices):
+        from gustaf import Vertices
+
+        if not isinstance(mesh, Vertices):
             raise TypeError("mesh should be an instance of gus.Vertices")
 
         # warn and erase existing spline if dimension doesn't match
@@ -332,6 +332,8 @@ class FFD(_SplinepyBase):
         See show() for more information. This function redirects to it
         directly with the return_showable keyword set to True.
         """
+        import gustaf as _gus
+
         if self._spline is None and self._mesh is None:
             raise ValueError("Please set a mesh before calling show()")
 

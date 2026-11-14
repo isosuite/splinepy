@@ -312,12 +312,13 @@ class Mapper(_SplinepyBase):
         supports = as_dictionary["support"]
         if basis_function_values:
             results["basis_function_values"] = as_dictionary
-        # Start computation
+        if gradient or divergence or hessian or laplacian:
+            coefficients = self._field_reference.control_points[supports, :]
         if gradient:
             results["gradient"] = _np.einsum(
                 "qsd,qsv->qvd",
                 as_dictionary["gradient"],
-                self._field_reference.control_points[supports, :],
+                coefficients,
                 optimize=True,
             )
         if divergence:
@@ -331,7 +332,7 @@ class Mapper(_SplinepyBase):
                     results["divergence"] = _np.einsum(
                         "qsd,qsd->q",
                         as_dictionary["gradient"],
-                        self._field_reference.control_points[supports, :],
+                        coefficients,
                         optimize=True,
                     )
             else:
@@ -344,7 +345,7 @@ class Mapper(_SplinepyBase):
             results["hessian"] = _np.einsum(
                 "qsij,qsv->qvij",
                 as_dictionary["hessian"],
-                self._field_reference.control_points[supports, :],
+                coefficients,
                 optimize=True,
             )
         if laplacian:
@@ -356,7 +357,7 @@ class Mapper(_SplinepyBase):
                 results["laplacian"] = _np.einsum(
                     "qs,qsd->qd",
                     as_dictionary["laplacian"],
-                    self._field_reference.control_points[supports, :],
+                    coefficients,
                     optimize=True,
                 )
 

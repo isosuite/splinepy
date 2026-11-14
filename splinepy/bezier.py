@@ -70,11 +70,8 @@ class BezierBase(_spline.Spline):
                 f"Multiplication with {type(factor)}-type is not supported."
             )
 
-        # multiply - dimension compatibility is checked in cpp side
-        multiplied = _splinepy_core.multiply(self, factor)
-
-        # return corresponding type
-        return _settings.NAME_TO_TYPE[multiplied.name](spline=multiplied)
+        # Dimension compatibility is checked in C++.
+        return _splinepy_core.multiply(self, factor)
 
     def __add__(self, summand):
         """
@@ -116,11 +113,7 @@ class BezierBase(_spline.Spline):
         # Ensure array-type
         orders = _utils.data.enforce_contiguous(orders, dtype="int32")
         # dimension compatibility checked in cpp
-        derivative_spline = _splinepy_core.derivative_spline(self, orders)
-
-        return _settings.NAME_TO_TYPE[derivative_spline.name](
-            spline=derivative_spline
-        )
+        return _splinepy_core.derivative_spline(self, orders)
 
     def compose(self, inner_function, compute_sensitivities=False):
         r"""
@@ -176,19 +169,11 @@ class BezierBase(_spline.Spline):
         composed = _splinepy_core.compose(self, inner_function)
 
         if compute_sensitivities:
-            composed_sensivities = _splinepy_core.compose_sensitivities(
+            sensitivities = _splinepy_core.compose_sensitivities(
                 self, inner_function
             )
-
-            return (
-                _settings.NAME_TO_TYPE[composed.name](spline=composed),
-                [
-                    _settings.NAME_TO_TYPE[cc.name](spline=cc)
-                    for cc in composed_sensivities
-                ],
-            )
-        else:
-            return _settings.NAME_TO_TYPE[composed.name](spline=composed)
+            return composed, sensitivities
+        return composed
 
     @staticmethod
     def compose_batch(
@@ -228,20 +213,13 @@ class BezierBase(_spline.Spline):
         outers, inners = list(outers), list(inners)
         nthreads = int(nthreads)
 
-        def wrap(grid):
-            return [
-                [_settings.NAME_TO_TYPE[c.name](spline=c) for c in row]
-                for row in grid
-            ]
-
-        composed = wrap(_splinepy_core.compose_batch(outers, inners, nthreads))
+        composed = _splinepy_core.compose_batch(outers, inners, nthreads)
         if not compute_sensitivities:
             return composed
 
-        raw = _splinepy_core.compose_sensitivities_batch(
+        sensitivities = _splinepy_core.compose_sensitivities_batch(
             outers, inners, nthreads
         )
-        sensitivities = [[wrap([cell])[0] for cell in row] for row in raw]
         return composed, sensitivities
 
     @staticmethod
@@ -270,13 +248,9 @@ class BezierBase(_spline.Spline):
           ``composition_ders[o][i]`` belongs to ``outers[o]`` and
           ``inners[i]``.
         """
-        raw = _splinepy_core.composition_derivative_batch(
+        return _splinepy_core.composition_derivative_batch(
             list(outers), list(inners), list(inner_derivatives), int(nthreads)
         )
-        return [
-            [_settings.NAME_TO_TYPE[c.name](spline=c) for c in row]
-            for row in raw
-        ]
 
     def composition_derivative(self, inner, inner_derivative):
         r"""
@@ -310,12 +284,8 @@ class BezierBase(_spline.Spline):
         composition_der: BezierBase
         """
         # compatibility check is done in cpp
-        composition_der = _splinepy_core.composition_derivative(
+        return _splinepy_core.composition_derivative(
             self, inner, inner_derivative
-        )
-
-        return _settings.NAME_TO_TYPE[composition_der.name](
-            spline=composition_der
         )
 
     def split(self, para_dim, locations):
@@ -447,6 +417,20 @@ class Bezier(BezierBase):
             degrees=degrees,
             control_points=control_points,
         )
+
+    @property
+    def thb(self):
+        """Return a single-level THB spline with the same geometry."""
+        from splinepy.hierarchy import THBSpline
+
+        return THBSpline.from_bspline(self.bspline)
+
+    @property
+    def rationalthb(self):
+        """Return a single-level rational THB spline with the same geometry."""
+        from splinepy.hierarchy import RationalTHBSpline
+
+        return RationalTHBSpline.from_bspline(self.nurbs)
 
     @property
     def bezier(self):

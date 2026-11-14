@@ -128,6 +128,13 @@ class RationalBezier(_BezierBase):
         )
 
     @property
+    def rationalthb(self):
+        """Return a single-level rational THB spline with the same geometry."""
+        from splinepy.hierarchy import RationalTHBSpline
+
+        return RationalTHBSpline.from_bspline(self.nurbs)
+
+    @property
     def rationalbezier(self):
         return self.copy(saved_data=False)
 

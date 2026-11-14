@@ -6,18 +6,6 @@ argument, else by ``splinepy.settings.SHOW_BACKEND``.
 """
 
 from splinepy import settings as _settings
-from splinepy.helpme.visualize.gustaf_backend import (
-    _sample_arrow_data as _sample_arrow_data,
-)
-from splinepy.helpme.visualize.gustaf_backend import (
-    _sample_spline as _sample_spline,
-)
-from splinepy.helpme.visualize.gustaf_backend import (
-    make_showable as make_showable,
-)
-from splinepy.helpme.visualize.gustaf_backend import (
-    show_vedo,
-)
 from splinepy.helpme.visualize.options import (
     MultipatchShowOption as MultipatchShowOption,
 )
@@ -27,6 +15,20 @@ from splinepy.helpme.visualize.options import (
 from splinepy.helpme.visualize.viewer_backend import show_viewer
 
 _BACKENDS = ("vedo", "viewer")
+
+
+def __getattr__(name):
+    if name in (
+        "_process_scalar_field",
+        "_sample_arrow_data",
+        "_sample_spline",
+        "make_showable",
+        "show_vedo",
+    ):
+        from splinepy.helpme.visualize import gustaf_backend
+
+        return getattr(gustaf_backend, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def show(*objs, backend=None, **kwargs):
@@ -113,6 +115,8 @@ def show(*objs, backend=None, **kwargs):
         allowed_dim_combo = ((1, 2), (1, 3), (2, 2), (2, 3), (3, 3))
         if (spline.para_dim, spline.dim) not in allowed_dim_combo:
             raise ValueError("Sorry, can't show given spline.")
+        from splinepy.helpme.visualize.gustaf_backend import show_vedo
+
         return show_vedo(spline, **kwargs)
 
     import gustaf as _gus

@@ -243,16 +243,23 @@ def default_solver(
     spline, queries, resolutions, tight=False, chain="default", guess="bvh4"
 ):
     """The library's own pipeline (initial guess -> solver chain)."""
-    handle = splinepy.splinepy_core.ProximityHandle()
-    handle.chain, handle.guard = CHAINS[chain]
-    handle.guess, handle.max_starts = GUESSES[guess]
-    spline._proximity = handle
-    return spline.proximities(
-        queries=queries,
-        initial_guess_sample_resolutions=resolutions,
-        tight_search_bounds=tight,
-        nthreads=1,
+    solvers, guard = CHAINS[chain]
+    strategy, max_starts = GUESSES[guess]
+    handle = splinepy.splinepy_core.ProximityHandle(
+        spline, resolutions, guess=strategy, chain=solvers,
+        guard=guard, max_starts=max_starts,
     )
+    out = np.empty((len(queries), spline.para_dim))
+    residuals = np.empty((len(queries), 1))
+    handle.query(
+        queries=queries,
+        tolerance=min(splinepy.settings.TOLERANCE, 1e-14),
+        max_iterations=-1,
+        aggressive_search_bounds=tight,
+        nthreads=1,
+        out=(out, None, None, None, residuals, None, None),
+    )
+    return out
 
 
 VARIANTS = {

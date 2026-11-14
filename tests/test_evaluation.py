@@ -696,12 +696,10 @@ def _dense_best_distance(spline, queries, n=4001):
 )
 def test_proximities_multiple_basins(guess, control_points, np_rng):
     curve = splinepy.Bezier(degrees=[3], control_points=control_points)
-    handle = splinepy.splinepy_core.ProximityHandle()
-    handle.guess = guess
-    curve._proximity = handle
+    search = curve.prepare_proximity(guess=guess)
 
     queries = np_rng.uniform(-1.0, 4.0, (150, 2))
-    found = curve.evaluate(curve.proximities(queries))
+    found = curve.evaluate(search.query(queries))
     distance = np.linalg.norm(found - queries, axis=1)
 
     # bvh is expected to be exact here, the kd-tree may miss a basin
@@ -722,11 +720,9 @@ def test_proximities_many_elements_bvh_matches_grid(np_rng):
     queries = np_rng.uniform(-0.3, 1.3, (200, 2))
     results = {}
     for guess in ("bvh", "grid"):
-        handle = splinepy.splinepy_core.ProximityHandle()
-        handle.guess = guess
-        spline._proximity = handle
+        search = spline.prepare_proximity(guess=guess)
         results[guess] = np.linalg.norm(
-            spline.evaluate(spline.proximities(queries)) - queries, axis=1
+            spline.evaluate(search.query(queries)) - queries, axis=1
         )
 
     assert np.all(results["bvh"] <= results["grid"] + 1e-9)
@@ -750,3 +746,44 @@ def test_proximities_collapsed_edge_cone(np_rng):
         grid[None] - queries[:, None], axis=-1
     ).min(axis=1)
     assert np.all(distance <= reference + 1e-6)
+
+
+
+def test_tensor_query_shape_without_bounds_check(monkeypatch):
+    spline = splinepy.helpme.create.box(1, 1)
+    monkeypatch.setattr(splinepy.settings, "CHECK_BOUNDS", False)
+    with pytest.raises(ValueError, match="Dimension mismatch"):
+        spline.evaluate(np.zeros((2, 3)))
+    with pytest.raises(ValueError, match="Orders must have shape"):
+        spline.basis_derivative([[0.5, 0.5]], [[0], [1]])
+    out = np.empty((0, 2))
+    assert spline.evaluate(np.empty((0, 2)), out=out) is out
+
+
+def test_prepared_proximity_uses_geometry_snapshot():
+    curve = splinepy.Bezier(degrees=[1], control_points=[[0, 0], [1, 0]])
+    search = curve.prepare_proximity()
+    queries = [[0.25, 0]]
+    np.testing.assert_allclose(search.query(queries), [[0.25]])
+    curve.control_points[:] += [0.5, 0]
+    np.testing.assert_allclose(curve.proximities(queries), [[0]])
+    np.testing.assert_allclose(search.query(queries), [[0.25]])
+
+
+def test_proximity_out_buffers():
+    curve = splinepy.Bezier(degrees=[1], control_points=[[0, 0], [1, 0]])
+    search = curve.prepare_proximity()
+    queries = [[0.25, 0.1], [0.75, 0.2]]
+    expected = curve.proximities(queries, return_verbose=True)
+    out = tuple(np.empty_like(array) for array in expected)
+    assert search.query(queries, return_verbose=True, out=out) is out
+    for actual, reference in zip(out, expected, strict=False):
+        np.testing.assert_allclose(actual, reference)
+
+    params = np.empty_like(expected[0])
+    assert curve.proximities(queries, out=params) is params
+    np.testing.assert_allclose(params, expected[0])
+
+    params.flags.writeable = False
+    with pytest.raises(ValueError, match="Invalid proximity output"):
+        search.query(queries, out=params)

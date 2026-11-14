@@ -28,19 +28,20 @@ def main():
     hierarchy = splinepy.THBSpline.from_bspline(base)
     hierarchy.refine(where=lambda centers: (centers < 0.5).any(axis=1), admissible=2)
 
-    iga = hierarchy.iga_data(basis="bernstein")
     parameters = np.array([[0.26, 0.37], [0.8, 0.91]])
     physical = base.evaluate(parameters)
     recovered = hierarchy.proximities(physical)
     np.testing.assert_allclose(recovered, parameters, atol=1e-10)
 
     print(
-        f"{len(hierarchy.leaves)} leaves, {len(iga['control_points'])} active functions"
+        f"{len(hierarchy.leaves)} leaves, "
+        f"{len(hierarchy.control_points)} active functions"
     )
     if options.output is not None:
         options.output.mkdir(parents=True, exist_ok=True)
-        splinepy.io.export(options.output / "hierarchy.json", hierarchy)
-        hierarchy.export_iga(options.output / "iga.json", basis="bernstein")
+        splinepy.io.json.export(
+            options.output / "hierarchy.json", hierarchy, extraction_basis="bernstein"
+        )
     if options.show:
         hierarchy.show(backend="viewer")
 

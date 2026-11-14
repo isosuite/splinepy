@@ -301,3 +301,46 @@ def test_compose_batch_sensitivities_and_derivative_match_single():
                             inner, inner_ders[i]
                         )
                         assert np.allclose(ders[o][i].cps, exp_d.cps)
+
+
+def test_native_spline_result_keeps_transferred_buffers_alive():
+    from splinepy import Bezier, RationalBezier
+
+    outer = Bezier([1], [[0], [1]])
+    inner = RationalBezier([1], [[0], [1]], [1, 2])
+    result = outer.compose(inner).nurbs
+    points, weights, knots = result.cps, result.weights, result.knot_vectors[0]
+    del result
+
+    for array in (points, weights, knots):
+        owner = array
+        while isinstance(owner, np.ndarray) and owner.base is not None:
+            owner = owner.base
+        assert isinstance(owner, memoryview)
+        assert array.flags.writeable
+
+    points[1, 0] = 2
+    np.testing.assert_array_equal(points[:, 0], [0, 2])
+    np.testing.assert_array_equal(weights[:, 0], [1, 2])
+    np.testing.assert_array_equal(knots, [0, 0, 1, 1])
+
+
+def test_spline_shares_compatible_inputs_and_copy_is_independent():
+    from splinepy import NURBS
+
+    degrees = np.array([1], dtype=np.int32)
+    knots = np.array([0.0, 0.0, 1.0, 1.0])
+    points = np.array([[0.0], [1.0]])
+    weights = np.array([1.0, 2.0])
+    spline = NURBS(degrees, [knots], points, weights)
+    clone = spline.copy()
+    assert np.shares_memory(spline.degrees, degrees)
+    assert degrees.flags.writeable
+    assert np.shares_memory(spline.knot_vectors[0], knots)
+    assert np.shares_memory(spline.cps, points)
+    assert np.shares_memory(spline.weights, weights)
+    points[1, 0] = 2
+    np.testing.assert_allclose(spline.evaluate([[1.0]]), [[2.0]])
+    np.testing.assert_allclose(clone.evaluate([[1.0]]), [[1.0]])
+    assert not np.shares_memory(clone.knot_vectors[0], knots)
+    assert not np.shares_memory(spline.todict()["knot_vectors"][0], knots)

@@ -65,5 +65,7 @@ set(SPLINEPY_CORE_BUILD_BENCHMARKS
     OFF
     CACHE BOOL "Build splinepy core benchmarks")
 
-add_subdirectory(core)
+if(SPLINEPY_CORE_BUILD_TESTS)
+  enable_testing()
+endif()
 add_subdirectory(src)
