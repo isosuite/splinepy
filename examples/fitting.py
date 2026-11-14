@@ -45,7 +45,7 @@ if __name__ == "__main__":
     interp_errs = evaluate_approximation(interpolated_curve, fitting_points)
     approx_errs = evaluate_approximation(approximated_curve, fitting_points)
 
-    gus.show(
+    splinepy.show(
         [
             f"Interpolated curve \nMax. distance {interp_errs[0]:.3f}, "
             f"mean distance {interp_errs[1]:.3f}",
@@ -84,7 +84,7 @@ if __name__ == "__main__":
         ]
         for (cps, curve, errs) in approximated_curves
     ]
-    gus.show(*gus_list)
+    splinepy.show(*gus_list)
 
     # 2. Surface fitting
     n_sample = [20, 20]
@@ -139,7 +139,7 @@ if __name__ == "__main__":
     pts.show_options["c"] = "blue"
     pts.show_options["r"] = 10
 
-    gus.show(
+    splinepy.show(
         [
             f"Interpolated surface with ({n_cps_int}) CPs\n"
             f"Max. Distance {max_error_int:.3f},"
@@ -186,7 +186,7 @@ if __name__ == "__main__":
         ]
         for (cps, surface, errs) in approximated_surfaces
     ]
-    gus.show(*gus_list)
+    splinepy.show(*gus_list)
 
     # Unevenly spaced ctps
     uneven_queries = splinepy.cartesian_product(

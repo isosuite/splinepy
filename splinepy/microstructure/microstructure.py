@@ -1,4 +1,3 @@
-import gustaf as _gus
 import numpy as _np
 
 from splinepy._base import SplinepyBase as _SplinepyBase
@@ -673,12 +672,35 @@ class Microstructure(_SplinepyBase):
         # turn off control points for clarity
         microstructure.show_options["control_points"] = False
 
-        # Show in vedo
-        return _gus.show(
+        creation_keys = {
+            "contact_length",
+            "center_expansion",
+            "closing_face",
+            "tiling",
+            "macro_sensitivities",
+            "tile_sensitivities",
+            "boundary_spline",
+            "knot_span_wise",
+        }
+        show_kwargs = {
+            k: v for k, v in kwargs.items() if k not in creation_keys
+        }
+
+        if kwargs.get("return_showable_list"):
+            tiles = (
+                list(microtile[0])
+                if isinstance(microtile[0], (list, tuple))
+                else [microtile[0]]
+            )
+            return None, [deformation_function, *tiles, microstructure]
+
+        from splinepy.helpme import visualize as _visualize
+
+        return _visualize.show(
             ["Deformation Function", deformation_function],
             ["Microtile", microtile[0]],
             ["Composed Microstructure", microstructure],
-            **kwargs,
+            **show_kwargs,
         )
 
     def _sanity_check(self):

@@ -1,4 +1,3 @@
-import gustaf as gus
 import numpy as np
 
 import splinepy
@@ -11,7 +10,7 @@ if __name__ == "__main__":
     box = splinepy.helpme.create.box(3, 2, 4)
     pyramid = splinepy.helpme.create.pyramid(1, 1, 2)
 
-    gus.show(
+    splinepy.show(
         ["Line", line],
         ["Rectangle", rect],
         ["Box", box],
@@ -26,17 +25,17 @@ if __name__ == "__main__":
         5, inner_radius=1.0, angle=360, n_knot_spans=10
     )
 
-    gus.show(["Line Circle", circ], ["Disk section", disk1], ["Disk", disk2])
+    splinepy.show(["Line Circle", circ], ["Disk section", disk1], ["Disk", disk2])
 
     cone = splinepy.helpme.create.cone(5, 10, angle=180)
-    gus.show(["Cone", cone])
+    splinepy.show(["Cone", cone])
 
     torus = splinepy.helpme.create.torus(10, 2)
     torus2 = splinepy.helpme.create.torus(
         5, 2, section_inner_radius=0.5, torus_angle=100, section_angle=210
     )
 
-    gus.show(["Torus", torus], ["Torus section", torus2], resolution=50)
+    splinepy.show(["Torus", torus], ["Torus section", torus2], resolution=50)
 
     sphere = splinepy.helpme.create.sphere(3)
-    gus.show(["Sphere", sphere], resolution=50)
+    splinepy.show(["Sphere", sphere], resolution=50)

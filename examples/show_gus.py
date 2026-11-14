@@ -1,6 +1,5 @@
 """Create gus"""
 
-import gustaf as gus
 import numpy as np
 
 import splinepy
@@ -100,11 +99,10 @@ if __name__ == "__main__":
     if WITH_PUPILS:
         item_to_show += [l_pupil, r_pupil]
 
-    plt = gus.show(
+    plt = splinepy.show(
         item_to_show,
         lighting="off",
         background="white",
-        close=False,
     )
 
     if WITH_DARK_BACKGROUND:
@@ -150,9 +148,8 @@ if __name__ == "__main__":
             l_pupil.show_options["c"] = "black"
             r_pupil.show_options["c"] = "black"
 
-        plt = gus.show(
+        plt = splinepy.show(
             [*background, *item_to_show],
             lighting="off",
             background="black",
-            close=False,
         )
