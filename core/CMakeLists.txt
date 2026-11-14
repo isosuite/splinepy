@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.19)
-project(splinepy_core LANGUAGES CXX)
+project(splinepy_core LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -30,7 +30,11 @@ add_library(
   src/multipatch/interfaces.cpp
   src/multipatch/orientations.cpp
   src/multipatch/boundary.cpp
-  src/multipatch/continuity.cpp)
+  src/multipatch/continuity.cpp
+  src/spatial/element_bvh.cpp
+  src/proximity/proximity.cpp
+  src/proximity/grid_guess.cpp
+  src/proximity/slsqp.c)
 
 target_include_directories(
   splinepy_core_lib
@@ -49,13 +53,13 @@ endif()
 add_library(splinepy::core ALIAS splinepy_core_lib)
 
 if(DEFINED TARGETS_EXPORT_NAME)
-    install(
-        TARGETS splinepy_core_lib
-        EXPORT "${TARGETS_EXPORT_NAME}"
-        LIBRARY DESTINATION ${lib_dest}
-        ARCHIVE DESTINATION ${lib_dest}
-        INCLUDES DESTINATION "${incl_dest}"
-    )
+  install(
+    TARGETS splinepy_core_lib
+    EXPORT "${TARGETS_EXPORT_NAME}"
+    LIBRARY DESTINATION ${lib_dest}
+    ARCHIVE DESTINATION ${lib_dest}
+    INCLUDES
+    DESTINATION "${incl_dest}")
 endif()
 
 # Tests

@@ -3,6 +3,7 @@ iges io.
 """
 
 from datetime import datetime
+
 import numpy as np
 
 import splinepy
@@ -20,10 +21,11 @@ def _make_block(s, width=72, align_right=False):
 
 def _write_section(lines, content_str, section_id):
     chunk_size = 72
-    chunks = [content_str[i:i + chunk_size] for i in range(0, len(content_str), chunk_size)]
+    chunks = [
+        content_str[i : i + chunk_size] for i in range(0, len(content_str), chunk_size)
+    ]
     if not chunks:
         chunks = [""]
-    start_line = len(lines) + 1
     for i, chunk in enumerate(chunks):
         seq = i + 1
         line = _make_block(chunk, 72, False) + f"{section_id}{seq:7d}"
@@ -48,7 +50,11 @@ def _export_internal(fname, splines):
             cps = np.hstack([cps, np.zeros((len(cps), 3 - cps.shape[1]))])
 
         is_rat = s.is_rational
-        weights = np.array(s.weights, dtype=np.float64).flatten() if is_rat else np.ones(len(cps))
+        weights = (
+            np.array(s.weights, dtype=np.float64).flatten()
+            if is_rat
+            else np.ones(len(cps))
+        )
 
         kvs = s.knot_vectors
         if kvs is None or len(kvs) == 0:
@@ -63,11 +69,7 @@ def _export_internal(fname, splines):
             entity_type = 126
             k = len(cps) - 1
             m = degs[0]
-            tokens.extend([
-                126, k, m, 0, 0,
-                0 if is_rat else 1,
-                0
-            ])
+            tokens.extend([126, k, m, 0, 0, 0 if is_rat else 1, 0])
             # Knot vector
             tokens.extend(list(kvs[0]))
             # Weights
@@ -84,11 +86,7 @@ def _export_internal(fname, splines):
             k2 = s.control_mesh_resolutions[1] - 1
             m1 = degs[0]
             m2 = degs[1]
-            tokens.extend([
-                128, k1, k2, m1, m2, 0, 0,
-                0 if is_rat else 1,
-                0, 0
-            ])
+            tokens.extend([128, k1, k2, m1, m2, 0, 0, 0 if is_rat else 1, 0, 0])
             # Knot vectors
             tokens.extend(list(kvs[0]))
             tokens.extend(list(kvs[1]))
@@ -100,13 +98,22 @@ def _export_internal(fname, splines):
             # Parameter range
             tokens.extend([kvs[0][m1], kvs[0][k1 + 1], kvs[1][m2], kvs[1][k2 + 1]])
         else:
-            raise ValueError(f"IGES only supports 1D or 2D splines, given {s.para_dim}D.")
+            raise ValueError(
+                f"IGES only supports 1D or 2D splines, given {s.para_dim}D."
+            )
 
-        p_str = ",".join(str(int(t)) if isinstance(t, (int, np.integer)) else f"{t:.16g}" for t in tokens) + ";"
+        p_str = (
+            ",".join(
+                str(int(t)) if isinstance(t, (int, np.integer)) else f"{t:.16g}"
+                for t in tokens
+            )
+            + ";"
+        )
 
-        # Split into 64-char chunks for P section (cols 1-64 data, 65-72 D-pointer, 73-80 P-seq)
+        # P section uses columns 1-64 for data, 65-72 for the directory
+        # pointer, and 73-80 for the sequence number.
         chunk_size = 64
-        p_chunks = [p_str[i:i + chunk_size] for i in range(0, len(p_str), chunk_size)]
+        p_chunks = [p_str[i : i + chunk_size] for i in range(0, len(p_str), chunk_size)]
         p_start = p_line_num
         p_count = len(p_chunks)
 
@@ -116,8 +123,14 @@ def _export_internal(fname, splines):
             p_line_num += 1
 
         # Directory entry line 1 & 2
-        d1 = f"{entity_type:8d}{p_start:8d}{0:8d}{1:8d}{0:8d}{0:8d}{0:8d}{0:8d}00010001D{d_line_num:7d}"
-        d2 = f"{entity_type:8d}{0:8d}{0:8d}{p_count:8d}{0:8d}{0:8d}{0:8d}{'':8s}{0:8d}D{d_line_num + 1:7d}"
+        d1 = (
+            f"{entity_type:8d}{p_start:8d}{0:8d}{1:8d}{0:8d}{0:8d}{0:8d}"
+            f"{0:8d}00010001D{d_line_num:7d}"
+        )
+        d2 = (
+            f"{entity_type:8d}{0:8d}{0:8d}{p_count:8d}{0:8d}{0:8d}{0:8d}"
+            f"{'':8s}{0:8d}D{d_line_num + 1:7d}"
+        )
         d_lines.append(d1)
         d_lines.append(d2)
         d_line_num += 2
@@ -131,20 +144,33 @@ def _export_internal(fname, splines):
         _format_hollerith(fname),
         _format_hollerith("splinepy"),
         _format_hollerith("splinepy"),
-        "32", "38", "6", "308", "15",
+        "32",
+        "38",
+        "6",
+        "308",
+        "15",
         _format_hollerith("receiver"),
-        "1.0", "6", _format_hollerith("M"), "1", "0.0024384",
+        "1.0",
+        "6",
+        _format_hollerith("M"),
+        "1",
+        "0.0024384",
         _format_hollerith(now),
-        "0.00000254", "1000.0",
+        "0.00000254",
+        "1000.0",
         _format_hollerith("Author"),
         _format_hollerith("splinepy"),
-        "11", "0",
+        "11",
+        "0",
         _format_hollerith(now),
-        _format_hollerith("NULL")
+        _format_hollerith("NULL"),
     ]
     g_str = ",".join(g_tokens) + ";"
-    g_chunks = [g_str[i:i + 72] for i in range(0, len(g_str), 72)]
-    g_lines = [_make_block(chunk, 72, False) + f"G{i + 1:7d}" for i, chunk in enumerate(g_chunks)]
+    g_chunks = [g_str[i : i + 72] for i in range(0, len(g_str), 72)]
+    g_lines = [
+        _make_block(chunk, 72, False) + f"G{i + 1:7d}"
+        for i, chunk in enumerate(g_chunks)
+    ]
 
     s_lines = [_make_block("IGES file generated by splinepy", 72, False) + f"S{1:7d}"]
 
@@ -153,16 +179,17 @@ def _export_internal(fname, splines):
     d_count = len(d_lines)
     p_count = len(p_lines)
 
-    t_line = f"S{s_count:7d}G{g_count:7d}D{d_count:7d}P{p_count:7d}".ljust(72) + f"T{1:7d}"
+    t_line = (
+        f"S{s_count:7d}G{g_count:7d}D{d_count:7d}P{p_count:7d}".ljust(72) + f"T{1:7d}"
+    )
 
     all_lines = s_lines + g_lines + d_lines + p_lines + [t_line]
     with open(fname, "w") as f:
-        for line in all_lines:
-            f.write(line + "\n")
+        f.writelines(line + "\n" for line in all_lines)
 
 
 def _load_internal(fname):
-    with open(fname, "r") as f:
+    with open(fname) as f:
         raw_lines = [line.rstrip("\r\n") for line in f]
 
     d_lines = []
@@ -172,9 +199,9 @@ def _load_internal(fname):
         if len(line) < 73:
             continue
         sec = line[72]
-        if sec == 'D':
+        if sec == "D":
             d_lines.append(line)
-        elif sec == 'P':
+        elif sec == "P":
             p_lines.append(line)
 
     # Parse P section text grouped by entity
@@ -207,23 +234,36 @@ def _load_internal(fname):
             # Curve: 126, K, M, PROP1, PROP2, PROP3, PROP4, ...
             k = int(tokens[1])
             m = int(tokens[2])
-            is_rat = (int(tokens[5]) == 0)
+            is_rat = int(tokens[5]) == 0
             idx = 7
             n_knots = k + m + 2
-            knots = [float(x) for x in tokens[idx:idx + n_knots]]
+            knots = [float(x) for x in tokens[idx : idx + n_knots]]
             idx += n_knots
             n_cps = k + 1
-            weights = [float(x) for x in tokens[idx:idx + n_cps]]
+            weights = [float(x) for x in tokens[idx : idx + n_cps]]
             idx += n_cps
             cps = []
             for _ in range(n_cps):
-                cps.append([float(tokens[idx]), float(tokens[idx + 1]), float(tokens[idx + 2])])
+                cps.append(
+                    [float(tokens[idx]), float(tokens[idx + 1]), float(tokens[idx + 2])]
+                )
                 idx += 3
 
             if is_rat:
-                splines.append(splinepy.NURBS(degrees=[m], knot_vectors=[knots], control_points=cps, weights=weights))
+                splines.append(
+                    splinepy.NURBS(
+                        degrees=[m],
+                        knot_vectors=[knots],
+                        control_points=cps,
+                        weights=weights,
+                    )
+                )
             else:
-                splines.append(splinepy.BSpline(degrees=[m], knot_vectors=[knots], control_points=cps))
+                splines.append(
+                    splinepy.BSpline(
+                        degrees=[m], knot_vectors=[knots], control_points=cps
+                    )
+                )
 
         elif entity_type == 128:
             # Surface: 128, K1, K2, M1, M2, PROP1..PROP5, ...
@@ -231,26 +271,41 @@ def _load_internal(fname):
             k2 = int(tokens[2])
             m1 = int(tokens[3])
             m2 = int(tokens[4])
-            is_rat = (int(tokens[7]) == 0)
+            is_rat = int(tokens[7]) == 0
             idx = 10
             n_knots1 = k1 + m1 + 2
-            knots1 = [float(x) for x in tokens[idx:idx + n_knots1]]
+            knots1 = [float(x) for x in tokens[idx : idx + n_knots1]]
             idx += n_knots1
             n_knots2 = k2 + m2 + 2
-            knots2 = [float(x) for x in tokens[idx:idx + n_knots2]]
+            knots2 = [float(x) for x in tokens[idx : idx + n_knots2]]
             idx += n_knots2
             n_cps = (k1 + 1) * (k2 + 1)
-            weights = [float(x) for x in tokens[idx:idx + n_cps]]
+            weights = [float(x) for x in tokens[idx : idx + n_cps]]
             idx += n_cps
             cps = []
             for _ in range(n_cps):
-                cps.append([float(tokens[idx]), float(tokens[idx + 1]), float(tokens[idx + 2])])
+                cps.append(
+                    [float(tokens[idx]), float(tokens[idx + 1]), float(tokens[idx + 2])]
+                )
                 idx += 3
 
             if is_rat:
-                splines.append(splinepy.NURBS(degrees=[m1, m2], knot_vectors=[knots1, knots2], control_points=cps, weights=weights))
+                splines.append(
+                    splinepy.NURBS(
+                        degrees=[m1, m2],
+                        knot_vectors=[knots1, knots2],
+                        control_points=cps,
+                        weights=weights,
+                    )
+                )
             else:
-                splines.append(splinepy.BSpline(degrees=[m1, m2], knot_vectors=[knots1, knots2], control_points=cps))
+                splines.append(
+                    splinepy.BSpline(
+                        degrees=[m1, m2],
+                        knot_vectors=[knots1, knots2],
+                        control_points=cps,
+                    )
+                )
 
     return splines
 

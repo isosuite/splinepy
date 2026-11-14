@@ -8,11 +8,10 @@ conda create -n splinepyenv python=3.10
 conda activate splinepyenv
 git clone git@github.com:<path-to-your-fork>
 cd splinepy  # or <forkname>
-git submodule update --init --recursive
 git checkout -b new-feature0
-pip install -e. -v --config-settings=cmake.args=-DSPLINEPY_MORE=OFF --config-settings=cmake.build-type="Debug"
+pip install -e. -v --config-settings=cmake.build-type="Debug"
 ```
-`--config-settings=cmake.args=-DSPLINEPY_MORE` build argument builds splines up to 3D (both parametric and physical dimensions if they are part of template parameters), and that way we can reduce compile time. `--config-settings=cmake.build-type="Debug"` build also reduces compile time. We are experimenting with ways to reduce compile time during development. Let us know if you have a good idea!
+`--config-settings=cmake.build-type="Debug"` build also reduces compile time. We are experimenting with ways to reduce compile time during development. Let us know if you have a good idea!
 
 ## Python style / implementation preferences
 - use [`PEP 8`](https://peps.python.org/pep-0008/) style guide

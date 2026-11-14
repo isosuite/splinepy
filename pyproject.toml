@@ -67,6 +67,8 @@ archs = ["arm64"]
 build = ["cp*"]
 
 [tool.cibuildwheel.linux]
+# Use a compatible NumPy wheel in the manylinux test environment.
+environment = { PIP_ONLY_BINARY = "numpy" }
 archs = ["x86_64"]
 build = ["cp*-many*"]
 
@@ -106,12 +108,14 @@ lint.ignore = [
 "setup.py" = ["T201"]
 "examples/*.py" = ["T201"]
 "tests/common.py" = ["T201"]
+"tests/generate_golden_data.py" = ["T201"]
+"benchmarks/*.py" = ["T201"]
 "splinepy/cli.py" = ["T201"]
 "splinepy/io/**" = ["A001"]
 
 [tool.codespell]
 ignore-words-list = "connec,tye,ned"
-skip="./docs/source/_generated/**,./docs/build/*,./build/*,./third_party/*,./tests/data/*.svg,*.html,*.js"
+skip="./docs/source/_generated/**,./docs/build/*,./build/*,./tests/data/*.svg,*.html,*.js"
 
 
 [tool.blackdoc]

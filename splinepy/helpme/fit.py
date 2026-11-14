@@ -285,7 +285,7 @@ def _prepare_default_bspline1pd(
         n_queries, degree, n_control_points, knot_vector
     )
 
-    # empty init of default fitting spline
+    # Initialize a finite placeholder geometry for basis evaluation.
     fitting_spline = _settings.NAME_TO_TYPE["BSpline"](
         [degree],
         [
@@ -296,7 +296,7 @@ def _prepare_default_bspline1pd(
                 n_fitting_points=n_queries,
             )
         ],
-        _np.empty((n_control_points, dim)),
+        _np.zeros((n_control_points, dim)),
     )
 
     return fitting_spline
@@ -513,7 +513,7 @@ def surface(
         fitted_spline = type(spline_u)(
             [*spline_u.ds, *spline_v.ds],
             [*spline_u.kvs, *spline_v.kvs],
-            _np.empty((len(spline_u.cps) * len(spline_v.cps), dim)),
+            _np.zeros((len(spline_u.cps) * len(spline_v.cps), dim)),
         )
 
     else:

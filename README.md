@@ -21,7 +21,6 @@ You can install it directly from the source:
 ```bash
 git clone git@github.com:isosuite/splinepy.git
 cd splinepy
-git submodule update --init --recursive
 pip install -e .
 ```
 

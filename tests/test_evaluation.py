@@ -630,3 +630,123 @@ def test_multiple_derivative_queries(request, splinetype, np_rng):
         == a(single2_support).reshape(-1, multi2_support.shape[-1])[:: len(os)]
     ).all()
     assert np.allclose(multi_jac, single_jac)
+
+
+def test_proximities_para_dim_differs_from_dim(np_rng):
+    """proximity queries are physical points: n queries in -> n results out,
+    also if para_dim != dim."""
+    curve = splinepy.Bezier(
+        degrees=[3], control_points=[[0, 0], [1, 2], [2, -2], [3, 0]]
+    )
+    surface = splinepy.Bezier(
+        degrees=[1, 1],
+        control_points=[[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 1]],
+    )
+    for spline in (curve, surface):
+        queries = np_rng.random((7, spline.dim))
+        para = spline.proximities(queries)
+        assert para.shape == (7, spline.para_dim)
+        assert np.all(np.isfinite(para))
+
+
+def test_proximities_far_queries_find_global_minimum():
+    """Queries far away used to converge to stationary points that are not
+    minima (e.g. a maximum of the distance), instead of the end point."""
+    curve = splinepy.Bezier(
+        degrees=[3], control_points=[[0, 0], [1, 2], [2, -2], [3, 0]]
+    )
+    queries = np.array(
+        [[-20.0, -20.0], [30.0, -15.0], [10.0, 40.0], [-5.0, 12.0]]
+    )
+    found = curve.evaluate(curve.proximities(queries))
+
+    dense = curve.evaluate(np.linspace(0, 1, 20001).reshape(-1, 1))
+    best = np.linalg.norm(dense[None] - queries[:, None], axis=-1).min(axis=1)
+    assert np.allclose(np.linalg.norm(found - queries, axis=1), best, atol=1e-6)
+
+
+def test_proximities_hairpin():
+    """Two close legs: nearest point must be on the closer leg."""
+    hairpin = splinepy.Bezier(
+        degrees=[3], control_points=[[0, 0], [3, 0], [3, 0.3], [0, 0.3]]
+    )
+    queries = np.array([[1.0, 0.05], [1.0, 0.25], [1.5, 0.14], [1.5, 0.16]])
+    found = hairpin.evaluate(hairpin.proximities(queries))
+
+    dense = hairpin.evaluate(np.linspace(0, 1, 20001).reshape(-1, 1))
+    best = np.linalg.norm(dense[None] - queries[:, None], axis=-1).min(axis=1)
+    assert np.allclose(np.linalg.norm(found - queries, axis=1), best, atol=1e-6)
+
+
+def _dense_best_distance(spline, queries, n=4001):
+    """Reference distance by dense sampling (curves only)."""
+    dense = spline.evaluate(np.linspace(0, 1, n).reshape(-1, 1))
+    return np.linalg.norm(dense[None] - queries[:, None], axis=-1).min(axis=1)
+
+
+@pytest.mark.parametrize("guess", ["bvh", "grid"])
+@pytest.mark.parametrize(
+    "control_points",
+    [
+        # hairpin: two close legs
+        [[0, 0], [3, 0], [3, 0.3], [0, 0.3]],
+        # self crossing
+        [[0, 0], [3, 3], [-1, 3], [2, 0]],
+    ],
+)
+def test_proximities_multiple_basins(guess, control_points, np_rng):
+    curve = splinepy.Bezier(degrees=[3], control_points=control_points)
+    handle = splinepy.splinepy_core.ProximityHandle()
+    handle.guess = guess
+    curve._proximity = handle
+
+    queries = np_rng.uniform(-1.0, 4.0, (150, 2))
+    found = curve.evaluate(curve.proximities(queries))
+    distance = np.linalg.norm(found - queries, axis=1)
+
+    # bvh is expected to be exact here, the kd-tree may miss a basin
+    tolerated = 0 if guess == "bvh" else 4
+    wrong = distance > _dense_best_distance(curve, queries) + 1e-6
+    assert wrong.sum() <= tolerated
+
+
+def test_proximities_many_elements_bvh_matches_grid(np_rng):
+    spline = splinepy.helpme.create.box(1, 1).bspline
+    spline.elevate_degrees([0, 1])
+    spline.insert_knots(0, np.linspace(0, 1, 12)[1:-1])
+    spline.insert_knots(1, np.linspace(0, 1, 9)[1:-1])
+    spline.control_points[:] += 0.03 * np.sin(
+        9 * spline.control_points[:, ::-1]
+    )
+
+    queries = np_rng.uniform(-0.3, 1.3, (200, 2))
+    results = {}
+    for guess in ("bvh", "grid"):
+        handle = splinepy.splinepy_core.ProximityHandle()
+        handle.guess = guess
+        spline._proximity = handle
+        results[guess] = np.linalg.norm(
+            spline.evaluate(spline.proximities(queries)) - queries, axis=1
+        )
+
+    assert np.all(results["bvh"] <= results["grid"] + 1e-9)
+
+
+def test_proximities_collapsed_edge_cone(np_rng):
+    # the edge u=1 is collapsed to the apex. queries next to the apex used to
+    # end there although the closest point is on the surface
+    cone = splinepy.Bezier(
+        degrees=[1, 1],
+        control_points=[[0, 0, 0], [1, 0.5, 1], [0, 1, 0], [1, 0.5, 1]],
+    )
+    queries = np_rng.uniform([0.9, -0.4, 0.7], [1.3, 0.0, 1.0], (60, 3))
+    found = cone.evaluate(cone.proximities(queries))
+    distance = np.linalg.norm(found - queries, axis=1)
+
+    grid = cone.evaluate(
+        np.stack(np.meshgrid(*[np.linspace(0, 1, 400)] * 2), -1).reshape(-1, 2)
+    )
+    reference = np.linalg.norm(
+        grid[None] - queries[:, None], axis=-1
+    ).min(axis=1)
+    assert np.all(distance <= reference + 1e-6)

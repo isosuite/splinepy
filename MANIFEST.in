@@ -1,6 +1,5 @@
-graft third_party
 graft src
-graft include
+graft core
 graft cmake
 global-include CMakeLists.txt
 global-exclude .git .git*

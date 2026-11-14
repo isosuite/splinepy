@@ -24,11 +24,14 @@ SOFTWARE.
 
 #pragma once
 
-#include <napf.hpp>
+#include <algorithm>
+#include <memory>
+#include <utility>
+#include <vector>
 
 #include "splinepy/core/model/spline_view.hpp"
+#include "splinepy/core/spatial/element_bvh.hpp"
 #include "splinepy/utils/arrays.hpp"
-#include "splinepy/utils/grid_points.hpp"
 
 namespace splinepy::proximity {
 
@@ -38,6 +41,21 @@ using RealArray3D = splinepy::utils::Array<double, 3>;
 using IndexArray = splinepy::utils::Array<int>;
 using ConstRealArray = splinepy::utils::Array<const double>;
 using LhsMatrix = splinepy::utils::Matrix<double, int>;
+
+/// @brief Source of a single starting point for the local solvers, e.g. the
+/// nearest sample of a point cloud. Implementations may depend on libraries
+/// that the core does not have (see grid_guess.hpp).
+class InitialGuess {
+public:
+  virtual ~InitialGuess() = default;
+
+  /// @brief writes a parametric guess (para_dim) for a physical query (dim)
+  virtual void Guess(const double* query, double* guess) const = 0;
+
+  /// @brief parametric distance between samples per axis (para_dim), used to
+  /// bound the search in the neighborhood of the guess. Null if unknown.
+  virtual const double* StepSize() const { return nullptr; }
+};
 
 /// @brief compute convergence goal based on first norm and tolerances.
 /// @tparam T
@@ -215,6 +233,9 @@ struct SearchData {
   }
 };
 
+/// local solvers that can be chained in Proximity::VerboseQuery.
+enum class Solver { kNewton, kDogleg, kSlsqp, kLevenbergMarquart };
+
 /*!
  * A helper class to perform proximity operations for splines.
  *
@@ -229,36 +250,88 @@ struct SearchData {
  */
 class Proximity {
 public:
-  /// @brief array cloud that wraps data of Array
-  using Cloud_ = napf::ArrayCloud<double, int>;
-  /// @brief metric is L2 and this returns squared distance
-  using Tree_ = napf::ArrayTree<double, double, int, 2>;
-
-protected:
   // helpee spline
   splinepy::core::SplineView spline_;
 
-  // kdtree related variables
-  splinepy::utils::GridPoints grid_points_;
-  RealArray sampled_spline_;
-  std::unique_ptr<Cloud_> cloud_;
-  std::unique_ptr<Tree_> kdtree_;
+  // initial guess source used if no bvh is planted
+  std::unique_ptr<InitialGuess> initial_guess_;
+
+  // element bvh based initial guesses
+  std::unique_ptr<splinepy::core::ElementBvh> bvh_;
+  std::vector<int> bvh_samples_per_axis_;
+
+  /// at most this many starting points are tried per query
+  int max_starts_{4};
+  /// at most this many elements are sampled per query
+  int max_bvh_visits_{64};
+
+  /// solvers are tried in this order, until one of them returns an acceptable
+  /// result
+  std::vector<Solver> solver_chain_{Solver::kDogleg,
+                                    Solver::kSlsqp,
+                                    Solver::kLevenbergMarquart};
+
+  /// if true, a result is only accepted if it is not worse than the guess it
+  /// started from, and if it is a (semi-)definite minimum within the bounds.
+  bool guard_{true};
 
 public:
   /// Constructor. As a spline helper class, always need a spline.
   explicit Proximity(splinepy::core::SplineView spline) : spline_(spline) {}
 
-  /*!
-   * Plants a kdtree with given resolution.
-   *
-   * This needs to be built before BEFORE you request a proximity query with
-   * `InitialGuess::kdTree`. This will always plant a new tree: at runtime, if
-   * a finer tree is desired, you can plant it again.
-   *
-   * @param resolutions parameter space sampling resolution
-   * @param n_thread number of threads to be used for sampling
-   */
-  void PlantNewKdTree(const int* resolutions, const int n_thread = 1);
+  /// @brief sets the order of solvers. Unknown/empty chains are not allowed.
+  void SetSolverChain(const std::vector<Solver>& chain) {
+    if (chain.empty()) {
+      splinepy::utils::PrintAndThrowError("solver chain can't be empty");
+    }
+    solver_chain_ = chain;
+  }
+
+  void SetGuard(const bool guard) { guard_ = guard; }
+
+  /// @brief Refreshes the view of the spline. The view refers to spans that
+  /// the caller may have rebuilt (e.g. knot vector spans), so call this before
+  /// each query session. Data (control points, ...) must be unchanged.
+  void SetSpline(splinepy::core::SplineView spline) { spline_ = spline; }
+
+  void SetMaxStarts(const int max_starts) {
+    max_starts_ = std::max(1, max_starts);
+  }
+
+  /// A starting point for the local solvers.
+  struct Start {
+    /// squared distance from the query to the box of the element
+    double lower_bound_squared;
+    /// squared distance from the query to the sampled point
+    double distance_squared;
+    std::vector<double> guess;
+    /// parametric distance between samples of the element, per axis
+    std::vector<double> step;
+  };
+
+  /// @brief Builds a bounding volume hierarchy over the knot spans of the
+  /// spline, as an alternative to the kd-tree. Elements are sampled lazily at
+  /// query time. The total resolution is distributed to the elements, so that
+  /// the number of samples is comparable to a kd-tree with the same
+  /// resolutions. Returns false (and plants nothing) if the bounding boxes
+  /// are not valid, e.g. due to non-positive weights.
+  /// @param resolutions parameter space sampling resolution
+  bool PlantBvh(const int* resolutions);
+
+  bool HasBvh() const { return static_cast<bool>(bvh_); }
+
+  /// @brief Candidate starting points of the local solvers, sorted by the
+  /// distance of the sampled point. Contains one candidate per element that
+  /// can hold a point as close as the closest sample.
+  /// @param query
+  std::vector<Start> BvhStarts(const double* query) const;
+
+  /// @brief Sets the initial guess source for queries without a bvh.
+  void SetInitialGuess(std::unique_ptr<InitialGuess> initial_guess) {
+    initial_guess_ = std::move(initial_guess);
+  }
+
+  bool HasInitialGuess() const { return static_cast<bool>(initial_guess_); }
 
   /// @brief difference = spline(guess) - query. In current formulation, this is
   /// our objective function.
@@ -280,12 +353,12 @@ public:
                        RealArray& difference,
                        RealArray& guess_phys) const;
 
-  /// @brief make initial guess - returns nearest neighbor from k-d tree
+  /// @brief make initial guess from the initial guess source
   /// @param goal
   /// @param guess
   void MakeInitialGuess(const ConstRealArray& goal, RealArray& guess) const;
 
-  /// @brief make initial guess - returns nearest neighbor from k-d tree.
+  /// @brief make initial guess from the initial guess source.
   /// Initial guess is saved to both initial_guess and current_guess
   /// @param data
   void MakeInitialGuess(SearchData& data) const;
@@ -347,7 +420,7 @@ public:
   void ComputeStatus(SearchData& data, const bool recompute_costs) const;
 
   /// @brief resets search bounds to spline's parametric bounds. if tight==true,
-  /// current_guess +- grid_points_'s sampling step size.
+  /// current_guess +- the sampling step size of the initial guess source.
   /// @param data
   /// @param tight
   void FindSearchBound(SearchData& data, const bool tight = false) const;
@@ -368,6 +441,22 @@ public:
   /// @param data
   void LevenbergMarquart(SearchData& data) const;
 
+  /// @brief norm of the gradient of J, after removing the components that
+  /// point out of the search bounds. This vanishes at constrained minima.
+  double ProjectedGradientNorm(const SearchData& data) const;
+
+  /// @brief Trust region method with dogleg steps. Uses the exact hessian if it
+  /// is positive definite, else the Gauss-Newton matrix. Respects search
+  /// bounds by projecting steps and freezing variables that push out.
+  /// @param data
+  void Dogleg(SearchData& data) const;
+
+  /// @brief is the current result acceptable? (see guard_). Fills the
+  /// hessian of J and of the spline at the current guess as a byproduct.
+  /// @param data
+  /// @param reference_J J of the guess the solver started from
+  bool IsAcceptable(SearchData& data, const double reference_J) const;
+
   /// @brief Prepares lhs and rhs of slsqp iteration and other parameters
   void PrepareIterationSlsqp(SearchData& data) const;
 
@@ -375,8 +464,24 @@ public:
   /// @param data
   void Slsqp(SearchData& data) const;
 
+  /// @brief Runs the solver chain from a given start. Same outputs as
+  /// VerboseQuery().
+  void SolveFrom(const double* query,
+                 const double& tolerance,
+                 const int& max_iterations,
+                 const bool tight_bounds,
+                 const double* start,
+                 double* final_guess,
+                 double* nearest,
+                 double* nearest_minus_query,
+                 double& distance,
+                 double& convergence_norm,
+                 double* first_derivatives,
+                 double* second_derivatives) const;
+
   /// @brief Given physical coordinate, finds closest parametric coordinate.
-  /// Always takes initial guess based on kdtree.
+  /// Takes initial guess from the initial guess source, or starts from several
+  /// promising elements if a bvh was planted.
   ///
   /// @param[in] query
   /// @param[in] tolerance

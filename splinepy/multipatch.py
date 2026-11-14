@@ -5,11 +5,11 @@ Multipatch Spline Configuration
 import numpy as _np
 
 from splinepy import settings as _settings
+from splinepy import splinepy_core as _core
 from splinepy._base import SplinepyBase as _SplinepyBase
 from splinepy.helpme import visualize as _visualize
 from splinepy.helpme.extract import Extractor as _Extractor
 from splinepy.spline import _default_if_none, _get_helper
-from splinepy import splinepy_core as _core
 from splinepy.utils.data import MultipatchData as _MultipatchData
 
 
@@ -185,7 +185,7 @@ class Multipatch(_SplinepyBase):
         self._boundary_multipatch = None
         self._boundary_patch_ids = None
 
-    def interface_orientations(self, tolerance=None, nthreads=None):
+    def interface_orientations(self, tolerance=None, nthreads=None):  # noqa: ARG002
         """
         Determine orientation between adjacent splines which is required, e.g.,
         for gismo export and orientation check

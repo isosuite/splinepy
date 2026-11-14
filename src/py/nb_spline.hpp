@@ -1,6 +1,8 @@
 #pragma once
 
 #include <memory>
+#include <string>
+#include <vector>
 
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
@@ -26,9 +28,20 @@ nb::object SplineFromData(const splinepy::core::SplineData& data);
 // Keeps the kd-tree and the proximity search state of a spline.
 // The python spline owns one and drops it, if its data changes.
 class ProximityHandle {
- public:
+public:
   std::unique_ptr<splinepy::proximity::Proximity> proximity_{nullptr};
   std::vector<int> last_proximity_resolutions_{};
+
+  // solver order ("newton", "dogleg", "slsqp", "lm") and acceptance guard.
+  // Mostly for experiments and benchmarks
+  std::vector<std::string> chain_{"dogleg", "slsqp", "lm"};
+  bool guard_{true};
+
+  // initial guess strategy: "grid" (nearest sample) or "bvh" (element boxes,
+  // several starts)
+  std::string guess_{"bvh"};
+  std::string planted_guess_{};
+  int max_starts_{4};
 
   nb::tuple Query(nb::handle spline,
                   nb::object queries,

@@ -11,6 +11,7 @@ splinepy 0.2.1 installed:
 
 The generated archives and raw binaries are local test data.
 """
+
 from pathlib import Path
 
 import numpy as np
@@ -21,11 +22,13 @@ OUT_DIR = Path(__file__).resolve().parent / "data" / "golden"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 RNG = np.random.default_rng(20261027)
 
+
 def make_queries(bounds, n=150):
     dim = bounds.shape[1]
     lows = bounds[0]
     highs = bounds[1]
     return RNG.uniform(lows, highs, size=(n, dim))
+
 
 def generate_eval_bspline():
     data = {}
@@ -96,11 +99,11 @@ def generate_eval_bspline():
     np.savez(OUT_DIR / "eval_bspline.npz", **data)
     print("Saved eval_bspline.npz")
 
+
 def generate_eval_nurbs():
     data = {}
 
     # 2D NURBS circle/disk in 2D
-    r = 1.0
     w = 1.0 / np.sqrt(2.0)
     nurbs = splinepy.NURBS(
         degrees=[2, 1],
@@ -110,13 +113,45 @@ def generate_eval_nurbs():
         ],
         control_points=[
             # inner radius 0.5
-            [0.5, 0], [0.5, 0.5], [0, 0.5], [-0.5, 0.5], [-0.5, 0], [-0.5, -0.5], [0, -0.5], [0.5, -0.5], [0.5, 0],
+            [0.5, 0],
+            [0.5, 0.5],
+            [0, 0.5],
+            [-0.5, 0.5],
+            [-0.5, 0],
+            [-0.5, -0.5],
+            [0, -0.5],
+            [0.5, -0.5],
+            [0.5, 0],
             # outer radius 1.0
-            [1.0, 0], [1.0, 1.0], [0, 1.0], [-1.0, 1.0], [-1.0, 0], [-1.0, -1.0], [0, -1.0], [1.0, -1.0], [1.0, 0],
+            [1.0, 0],
+            [1.0, 1.0],
+            [0, 1.0],
+            [-1.0, 1.0],
+            [-1.0, 0],
+            [-1.0, -1.0],
+            [0, -1.0],
+            [1.0, -1.0],
+            [1.0, 0],
         ],
         weights=[
-            1, w, 1, w, 1, w, 1, w, 1,
-            1, w, 1, w, 1, w, 1, w, 1,
+            1,
+            w,
+            1,
+            w,
+            1,
+            w,
+            1,
+            w,
+            1,
+            1,
+            w,
+            1,
+            w,
+            1,
+            w,
+            1,
+            w,
+            1,
         ],
     )
     qn = make_queries(nurbs.parametric_bounds, n=200)
@@ -135,6 +170,7 @@ def generate_eval_nurbs():
 
     np.savez(OUT_DIR / "eval_nurbs.npz", **data)
     print("Saved eval_nurbs.npz")
+
 
 def generate_eval_bezier():
     data = {}
@@ -173,6 +209,7 @@ def generate_eval_bezier():
 
     np.savez(OUT_DIR / "eval_bezier.npz", **data)
     print("Saved eval_bezier.npz")
+
 
 def generate_operations_bspline():
     data = {}
@@ -220,11 +257,14 @@ def generate_operations_bspline():
         data[f"boundary_{b_id}_degrees"] = np.array(bnd.degrees, dtype=np.int32)
 
     # 5. Extract dim
-    b_dim0 = splinepy.Bezier(degrees=bs.degrees, control_points=bs.control_points[:9]).extract_dim(0)
+    b_dim0 = splinepy.Bezier(
+        degrees=bs.degrees, control_points=bs.control_points[:9]
+    ).extract_dim(0)
     data["b_dim0_cps"] = np.array(b_dim0.control_points, dtype=np.float64)
 
     np.savez(OUT_DIR / "operations_bspline.npz", **data)
     print("Saved operations_bspline.npz")
+
 
 def generate_operations_bezier():
     data = {}
@@ -273,8 +313,12 @@ def generate_operations_bezier():
     data["b1_deriv_01_cps"] = np.array(b1_deriv_01.control_points, dtype=np.float64)
 
     # 5. Compose & sensitivities
-    outer = splinepy.Bezier(degrees=[2, 2], control_points=RNG.uniform(0.0, 1.0, size=(9, 2)))
-    inner = splinepy.Bezier(degrees=[1, 1], control_points=[[0.2, 0.2], [0.8, 0.2], [0.2, 0.8], [0.8, 0.8]])
+    outer = splinepy.Bezier(
+        degrees=[2, 2], control_points=RNG.uniform(0.0, 1.0, size=(9, 2))
+    )
+    inner = splinepy.Bezier(
+        degrees=[1, 1], control_points=[[0.2, 0.2], [0.8, 0.2], [0.2, 0.8], [0.8, 0.8]]
+    )
     data["outer_degrees"] = np.array(outer.degrees, dtype=np.int32)
     data["outer_cps"] = np.array(outer.control_points, dtype=np.float64)
     data["inner_degrees"] = np.array(inner.degrees, dtype=np.int32)
@@ -289,6 +333,7 @@ def generate_operations_bezier():
 
     np.savez(OUT_DIR / "operations_bezier.npz", **data)
     print("Saved operations_bezier.npz")
+
 
 def generate_multipatch():
     data = {}
@@ -320,6 +365,7 @@ def generate_multipatch():
     np.savez(OUT_DIR / "multipatch_topology.npz", **data)
     print("Saved multipatch_topology.npz")
 
+
 def export_binaries():
     bin_dir = OUT_DIR / "bin"
     bin_dir.mkdir(exist_ok=True)
@@ -331,6 +377,7 @@ def export_binaries():
             out_file = bin_dir / f"{prefix}_{k}.bin"
             arr.tofile(out_file)
     print(f"Exported raw binaries to {bin_dir}/")
+
 
 if __name__ == "__main__":
     if splinepy.__version__ != "0.2.1":

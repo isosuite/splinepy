@@ -30,7 +30,8 @@ nb::object InsertKnots(nb::handle spline, int para_dim, nb::object knots) {
   const int n_knots = static_cast<int>(knots_adapter.size());
 
   std::vector<bool> successful(n_knots, false);
-  if (n_knots == 0) return MakeNumPyArray1D(successful);
+  if (n_knots == 0)
+    return MakeNumPyArray1D(successful);
 
   const int p = holder.view.degrees[para_dim];
   const int max_mult = p + 1;
@@ -38,7 +39,8 @@ nb::object InsertKnots(nb::handle spline, int para_dim, nb::object knots) {
 
   std::vector<double> current_kv;
   if (holder.view.HasKnotVectors()) {
-    current_kv.assign(holder.view.knot_vectors[para_dim].begin(), holder.view.knot_vectors[para_dim].end());
+    current_kv.assign(holder.view.knot_vectors[para_dim].begin(),
+                      holder.view.knot_vectors[para_dim].end());
   } else {
     current_kv.resize(2 * (p + 1));
     for (int i = 0; i <= p; ++i) {
@@ -78,21 +80,28 @@ nb::object InsertKnots(nb::handle spline, int para_dim, nb::object knots) {
   }
 
   if (!valid_knots.empty()) {
-    splinepy::core::Span<const double> knot_span(valid_knots.data(), valid_knots.size());
-    auto new_data = splinepy::core::InsertKnots(holder.view, para_dim, knot_span);
+    splinepy::core::Span<const double> knot_span(valid_knots.data(),
+                                                 valid_knots.size());
+    auto new_data =
+        splinepy::core::InsertKnots(holder.view, para_dim, knot_span);
     SetSplineData(spline, new_data);
   }
 
   return MakeNumPyArray1D(successful);
 }
 
-nb::list RemoveKnots(nb::handle spline, int para_dim, nb::object knots, double tolerance) {
+nb::list RemoveKnots(nb::handle spline,
+                     int para_dim,
+                     nb::object knots,
+                     double tolerance) {
   PySplineHolder holder(spline);
   splinepy::core::Options options;
   options.tolerance = tolerance;
   ContiguousAdapter<double> knots_adapter(knots, "float64");
-  splinepy::core::Span<const double> knots_span(knots_adapter.data(), knots_adapter.size());
-  auto res = splinepy::core::RemoveKnots(holder.view, para_dim, knots_span, options);
+  splinepy::core::Span<const double> knots_span(knots_adapter.data(),
+                                                knots_adapter.size());
+  auto res =
+      splinepy::core::RemoveKnots(holder.view, para_dim, knots_span, options);
 
   SetSplineData(spline, res.spline);
 
@@ -127,7 +136,8 @@ nb::object Compose(nb::handle outer, nb::handle inner) {
 nb::list ComposeSensitivities(nb::handle outer, nb::handle inner) {
   PySplineHolder holder_outer(outer);
   PySplineHolder holder_inner(inner);
-  auto sensitivities = splinepy::core::ComposeSensitivities(holder_outer.view, holder_inner.view);
+  auto sensitivities = splinepy::core::ComposeSensitivities(holder_outer.view,
+                                                            holder_inner.view);
 
   nb::list result;
   for (const auto& s : sensitivities) {
@@ -139,7 +149,8 @@ nb::list ComposeSensitivities(nb::handle outer, nb::handle inner) {
 nb::object DerivativeSpline(nb::handle spline, nb::object orders) {
   PySplineHolder holder(spline);
   ContiguousAdapter<int32_t> orders_adapter(orders, "int32");
-  splinepy::core::Span<const int32_t> orders_span(orders_adapter.data(), orders_adapter.size());
+  splinepy::core::Span<const int32_t> orders_span(orders_adapter.data(),
+                                                  orders_adapter.size());
   auto result = splinepy::core::DerivativeSpline(holder.view, orders_span);
   return SplineFromData(result);
 }
@@ -147,7 +158,8 @@ nb::object DerivativeSpline(nb::handle spline, nb::object orders) {
 nb::list Split(nb::handle spline, int para_dim, nb::object locations) {
   PySplineHolder holder(spline);
   ContiguousAdapter<double> locs_adapter(locations, "float64");
-  std::vector<double> locs(locs_adapter.data(), locs_adapter.data() + locs_adapter.size());
+  std::vector<double> locs(locs_adapter.data(),
+                           locs_adapter.data() + locs_adapter.size());
   std::sort(locs.begin(), locs.end());
 
   splinepy::core::Span<const double> locs_span(locs.data(), locs.size());
@@ -194,7 +206,8 @@ nb::list ExtractBoundaries(nb::handle spline, nb::handle boundary_ids) {
   } else {
     for (int bid : bids) {
       if (bid < 0 || bid >= 2 * para_dim) {
-        splinepy::utils::PrintAndThrowError("Requested Boundary ID exceeds admissible range.");
+        splinepy::utils::PrintAndThrowError(
+            "Requested Boundary ID exceeds admissible range.");
       }
       auto bnd = splinepy::core::ExtractBoundary(holder.view, bid);
       result.append(SplineFromData(bnd));
@@ -209,7 +222,9 @@ nb::object ExtractDim(nb::handle spline, int phys_dim) {
   return SplineFromData(result);
 }
 
-nb::object CompositionDerivative(nb::handle outer, nb::handle inner, nb::handle inner_derivative) {
+nb::object CompositionDerivative(nb::handle outer,
+                                 nb::handle inner,
+                                 nb::handle inner_derivative) {
   PySplineHolder holder_outer(outer);
   PySplineHolder holder_inner(inner);
   PySplineHolder holder_inner_der(inner_derivative);
@@ -225,7 +240,8 @@ nb::object SameSplineWithKnotVectors(nb::handle spline) {
     return nb::borrow(spline);
   }
 
-  splinepy::core::SplineData data = splinepy::core::SplineData::FromView(holder.view);
+  splinepy::core::SplineData data =
+      splinepy::core::SplineData::FromView(holder.view);
   data.knot_vectors.resize(data.para_dim);
   for (int32_t d = 0; d < data.para_dim; ++d) {
     const int p = data.degrees[d];
@@ -248,7 +264,8 @@ nb::object EvaluateBoundaryCenters(nb::handle spline) {
   const size_t n_centers = 2 * para_dim;
   size_t shape[2] = {n_centers, static_cast<size_t>(dim)};
   double* out_ptr = new double[n_centers * dim];
-  nb::capsule owner(out_ptr, [](void* p) noexcept { delete[] static_cast<double*>(p); });
+  nb::capsule owner(out_ptr,
+                    [](void* p) noexcept { delete[] static_cast<double*>(p); });
 
   auto bounds = splinepy::core::ParametricBounds(holder.view);
 
@@ -271,25 +288,54 @@ nb::object EvaluateBoundaryCenters(nb::handle spline) {
         splinepy::core::Span<double>(&out_ptr[bid * dim], dim));
   }
 
-  return nb::cast(nb::ndarray<nb::numpy, double, nb::shape<2>>(out_ptr, 2, shape, owner));
+  return nb::cast(
+      nb::ndarray<nb::numpy, double, nb::shape<2>>(out_ptr, 2, shape, owner));
 }
 
 } // namespace
 
 void init_nb_spline_extensions(nb::module_& m) {
-  m.def("insert_knots", &InsertKnots, nb::arg("spline"), nb::arg("para_dim"), nb::arg("knots"));
-  m.def("remove_knots", &RemoveKnots, nb::arg("spline"), nb::arg("para_dim"), nb::arg("knots"), nb::arg("tolerance"));
+  m.def("insert_knots",
+        &InsertKnots,
+        nb::arg("spline"),
+        nb::arg("para_dim"),
+        nb::arg("knots"));
+  m.def("remove_knots",
+        &RemoveKnots,
+        nb::arg("spline"),
+        nb::arg("para_dim"),
+        nb::arg("knots"),
+        nb::arg("tolerance"));
   m.def("multiply", &Multiply, nb::arg("a"), nb::arg("b"));
   m.def("add", &Add, nb::arg("a"), nb::arg("b"));
   m.def("compose", &Compose, nb::arg("outer"), nb::arg("inner"));
-  m.def("compose_sensitivities", &ComposeSensitivities, nb::arg("outer"), nb::arg("inner"));
-  m.def("derivative_spline", &DerivativeSpline, nb::arg("spline"), nb::arg("orders"));
-  m.def("split", &Split, nb::arg("spline"), nb::arg("para_dim"), nb::arg("locations"));
+  m.def("compose_sensitivities",
+        &ComposeSensitivities,
+        nb::arg("outer"),
+        nb::arg("inner"));
+  m.def("derivative_spline",
+        &DerivativeSpline,
+        nb::arg("spline"),
+        nb::arg("orders"));
+  m.def("split",
+        &Split,
+        nb::arg("spline"),
+        nb::arg("para_dim"),
+        nb::arg("locations"));
   m.def("extract_bezier_patches", &ExtractBezierPatches, nb::arg("spline"));
-  m.def("extract_boundaries", &ExtractBoundaries, nb::arg("spline"), nb::arg("boundary_ids") = nb::none());
+  m.def("extract_boundaries",
+        &ExtractBoundaries,
+        nb::arg("spline"),
+        nb::arg("boundary_ids") = nb::none());
   m.def("extract_dim", &ExtractDim, nb::arg("spline"), nb::arg("phys_dim"));
-  m.def("composition_derivative", &CompositionDerivative, nb::arg("outer"), nb::arg("inner"), nb::arg("inner_derivative"));
-  m.def("same_spline_with_knot_vectors", &SameSplineWithKnotVectors, nb::arg("spline"));
+  m.def("composition_derivative",
+        &CompositionDerivative,
+        nb::arg("outer"),
+        nb::arg("inner"),
+        nb::arg("inner_derivative"));
+  m.def("same_spline_with_knot_vectors",
+        &SameSplineWithKnotVectors,
+        nb::arg("spline"));
   m.def("boundary_centers", &EvaluateBoundaryCenters, nb::arg("spline"));
 }
 
