@@ -1,8 +1,8 @@
 import numpy as _np
 
 from splinepy import settings as _settings
-from splinepy.utils.data import cartesian_product as _cartesian_product
 from splinepy.utils import log as _log
+from splinepy.utils.data import cartesian_product as _cartesian_product
 from splinepy.utils.data import has_scipy as _has_scipy
 from splinepy.utils.data import make_matrix as _make_matrix
 
@@ -261,7 +261,9 @@ def _prepare_default_bspline1pd(
         start, stop = u_k[0, 0], u_k[-1, 0]
         span = stop - start if len(u_k) > 1 else 1.0
         if span <= 0 or (_np.diff(u_k[:, 0]) < 0).any():
-            raise ValueError("Automatic knots require ordered queries with distinct endpoints")
+            raise ValueError(
+                "Automatic knots require ordered queries with distinct endpoints"
+            )
         knots = compute_knot_vector(
             degree, n_control_points, (u_k - start) / span, n_queries
         )
@@ -489,7 +491,9 @@ def tensor(
         queries = parameterize(points, size, centripetal)
     else:
         queries = []
-        for values, count in zip(per_axis(associated_queries, "associated_queries"), size):
+        for values, count in zip(
+            per_axis(associated_queries, "associated_queries"), size, strict=False
+        ):
             axis = _np.asarray(values, dtype=float)
             if axis.shape not in ((count,), (count, 1)) or not _np.isfinite(axis).all():
                 raise ValueError("Each query axis must match its sample count")
@@ -499,9 +503,12 @@ def tensor(
         axes = [
             _prepare_default_bspline1pd(count, 1, degree, ncp, knots, query)
             for count, degree, ncp, knots, query in zip(
-                size, per_axis(degrees, "degrees"),
+                size,
+                per_axis(degrees, "degrees"),
                 per_axis(n_control_points, "n_control_points"),
-                per_axis(knot_vectors, "knot_vectors"), queries,
+                per_axis(knot_vectors, "knot_vectors"),
+                queries,
+                strict=False,
             )
         ]
         fitted = type(axes[0])(
@@ -518,7 +525,7 @@ def tensor(
         else:
             axes = []
             for i, (degree, count) in enumerate(
-                zip(fitted.degrees, fitted.control_mesh_resolutions)
+                zip(fitted.degrees, fitted.control_mesh_resolutions, strict=False)
             ):
                 controls = _np.zeros((count, 1))
                 if fitted.has_knot_vectors:
@@ -532,7 +539,8 @@ def tensor(
     grid_queries = _cartesian_product([axis.ravel() for axis in queries])
     if axes is None:
         matrix = _make_matrix(
-            *fitted.basis_and_support(grid_queries), len(fitted.control_points),
+            *fitted.basis_and_support(grid_queries),
+            len(fitted.control_points),
             as_array=True,
         )
         corners = _np.ravel_multi_index(
@@ -541,14 +549,15 @@ def tensor(
         control_shape = tuple(fitted.control_mesh_resolutions)
         control_corners = _np.ravel_multi_index(
             _np.ix_(*[(0, count - 1) for count in control_shape]),
-            control_shape, order="F",
+            control_shape,
+            order="F",
         ).ravel()
         fitted.control_points = _fit_coefficients(
             matrix, points, interpolate_endpoints, corners, control_corners
         )
     else:
         grid = points.reshape((*size, dim), order="F")
-        for i, (axis, query) in enumerate(zip(axes, queries)):
+        for i, (axis, query) in enumerate(zip(axes, queries, strict=False)):
             count = len(axis.control_points)
             matrix = _make_matrix(*axis.basis_and_support(query), count, as_array=True)
             lines = _np.moveaxis(grid, i, 0)

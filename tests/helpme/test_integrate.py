@@ -312,7 +312,7 @@ def test_field_assembly_scales_nonuniform_elements():
     spline = splinepy.BSpline([1], [[0, 0, 0.25, 1, 1]], [[0], [0.25], [1]])
     integrator = FieldIntegrator(spline)
 
-    def contributions(mapper, quad_points, quad_weights, jacobian_det):
+    def contributions(mapper, quad_points, quad_weights, jacobian_det):  # noqa: ARG001
         basis = spline.basis(quad_points)
         measure = quad_weights * jacobian_det
         return (basis.T @ (basis * measure[:, None])).ravel(), basis.T @ measure
