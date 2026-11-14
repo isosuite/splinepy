@@ -73,6 +73,16 @@ def show(*objs, backend=None, **kwargs):
     if not objs:
         raise TypeError("show() needs at least one object")
 
+    from splinepy.hierarchy import HBSpline
+
+    if len(objs) == 1 and isinstance(objs[0], HBSpline):
+        global_parameters = (
+            kwargs.get("parametric_space", False)
+            or kwargs.get("texture") is not None
+            or any(callable(kwargs.get(key)) for key in ("data", "scalars", "arrows", "arrow_data"))
+        )
+        objs = (objs[0]._visualization_spline(global_parameters=global_parameters),)
+
     backend = backend or _settings.SHOW_BACKEND
     if backend not in _BACKENDS:
         raise ValueError(f"backend must be one of {_BACKENDS}, got {backend}")

@@ -17,9 +17,8 @@ constexpr double kSpanTolerance = 1e-12;
 } // namespace
 
 ElementBvh::ElementBvh(const SplineView& spline)
-    : para_dim_(spline.para_dim),
-      dim_(spline.dim) {
-  if (para_dim_ <= 0 || dim_ <= 0 || spline.control_points_data == nullptr) {
+    : para_dim_(spline.para_dim), dim_(spline.dim) {
+  if (para_dim_ <= 0 || dim_ <= 0 || spline.hierarchy || !spline.control_points_data) {
     return;
   }
 
@@ -102,7 +101,59 @@ ElementBvh::ElementBvh(const SplineView& spline)
     }
   }
 
-  // tree
+  BuildTree();
+}
+
+ElementBvh::ElementBvh(int32_t para_dim,
+                       int32_t dim,
+                       std::size_t controls_per_element,
+                       Span<const double> bounds,
+                       Span<const double> control_points)
+    : para_dim_(para_dim), dim_(dim) {
+  if (para_dim <= 0 || dim <= 0 || !controls_per_element || bounds.empty()) {
+    return;
+  }
+  const auto pd = static_cast<std::size_t>(para_dim);
+  const auto xd = static_cast<std::size_t>(dim);
+  const auto elements = bounds.size() / 2 / pd;
+  if (elements > INT64_MAX / 2 || bounds.size() % (2 * pd) ||
+      control_points.size() % xd || control_points.size() / xd % controls_per_element ||
+      control_points.size() / xd / controls_per_element != elements) {
+    return;
+  }
+
+  num_elements_ = elements;
+  param_lower_.resize(elements * pd);
+  param_upper_.resize(elements * pd);
+  box_lower_.assign(elements * xd, std::numeric_limits<double>::max());
+  box_upper_.assign(elements * xd, std::numeric_limits<double>::lowest());
+  for (std::size_t e = 0; e < elements; ++e) {
+    for (std::size_t axis = 0; axis < pd; ++axis) {
+      const double lo = bounds[2 * e * pd + axis];
+      const double hi = bounds[2 * e * pd + pd + axis];
+      if (!std::isfinite(lo) || !std::isfinite(hi) || !(lo < hi)) {
+        return;
+      }
+      param_lower_[e * pd + axis] = lo;
+      param_upper_[e * pd + axis] = hi;
+    }
+    for (std::size_t i = 0; i < controls_per_element; ++i) {
+      for (std::size_t axis = 0; axis < xd; ++axis) {
+        const auto value = control_points[(e * controls_per_element + i) * xd + axis];
+        if (!std::isfinite(value)) {
+          return;
+        }
+        auto& lo = box_lower_[e * xd + axis];
+        auto& hi = box_upper_[e * xd + axis];
+        lo = std::min(lo, value);
+        hi = std::max(hi, value);
+      }
+    }
+  }
+  BuildTree();
+}
+
+void ElementBvh::BuildTree() {
   element_order_.resize(num_elements_);
   std::iota(element_order_.begin(), element_order_.end(), int64_t{0});
   nodes_.reserve(2 * num_elements_);
@@ -143,8 +194,7 @@ int64_t ElementBvh::BuildNode(const int64_t begin, const int64_t end) {
     double hi = std::numeric_limits<double>::lowest();
     for (int64_t i{begin}; i < end; ++i) {
       const int64_t e = element_order_[i];
-      const double c =
-          .5 * (box_lower_[e * dim_ + k] + box_upper_[e * dim_ + k]);
+      const double c = .5 * box_lower_[e * dim_ + k] + .5 * box_upper_[e * dim_ + k];
       lo = std::min(lo, c);
       hi = std::max(hi, c);
     }
@@ -160,8 +210,8 @@ int64_t ElementBvh::BuildNode(const int64_t begin, const int64_t end) {
       element_order_.begin() + mid,
       element_order_.begin() + end,
       [&](const int64_t a, const int64_t b) {
-        return box_lower_[a * dim_ + axis] + box_upper_[a * dim_ + axis]
-               < box_lower_[b * dim_ + axis] + box_upper_[b * dim_ + axis];
+                     return .5 * box_lower_[a * dim_ + axis] + .5 * box_upper_[a * dim_ + axis]
+                            < .5 * box_lower_[b * dim_ + axis] + .5 * box_upper_[b * dim_ + axis];
       });
 
   // note: BuildNode may reallocate nodes_, so don't keep references

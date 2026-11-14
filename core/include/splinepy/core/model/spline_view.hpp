@@ -8,6 +8,8 @@
 
 namespace splinepy::core {
 
+struct HierarchyView;
+
 /// Non-owning lightweight view of a spline geometry.
 /// Does not own or manage memory.
 struct SplineView {
@@ -46,6 +48,9 @@ struct SplineView {
 
   /// Stride between consecutive weights (in number of doubles). Default = 1.
   int64_t weight_stride{1};
+
+  /// Optional hierarchy, owned by the caller alongside this geometry.
+  const HierarchyView* hierarchy{nullptr};
 
   // ---------------------------------------------------------------------------
   // Observers and Queries (Google C++ Style)

@@ -10,6 +10,13 @@ option(SPLINEPY_CORE_BUILD_TESTS "Build splinepy core tests" ON)
 add_library(
   splinepy_core_lib STATIC
   src/validate/validator.cpp
+    src/hierarchy/key.cpp
+    src/hierarchy/hierarchy.cpp
+    src/hierarchy/refinement.cpp
+    src/hierarchy/queries.cpp
+    src/hierarchy/refine.cpp
+    src/hierarchy/export.cpp
+    src/hierarchy/proximity.cpp
   src/math/binomial.cpp
   src/math/bernstein.cpp
   src/math/bspline_basis.cpp

@@ -7,6 +7,7 @@
 #include <cstring>
 #include <vector>
 
+#include "../math/knot_insertion.hpp"
 #include "splinepy/core/common.hpp"
 #include "splinepy/core/math/bspline_basis.hpp"
 #include "splinepy/core/memory/buffer.hpp"
@@ -225,8 +226,7 @@ InsertKnotAlongAxisND(MemoryArena& arena,
   Span<double> alphas = arena.AllocateSpan<double>(p);
   for (int32_t j = 0; j < p; ++j) {
     const int32_t i = k - p + 1 + j;
-    const double denom = knots[i + p] - knots[i];
-    alphas[j] = (denom != 0.0) ? ((u_new - knots[i]) / denom) : 0.0;
+    alphas[j] = KnotInsertionAlpha(u_new, knots[i], knots[i + p]);
   }
 
   const int64_t in_s = layout.in_s;

@@ -31,11 +31,16 @@ SOFTWARE.
 
 namespace nb = nanobind;
 
+namespace splinepy::py {
+void init_nb_hierarchy(nb::module_&);
+}
+
 NB_MODULE(splinepy_core, m) {
   splinepy::py::init_nb_spline(m);
   splinepy::py::init_nb_multipatch(m);
   splinepy::py::init_nb_knot_insertion_matrix(m);
   splinepy::py::init_nb_spline_extensions(m);
+  splinepy::py::init_nb_hierarchy(m);
 
   m.def("build_type", []() {
 #ifndef NDEBUG
