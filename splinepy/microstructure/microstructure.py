@@ -1,5 +1,6 @@
 import numpy as _np
 
+from splinepy import settings as _settings
 from splinepy._base import SplinepyBase as _SplinepyBase
 from splinepy.bspline import BSpline as _BSpline
 from splinepy.multipatch import Multipatch as _Multipatch
@@ -423,6 +424,8 @@ class Microstructure(_SplinepyBase):
         closing_face=None,
         knot_span_wise=True,
         macro_sensitivities=False,
+        *,
+        nthreads=None,
         **kwargs,
     ):
         """Create a Microstructure.
@@ -437,6 +440,8 @@ class Microstructure(_SplinepyBase):
         macro_sensitivities: bool
           Calculate the derivatives of the structure with respect to the outer
           control point variables
+        nthreads : int or None
+          Native composition threads. Defaults to splinepy.settings.NTHREADS.
         **kwargs
           will be passed to `create_tile` function
 
@@ -496,6 +501,17 @@ class Microstructure(_SplinepyBase):
             is_parametrized=is_parametrized,
             macro_sensitivity=macro_sensitivities,
         )
+
+        nthreads = _settings.NTHREADS if nthreads is None else int(nthreads)
+        if nthreads < 1:
+            raise ValueError("nthreads must be positive")
+
+        fixed_tile = type(self._microtile) is _UserTile and not is_parametrized
+        if fixed_tile:
+            tile, _ = self._microtile.create_tile(**kwargs)
+            fixed_results = self._compose_fixed_tile(
+                bezier_patches, tile, macro_sensitivities, nthreads
+            )
 
         # Use element_resolutions to get global indices of patches
         local_indices = _cartesian_product(
@@ -573,25 +589,21 @@ class Microstructure(_SplinepyBase):
 
             # Determine the microtile (prior to insertion) derivative is set to
             # None if the parameter sensitivity is not requested
-            tile, derivatives = self._microtile.create_tile(
-                parameters=tile_parameters,
-                parameter_sensitivities=tile_sens_on_support,
-                closure=face_closure,
-                **kwargs,
-            )
-
-            # Perform the composition
-            if macro_sensitivities:
-                basis_function_compositions = []
-                for tile_patch in tile:
-                    composed, basis_function_composition = def_fun.compose(
-                        tile_patch, compute_sensitivities=True
-                    )
-                    spline_list_ms.append(composed)
-                    basis_function_compositions.append(basis_function_composition)
+            if fixed_tile:
+                composed, basis_function_compositions = next(fixed_results)
             else:
-                for tile_patch in tile:
-                    spline_list_ms.append(def_fun.compose(tile_patch))
+                tile, derivatives = self._microtile.create_tile(
+                    parameters=tile_parameters,
+                    parameter_sensitivities=tile_sens_on_support,
+                    closure=face_closure,
+                    **kwargs,
+                )
+                composed, basis_function_compositions = next(
+                    self._compose_fixed_tile(
+                        [def_fun], tile, macro_sensitivities, nthreads
+                    )
+                )
+            spline_list_ms.extend(composed)
 
             # Determine the geometric sensitivities using the chain rule
             if parameter_sensitivities:
@@ -600,10 +612,10 @@ class Microstructure(_SplinepyBase):
                 for j in anti_support:
                     spline_list_derivs[j].extend(empty_splines)
                 for j, deris in enumerate(derivatives):
-                    for tile_v, tile_deriv in zip(tile, deris, strict=True):
-                        spline_list_derivs[support[j]].append(
-                            def_fun.composition_derivative(tile_v, tile_deriv)
-                        )
+                    (composed_derivatives,) = def_fun.composition_derivative_batch(
+                        [def_fun], tile, deris, nthreads=nthreads
+                    )
+                    spline_list_derivs[support[j]].extend(composed_derivatives)
 
             # Compute the derivatives with respect to the deformation
             # function's ctps
@@ -640,6 +652,24 @@ class Microstructure(_SplinepyBase):
             )
 
         return self._microstructure
+
+    @staticmethod
+    def _compose_fixed_tile(outers, tile, macro_sensitivities, nthreads):
+        # Limit the native results and sensitivity splines alive at once.
+        batch_size = 8 if macro_sensitivities else 32
+        for start in range(0, len(outers), batch_size):
+            chunk = outers[start : start + batch_size]
+            batch = chunk[0].compose_batch(
+                chunk,
+                tile,
+                compute_sensitivities=macro_sensitivities,
+                nthreads=nthreads,
+            )
+            if macro_sensitivities:
+                yield from zip(*batch, strict=True)
+            else:
+                for row in batch:
+                    yield row, None
 
     def show(self, use_saved=False, **kwargs):
         """

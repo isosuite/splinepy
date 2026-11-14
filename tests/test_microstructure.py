@@ -208,3 +208,44 @@ def test_macro_sensitivities(tile_class, np_rng, h_eps, n_test_points):
                     + "\nFinite difference derivative:\n"
                     + str(patch_deriv_fd[:, jj_dim])
                 )
+
+
+def test_fixed_tile_batch_matches_pairwise_composition():
+    from splinepy import Bezier
+
+    outer = box(2.0, 3.0)
+    tile = [
+        Bezier([1, 1], [[0, 0], [.5, 0], [0, 1], [.5, 1]]),
+        Bezier([1, 1], [[.5, 0], [1, 0], [.5, 1], [1, 1]]),
+    ]
+    generator = ms.microstructure.Microstructure(
+        deformation_function=outer, microtile=tile, tiling=[7, 5]
+    )
+    outers, *_ = generator._compute_tiling_prerequisites(
+        knot_span_wise=True, is_parametrized=False, macro_sensitivity=False
+    )
+    expected = [patch.compose(inner) for patch in outers for inner in tile]
+    actual = generator.create().patches
+    assert len(actual) == len(expected)
+    for patch, reference in zip(actual, expected, strict=True):
+        np.testing.assert_allclose(patch.cps, reference.cps, atol=1e-13)
+
+
+def test_fixed_tile_macro_fields_match_per_tile_batches():
+    from splinepy import Bezier
+    from splinepy.microstructure.microstructure import _UserTile
+
+    class PerPatchTile(_UserTile):
+        pass
+
+    outer = box(2.0, 3.0)
+    tile = Bezier([1, 1], [[0, 0], [.5, 0], [0, 1], [.5, 1]])
+    generator = ms.microstructure.Microstructure(
+        deformation_function=outer, microtile=tile, tiling=[3, 3]
+    )
+    batched = generator.create(macro_sensitivities=True, nthreads=2)
+    generator.microtile = PerPatchTile(tile)
+    reference = generator.create(macro_sensitivities=True, nthreads=1)
+    np.testing.assert_allclose(batched.control_points, reference.control_points)
+    for field, expected in zip(batched.fields, reference.fields, strict=True):
+        np.testing.assert_allclose(field.control_points, expected.control_points)
