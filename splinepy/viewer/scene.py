@@ -61,7 +61,9 @@ def _sampling_resolution(value, default, dim, name):
         or res.dtype.kind not in "iu"
         or _np.any(res <= 0)
     ):
-        raise ValueError(f"{name} must be a positive integer or {dim} positive integers")
+        raise ValueError(
+            f"{name} must be a positive integer or {dim} positive integers"
+        )
     return tuple(_np.broadcast_to(res, (dim,)))
 
 
@@ -339,7 +341,10 @@ def scene_from_splines(
         )
 
         if knots:
-            kn = [_knot_lines(p, res) for p, res in zip(sub, patch_resolutions, strict=False)]
+            kn = [
+                _knot_lines(p, res)
+                for p, res in zip(sub, patch_resolutions, strict=False)
+            ]
             kn = [k for k in kn if len(k["vertices"])]
             if kn and kn[0]["element_type"] == "line":
                 k = _mesh.merge(kn)
@@ -482,7 +487,8 @@ def _gustaf_to_mesh(obj):
         connectivity = None
     vdata = {}
     if hasattr(obj, "vertex_data"):
-        for k in obj.vertex_data.keys():
+        # Gustaf VertexData exposes keys() but does not support direct iteration.
+        for k in obj.vertex_data.keys():  # noqa: SIM118
             vdata[k] = obj.vertex_data[k]
     return _mesh.make_mesh(etype, vertices, connectivity, vertex_data=vdata)
 

@@ -347,7 +347,9 @@ class FFD(_SplinepyBase):
             The vedo backend may otherwise return None.
         """
         if self._spline is None or self._mesh is None:
-            raise ValueError("Please set both a mesh and a spline before visualizing FFD.")
+            raise ValueError(
+                "Please set both a mesh and a spline before visualizing FFD."
+            )
         return_showable = kwargs.pop("return_showable", False)
         return_gustaf = kwargs.pop("return_gustaf", False)
         title = kwargs.pop("title", "FFD")
@@ -409,7 +411,9 @@ class FFD(_SplinepyBase):
             keys original_mesh, spline, and mesh.
         """
         if self._spline is None or self._mesh is None:
-            raise ValueError("Please set both a mesh and a spline before visualizing FFD.")
+            raise ValueError(
+                "Please set both a mesh and a spline before visualizing FFD."
+            )
 
         import gustaf as _gus
 

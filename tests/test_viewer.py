@@ -28,9 +28,11 @@ def test_headless_launch_failure_cleans_up(monkeypatch):
         raise RuntimeError("test launch failure")
 
     monkeypatch.setattr(playwright.BrowserType, "launch", fail_launch)
-    with pytest.raises(RuntimeError, match="test launch failure"):
-        with viewer.show(np.zeros((1, 2)))._page(200, 150):
-            pytest.fail("Headless page opened despite launch failure")
+    with (
+        pytest.raises(RuntimeError, match="test launch failure"),
+        viewer.show(np.zeros((1, 2)))._page(200, 150),
+    ):
+        pytest.fail("Headless page opened despite launch failure")
     with playwright.sync_playwright():
         pass
 
@@ -195,14 +197,16 @@ def test_control_point_ids_layer():
     assert ids["visible"] is True
 
 
-def test_headless_screenshot(tmp_path, chromium):
+@pytest.mark.usefixtures("chromium")
+def test_headless_screenshot(tmp_path):
     a = splinepy.Bezier(degrees=[2], control_points=[[0, 0], [1, 1], [2, 0]])
     out = viewer.show(a).screenshot(tmp_path / "s.png", 200, 150)
     assert (tmp_path / "s.png").stat().st_size > 500
     assert out == tmp_path / "s.png"
 
 
-def test_layer_category_toggles(chromium):
+@pytest.mark.usefixtures("chromium")
+def test_layer_category_toggles():
     spline = _surface()
     shown = viewer.show([spline, spline], resolutions=4)
     with shown._page(400, 300) as page:
@@ -256,7 +260,7 @@ def test_sampling_resolutions_accept_arrays():
     scene = viewer.scene_from_splines(
         _surface(),
         resolutions=np.array([3, 4]),
-        arrows=lambda q: np.ones_like(q),
+        arrows=np.ones_like,
         arrow_resolutions=np.array([2, 3]),
     )
     layers = {layer["name"]: layer for layer in scene["layers"]}
@@ -269,7 +273,7 @@ def test_sampling_resolutions_accept_arrays():
 def test_sampling_resolutions_reject_invalid_values(option, value):
     with pytest.raises(ValueError, match=option):
         viewer.scene_from_splines(
-            _surface(), arrows=lambda q: np.ones_like(q), **{option: value}
+            _surface(), arrows=np.ones_like, **{option: value}
         )
 
 
@@ -318,7 +322,8 @@ def test_integer_colors():
     assert shown.scene["layers"][0]["color"] == colors[2]
 
 
-def test_refined_thb_renders_headlessly(tmp_path, chromium):
+@pytest.mark.usefixtures("chromium")
+def test_refined_thb_renders_headlessly(tmp_path):
     spline = splinepy.THBSpline(
         [1, 1],
         [[0, 0, 1, 1]] * 2,
@@ -418,7 +423,8 @@ def test_png_encoder_roundtrip():
     assert np.array_equal(np.asarray(Image.open(io.BytesIO(_png(arr)))), arr)
 
 
-def test_headless_render_with_texture_and_lighting(tmp_path, chromium):
+@pytest.mark.usefixtures("chromium")
+def test_headless_render_with_texture_and_lighting(tmp_path):
     img = np.zeros((2, 2, 3))
     img[0, 0] = img[1, 1] = 1
     v = viewer.show(_surface(), texture=img, lighting="glossy")
