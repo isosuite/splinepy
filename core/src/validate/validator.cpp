@@ -12,7 +12,7 @@ bool IsFinite(double val) noexcept { return std::isfinite(val); }
 } // namespace
 
 Status Validate(const SplineView& view, const Options& options) {
-  if (view.para_dim <= 0 || view.dim <= 0) {
+  if (view.hierarchy || view.para_dim <= 0 || view.dim <= 0) {
     return Status::kInvalidArgument;
   }
 
@@ -91,6 +91,10 @@ Status Validate(SplineBatchView batch, const Options& options) {
 }
 
 void ThrowIfInvalid(const SplineView& view, const Options& options) {
+  if (view.hierarchy) {
+    throw SplinepyException(
+        "Tensor spline validation requires a tensor spline");
+  }
   if (view.para_dim <= 0) {
     throw SplinepyException("Parametric dimension must be > 0",
                             Status::kInvalidArgument);

@@ -17,6 +17,7 @@ from splinepy.bezier import Bezier
 from splinepy.bspline import BSpline
 from splinepy.helpme.ffd import FFD
 from splinepy.helpme.visualize import show  # shortcut for visualization
+from splinepy.hierarchy import HBSpline, RationalHBSpline, RationalTHBSpline, THBSpline
 from splinepy.knot_vector import KnotVector
 from splinepy.microstructure.microstructure import Microstructure
 from splinepy.multipatch import Multipatch
@@ -71,6 +72,10 @@ __all__ = [
     "BSpline",
     "Multipatch",
     "NURBS",
+    "HBSpline",
+    "RationalHBSpline",
+    "THBSpline",
+    "RationalTHBSpline",
     "RationalBezier",
     "Spline",
     "SplineDataAdaptor",

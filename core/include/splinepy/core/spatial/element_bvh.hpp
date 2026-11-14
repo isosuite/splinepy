@@ -29,6 +29,15 @@ public:
   /// afterwards.
   explicit ElementBvh(const SplineView& spline);
 
+  /// Builds from contiguous Bezier controls in element order. Parameter
+  /// bounds have shape (elements, 2, para_dim). The caller guarantees
+  /// positive weights for rational elements.
+  ElementBvh(int32_t para_dim,
+             int32_t dim,
+             std::size_t controls_per_element,
+             Span<const double> bounds,
+             Span<const double> control_points);
+
   /// False if the box bound is not guaranteed (non-positive weights) or the
   /// spline has no elements.
   bool IsValid() const noexcept { return valid_; }
@@ -143,6 +152,7 @@ private:
                               point);
   }
 
+  void BuildTree();
   int64_t BuildNode(const int64_t begin, const int64_t end);
 
   int32_t para_dim_{0};

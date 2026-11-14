@@ -252,8 +252,17 @@ def scene_from_splines(
     if not isinstance(splines, (list, tuple)):
         splines = [splines]
 
+    from splinepy.hierarchy import HBSpline
+
     layers = []
-    for s in splines:
+    for source in splines:
+        s = source
+        if isinstance(s, HBSpline):
+            s = s._visualization_spline(
+                global_parameters=texture is not None
+                or callable(scalars)
+                or callable(arrows)
+            )
         sub = _patches(s)
         multi = s.name.startswith("Multi")
         for p in sub:

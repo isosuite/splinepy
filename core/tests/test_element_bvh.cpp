@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <random>
 #include <vector>
@@ -53,6 +54,39 @@ struct TestSpline {
     return v;
   }
 };
+
+TEST(LeafElementBvh, TraversalPrunesSeparatedBezierLeaves) {
+  const std::array<double, 6> bounds{0, 0.2, 0.2, 0.5, 0.5, 1};
+  const std::array<double, 6> controls{0, 1, 10, 11, 20, 21};
+  const ElementBvh bvh(1, 1, 2, bounds, controls);
+  ASSERT_TRUE(bvh.IsValid());
+  ASSERT_EQ(bvh.NumElements(), 3);
+  double lower, upper;
+  bvh.ElementBounds(1, &lower, &upper);
+  EXPECT_DOUBLE_EQ(lower, 0.2);
+  EXPECT_DOUBLE_EQ(upper, 0.5);
+
+  const double query = 10.25;
+  EXPECT_DOUBLE_EQ(bvh.ElementDistanceSquared(0, &query), 9.25 * 9.25);
+  EXPECT_EQ(bvh.Traverse(&query,
+                         [](int64_t leaf, double bound) {
+                           EXPECT_EQ(leaf, 1);
+                           EXPECT_DOUBLE_EQ(bound, 0.0);
+                           return 0.0;
+                         }),
+            1);
+}
+
+TEST(LeafElementBvh, RejectsMalformedBezierData) {
+  const std::array<double, 4> bounds{0, 0.5, 0.5, 1};
+  const std::array<double, 3> incomplete{0, 1, 2};
+  EXPECT_FALSE(ElementBvh(1, 1, 2, bounds, incomplete).IsValid());
+  const std::array<double, 4> nonfinite{0, 1, std::nan(""), 2};
+  EXPECT_FALSE(ElementBvh(1, 1, 2, bounds, nonfinite).IsValid());
+  const std::array<double, 4> reversed{0, 0.5, 1, 0.5};
+  const std::array<double, 4> controls{0, 1, 2, 3};
+  EXPECT_FALSE(ElementBvh(1, 1, 2, reversed, controls).IsValid());
+}
 
 class ElementBvhTest : public ::testing::TestWithParam<bool> {};
 

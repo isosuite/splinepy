@@ -139,7 +139,7 @@ public:
   }
 
   // Copy semantics
-  Buffer(const Buffer& other) : Buffer(other.size_, other.alignment_) {
+  Buffer(const Buffer& other) : Buffer(other.size_, T{}, other.alignment_) {
     if (size_ > 0) {
       std::copy_n(other.data_, size_, data_);
     }
