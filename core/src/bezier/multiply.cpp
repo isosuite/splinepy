@@ -41,7 +41,8 @@ inline FactorTable1D BuildFactorTable(int32_t m, int32_t n) {
     const double denom_bin = Binomial(m + n, k);
     for (int32_t i = i_low; i <= i_high; ++i) {
       const double num_bin = Binomial(m, i) * Binomial(n, k - i);
-      table.factors[k][i - i_low] = (denom_bin != 0.0) ? (num_bin / denom_bin) : 0.0;
+      table.factors[k][i - i_low] =
+          (denom_bin != 0.0) ? (num_bin / denom_bin) : 0.0;
     }
   }
   return table;
@@ -172,11 +173,10 @@ Buffer<double> MultiplyPolynomialCps(int32_t para_dim,
   return out_cps;
 }
 
-}  // namespace detail
+} // namespace detail
 
-SplineData Multiply(const SplineView& a,
-                    const SplineView& b,
-                    const Options& options) {
+SplineData
+Multiply(const SplineView& a, const SplineView& b, const Options& options) {
   if (options.validate) {
     ThrowIfInvalid(a);
     ThrowIfInvalid(b);
@@ -233,28 +233,26 @@ SplineData Multiply(const SplineView& a,
     }
   }
 
-  Buffer<double> num_cps =
-      detail::MultiplyPolynomialCps(para_dim,
-                                    a.degrees,
-                                    b.degrees,
-                                    a_weighted.data(),
-                                    a.dim,
-                                    b_weighted.data(),
-                                    b.dim,
-                                    res_dim,
-                                    is_dot_product);
+  Buffer<double> num_cps = detail::MultiplyPolynomialCps(para_dim,
+                                                         a.degrees,
+                                                         b.degrees,
+                                                         a_weighted.data(),
+                                                         a.dim,
+                                                         b_weighted.data(),
+                                                         b.dim,
+                                                         res_dim,
+                                                         is_dot_product);
 
   if (is_rational) {
-    Buffer<double> den_cps =
-        detail::MultiplyPolynomialCps(para_dim,
-                                      a.degrees,
-                                      b.degrees,
-                                      a_weights.data(),
-                                      1,
-                                      b_weights.data(),
-                                      1,
-                                      1,
-                                      false);
+    Buffer<double> den_cps = detail::MultiplyPolynomialCps(para_dim,
+                                                           a.degrees,
+                                                           b.degrees,
+                                                           a_weights.data(),
+                                                           1,
+                                                           b_weights.data(),
+                                                           1,
+                                                           1,
+                                                           false);
 
     const int64_t total_out_cps = den_cps.size();
     result.control_points.resize(total_out_cps * res_dim);
@@ -265,7 +263,8 @@ SplineData Multiply(const SplineView& a,
       const double inv_w = (w != 0.0) ? (1.0 / w) : 0.0;
       result.weights[i] = w;
       for (int32_t c = 0; c < res_dim; ++c) {
-        result.control_points[i * res_dim + c] = num_cps[i * res_dim + c] * inv_w;
+        result.control_points[i * res_dim + c] =
+            num_cps[i * res_dim + c] * inv_w;
       }
     }
   } else {
@@ -276,4 +275,4 @@ SplineData Multiply(const SplineView& a,
   return result;
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

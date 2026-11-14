@@ -11,7 +11,8 @@ namespace splinepy::core {
 
 /// Retrieves the global face indices corresponding to boundary faces.
 /// If boundary_id < 0, returns all global face indices where interface < 0.
-/// If boundary_id >= 0, returns all global face indices where interface == -boundary_id.
+/// If boundary_id >= 0, returns all global face indices where interface ==
+/// -boundary_id.
 Buffer<int32_t> BoundaryPatchIds(Span<const int32_t> interfaces,
                                  int32_t boundary_id = -1);
 
@@ -25,7 +26,7 @@ SplineBatchData BoundaryMultipatch(const SplineBatchView& patches,
 
 /// Extracts all boundary splines from patches with interfaces < 0.
 SplineBatchData ExtractAllBoundarySplines(const SplineBatchView& patches,
-                                         Span<const int32_t> interfaces,
-                                         const Options& options = {});
+                                          Span<const int32_t> interfaces,
+                                          const Options& options = {});
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

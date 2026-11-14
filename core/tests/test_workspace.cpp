@@ -68,7 +68,8 @@ TEST(MemoryArenaTest, ScopeCheckpointRestoration) {
   EXPECT_EQ(cp_after.block_index, cp_before.block_index);
   EXPECT_EQ(cp_after.block_offset, cp_before.block_offset);
 
-  // Next allocation in restored state should occupy the exact same memory as scratch
+  // Next allocation in restored state should occupy the exact same memory as
+  // scratch
   double* new_ptr = arena.Allocate<double>(500);
   EXPECT_EQ(new_ptr, scratch_addr);
 }
@@ -78,7 +79,7 @@ TEST(MemoryArenaTest, MultiBlockExpansion) {
   MemoryArena arena(1024);
 
   // Allocate larger than one block
-  Span<double> large = arena.AllocateSpan<double>(500);  // 4000 bytes
+  Span<double> large = arena.AllocateSpan<double>(500); // 4000 bytes
   ASSERT_EQ(large.size(), 500u);
   EXPECT_GE(arena.TotalCapacityBytes(), 4000u);
 
@@ -134,5 +135,5 @@ TEST(WorkspaceTest, ConcurrentThreadArenaAccess) {
   EXPECT_GE(ws.NumThreadArenas(), static_cast<std::size_t>(kNumThreads));
 }
 
-}  // namespace
-}  // namespace splinepy::core
+} // namespace
+} // namespace splinepy::core

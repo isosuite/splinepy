@@ -8,7 +8,7 @@
 namespace splinepy::core {
 
 Buffer<double> GrevilleAbscissae(const SplineView& spline,
-                                const Options& options) {
+                                 const Options& options) {
   if (options.validate) {
     ThrowIfInvalid(spline);
   }
@@ -86,4 +86,4 @@ Buffer<double> GrevilleAbscissae(const SplineView& spline,
   return result;
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

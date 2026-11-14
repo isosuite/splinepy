@@ -85,12 +85,12 @@ bool AreG1(const std::vector<double>& n0,
   return (1.0 - cos_phi) < tolerance;
 }
 
-}  // namespace
+} // namespace
 
 int32_t BoundariesFromContinuity(const SplineBatchView& patches,
-                                Buffer<int32_t>& global_interfaces,
-                                double tolerance,
-                                const Options& options) {
+                                 Buffer<int32_t>& global_interfaces,
+                                 double tolerance,
+                                 const Options& options) {
   if (patches.empty()) {
     return 0;
   }
@@ -197,4 +197,4 @@ int32_t BoundariesFromContinuity(const SplineBatchView& patches,
   return current_id - 1;
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

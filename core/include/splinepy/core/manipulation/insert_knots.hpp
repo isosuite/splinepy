@@ -22,4 +22,4 @@ SplineBatchData InsertKnots(SplineBatchView batch,
                             Span<const double> knots_to_insert,
                             const Options& options = {});
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

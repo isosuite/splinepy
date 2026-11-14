@@ -22,12 +22,13 @@ Buffer<double> Evaluate(const SplineView& spline,
                         const Options& options = {});
 
 /// Batched evaluation.
-/// queries_per_spline: Span of query Spans, each having size (n_queries_i * spline_i.para_dim).
-/// If queries_per_spline has size 1 and batch has size > 1, the single query set is broadcast.
-/// out_per_spline: Span of output Spans, each having size (n_queries_i * spline_i.dim).
+/// queries_per_spline: Span of query Spans, each having size (n_queries_i *
+/// spline_i.para_dim). If queries_per_spline has size 1 and batch has size > 1,
+/// the single query set is broadcast. out_per_spline: Span of output Spans,
+/// each having size (n_queries_i * spline_i.dim).
 void Evaluate(SplineBatchView batch,
               Span<const Span<const double>> queries_per_spline,
               Span<Span<double>> out_per_spline,
               const Options& options = {});
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

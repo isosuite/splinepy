@@ -35,12 +35,14 @@ SplineBatchData Split(const SplineView& spline,
   strides[0] = 1;
   for (int32_t d = 0; d < spline.para_dim; ++d) {
     n[d] = spline.degrees[d] + 1;
-    if (d > 0) strides[d] = strides[d - 1] * n[d - 1];
+    if (d > 0)
+      strides[d] = strides[d - 1] * n[d - 1];
   }
 
   int64_t num_rows = 1;
   for (int32_t d = 0; d < spline.para_dim; ++d) {
-    if (d != axis) num_rows *= n[d];
+    if (d != axis)
+      num_rows *= n[d];
   }
 
   Buffer<double> working_cps;
@@ -74,7 +76,8 @@ SplineBatchData Split(const SplineView& spline,
     int64_t base = 0;
     int64_t rem = r;
     for (int32_t d = 0; d < spline.para_dim; ++d) {
-      if (d == axis) continue;
+      if (d == axis)
+        continue;
       const int64_t idx_d = rem % n[d];
       rem /= n[d];
       base += idx_d * strides[d];
@@ -83,13 +86,14 @@ SplineBatchData Split(const SplineView& spline,
 
     // Apply de Casteljau split coordinate by coordinate
     for (int32_t c = 0; c < coord_dim; ++c) {
-      DeCasteljauSplit1D(p,
-                         location,
-                         Span<const double>(working_cps.data() + base + c,
-                                            static_cast<std::size_t>(n_axis * s)),
-                         s,
-                         Span<double>(left_row.data(), n_axis),
-                         Span<double>(right_row.data(), n_axis));
+      DeCasteljauSplit1D(
+          p,
+          location,
+          Span<const double>(working_cps.data() + base + c,
+                             static_cast<std::size_t>(n_axis * s)),
+          s,
+          Span<double>(left_row.data(), n_axis),
+          Span<double>(right_row.data(), n_axis));
 
       for (int32_t i = 0; i < n_axis; ++i) {
         left_cps[base + i * s + c] = left_row[i];
@@ -190,4 +194,4 @@ SplineBatchData Split(const SplineView& spline,
   return result;
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

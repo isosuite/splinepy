@@ -26,7 +26,7 @@ TEST(BSplineBasisTest, FindSpan) {
   EXPECT_EQ(FindSpan(n_cps, p, 0.99, knots), 4); // [0.7, 1.0) -> span 4
 
   // Clamping at upper bound
-  EXPECT_EQ(FindSpan(n_cps, p, 1.0, knots), 4);  // u == knots[n] -> n - 1 = 4
+  EXPECT_EQ(FindSpan(n_cps, p, 1.0, knots), 4); // u == knots[n] -> n - 1 = 4
   EXPECT_EQ(FindSpan(n_cps, p, 1.1, knots), 4);
 }
 
@@ -64,8 +64,12 @@ TEST(BSplineBasisTest, LinearBasisExactValues) {
   int32_t span = FindSpan(n_cps, p, 0.25, knots);
   EXPECT_EQ(span, 1);
   EvaluateBSplineBasis(span, 0.25, p, knots, Span<double>(basis));
-  EXPECT_NEAR(basis[0], 0.5, 1e-14); // N_{0, 1}(0.25) = (0.5 - 0.25) / 0.5 = 0.5
-  EXPECT_NEAR(basis[1], 0.5, 1e-14); // N_{1, 1}(0.25) = (0.25 - 0.0) / 0.5 = 0.5
+  EXPECT_NEAR(basis[0],
+              0.5,
+              1e-14); // N_{0, 1}(0.25) = (0.5 - 0.25) / 0.5 = 0.5
+  EXPECT_NEAR(basis[1],
+              0.5,
+              1e-14); // N_{1, 1}(0.25) = (0.25 - 0.0) / 0.5 = 0.5
 }
 
 TEST(BSplineBasisTest, DerivativesPartitionOfUnityDerivative) {
@@ -79,7 +83,12 @@ TEST(BSplineBasisTest, DerivativesPartitionOfUnityDerivative) {
 
   for (double u = 0.05; u < 0.95; u += 0.1) {
     int32_t span = FindSpan(n_cps, p, u, knots);
-    EvaluateBSplineBasisDerivatives(span, u, p, max_order, knots, Span<double>(ders));
+    EvaluateBSplineBasisDerivatives(span,
+                                    u,
+                                    p,
+                                    max_order,
+                                    knots,
+                                    Span<double>(ders));
 
     // Order 0 must sum to 1.0
     double sum_order0 = 0.0;

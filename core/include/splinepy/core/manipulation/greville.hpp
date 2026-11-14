@@ -7,10 +7,10 @@
 
 namespace splinepy::core {
 
-/// Computes the Greville abscissae (collocation / node points in parameter space)
-/// for all control points of the spline.
-/// Returns owning Buffer<double> of size (num_control_points * para_dim).
+/// Computes the Greville abscissae (collocation / node points in parameter
+/// space) for all control points of the spline. Returns owning Buffer<double>
+/// of size (num_control_points * para_dim).
 Buffer<double> GrevilleAbscissae(const SplineView& spline,
-                                const Options& options = {});
+                                 const Options& options = {});
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

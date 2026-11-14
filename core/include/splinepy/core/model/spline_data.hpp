@@ -38,8 +38,8 @@ struct SplineData {
       for (std::size_t i = 0; i < knot_vectors.size(); ++i) {
         kv_spans_cache_[i] = knot_vectors[i].cspan();
       }
-      v.knot_vectors = Span<const Span<const double>>(
-          kv_spans_cache_.data(), kv_spans_cache_.size());
+      v.knot_vectors = Span<const Span<const double>>(kv_spans_cache_.data(),
+                                                      kv_spans_cache_.size());
     }
 
     v.control_points_data = control_points.data();
@@ -62,4 +62,4 @@ struct SplineData {
 /// Batch of owning splines.
 using SplineBatchData = std::vector<SplineData>;
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

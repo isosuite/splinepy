@@ -51,10 +51,10 @@ Buffer<double> BasisDerivative(const SplineView& spline,
 
 /// Computes both active basis derivatives and support indices simultaneously.
 void BasisDerivativeAndSupport(const SplineView& spline,
-                              Span<const double> queries,
-                              Span<const int32_t> orders,
-                              Span<double> out_basis_ders,
-                              Span<int32_t> out_support,
-                              const Options& options = {});
+                               Span<const double> queries,
+                               Span<const int32_t> orders,
+                               Span<double> out_basis_ders,
+                               Span<int32_t> out_support,
+                               const Options& options = {});
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

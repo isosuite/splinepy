@@ -12,7 +12,9 @@ splinepy 0.2.1 installed:
 The generated archives and raw binaries are local test data.
 """
 from pathlib import Path
+
 import numpy as np
+
 import splinepy
 
 OUT_DIR = Path(__file__).resolve().parent / "data" / "golden"
@@ -27,7 +29,7 @@ def make_queries(bounds, n=150):
 
 def generate_eval_bspline():
     data = {}
-    
+
     # 1D Curve in 2D
     bs1 = splinepy.BSpline(
         degrees=[2],
@@ -96,7 +98,7 @@ def generate_eval_bspline():
 
 def generate_eval_nurbs():
     data = {}
-    
+
     # 2D NURBS circle/disk in 2D
     r = 1.0
     w = 1.0 / np.sqrt(2.0)
@@ -136,7 +138,7 @@ def generate_eval_nurbs():
 
 def generate_eval_bezier():
     data = {}
-    
+
     # 2D Bezier in 2D
     bez = splinepy.Bezier(
         degrees=[3, 2],
@@ -174,7 +176,7 @@ def generate_eval_bezier():
 
 def generate_operations_bspline():
     data = {}
-    
+
     bs = splinepy.BSpline(
         degrees=[2, 2],
         knot_vectors=[
@@ -226,7 +228,7 @@ def generate_operations_bspline():
 
 def generate_operations_bezier():
     data = {}
-    
+
     b1 = splinepy.Bezier(
         degrees=[2, 2],
         control_points=RNG.uniform(0.0, 5.0, size=(9, 2)),
@@ -248,7 +250,7 @@ def generate_operations_bezier():
     # 2. Add
     b_add = b1 + b2
     data["add_cps"] = np.array(b_add.control_points, dtype=np.float64)
-    
+
     # 3. Multiply (scalar * 2D)
     scalar_b = splinepy.Bezier(
         degrees=[1, 1],
@@ -290,7 +292,7 @@ def generate_operations_bezier():
 
 def generate_multipatch():
     data = {}
-    
+
     # 2-patch multipatch (adjoining unit squares)
     p0 = splinepy.BSpline(
         degrees=[1, 1],
@@ -304,7 +306,7 @@ def generate_multipatch():
     )
     mp = splinepy.Multipatch(splines=[p0, p1])
     mp.determine_interfaces()
-    
+
     data["interfaces"] = np.array(mp.interfaces, dtype=np.int32)
     orientations = mp.interface_orientations()
     if orientations is not None and len(orientations) > 0:

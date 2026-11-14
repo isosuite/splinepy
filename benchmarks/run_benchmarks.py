@@ -1,7 +1,10 @@
-import time
 import json
+import time
+
 import numpy as np
+
 import splinepy
+
 
 def benchmark(fn, n_warmup=2, n_runs=5):
     for _ in range(n_warmup):
@@ -28,7 +31,7 @@ def run_all_benchmarks():
     )
     rng = np.random.default_rng(42)
     q_100k = rng.uniform(0.0, 1.0, size=(100_000, 2))
-    
+
     t_min, t_mean, _ = benchmark(lambda: b2.evaluate(q_100k))
     results["bezier_2d_eval_100k"] = {"min_s": t_min, "mean_s": t_mean}
     print(f"Bezier 2D evaluate 100k: {t_min*1000:.2f} ms")

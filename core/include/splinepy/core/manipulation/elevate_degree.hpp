@@ -15,15 +15,17 @@ SplineData ElevateDegree(const SplineView& spline,
                          const Options& options = {});
 
 /// Elevates degrees along all parametric axes according to amounts.
-/// amounts: length spline.para_dim, specifies the elevation amount for each axis.
+/// amounts: length spline.para_dim, specifies the elevation amount for each
+/// axis.
 SplineData ElevateDegrees(const SplineView& spline,
                           Span<const int32_t> amounts,
                           const Options& options = {});
 
-/// Attempts to reduce degree along parametric dimension axis by amount within tolerance.
+/// Attempts to reduce degree along parametric dimension axis by amount within
+/// tolerance.
 SplineData ReduceDegree(const SplineView& spline,
                         int32_t axis,
                         int32_t amount = 1,
                         const Options& options = {});
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

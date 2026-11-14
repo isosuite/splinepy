@@ -19,7 +19,8 @@ void Evaluate(const SplineView& spline,
   }
 
   if (spline.para_dim <= 0 || spline.dim <= 0) {
-    throw SplinepyException("Invalid spline dimensions", Status::kInvalidArgument);
+    throw SplinepyException("Invalid spline dimensions",
+                            Status::kInvalidArgument);
   }
 
   if (queries.size() % static_cast<std::size_t>(spline.para_dim) != 0) {
@@ -28,7 +29,8 @@ void Evaluate(const SplineView& spline,
         Status::kDimensionMismatch);
   }
 
-  const int64_t num_queries = static_cast<int64_t>(queries.size()) / spline.para_dim;
+  const int64_t num_queries =
+      static_cast<int64_t>(queries.size()) / spline.para_dim;
   if (num_queries == 0) {
     return;
   }
@@ -68,7 +70,8 @@ void Evaluate(const SplineView& spline,
 
   // Workspace for zero-allocation scratch in query evaluations
   Workspace local_workspace(64 * 1024, options.nthreads);
-  Workspace* ws = options.workspace != nullptr ? options.workspace : &local_workspace;
+  Workspace* ws =
+      options.workspace != nullptr ? options.workspace : &local_workspace;
 
   auto evaluate_single_query = [&](int64_t q, int thread_id) {
     MemoryArena& arena = ws->GetThreadArena(thread_id);
@@ -113,7 +116,8 @@ void Evaluate(const SplineView& spline,
           spans[d],
           starts[d],
           Span<double>(basis_1d_storage + current_1d_offset, p_d + 1));
-      axis_1d_bases[d] = Span<const double>(basis_1d_storage + current_1d_offset, p_d + 1);
+      axis_1d_bases[d] =
+          Span<const double>(basis_1d_storage + current_1d_offset, p_d + 1);
       current_1d_offset += (p_d + 1);
     }
 
@@ -175,7 +179,8 @@ void Evaluate(const SplineView& spline,
         weight_sum += wb;
       }
 
-      const double inv_weight_sum = (weight_sum != 0.0) ? (1.0 / weight_sum) : 0.0;
+      const double inv_weight_sum =
+          (weight_sum != 0.0) ? (1.0 / weight_sum) : 0.0;
       const bool is_cp_contiguous = spline.IsCpContiguous();
       for (int64_t s = 0; s < num_supports; ++s) {
         const double rational_basis = wb_storage[s] * inv_weight_sum;
@@ -195,16 +200,21 @@ void Evaluate(const SplineView& spline,
     }
   };
 
-  ParallelForWithThreadId(int64_t{0}, num_queries, options.nthreads, evaluate_single_query);
+  ParallelForWithThreadId(int64_t{0},
+                          num_queries,
+                          options.nthreads,
+                          evaluate_single_query);
 }
 
 Buffer<double> Evaluate(const SplineView& spline,
                         Span<const double> queries,
                         const Options& options) {
   if (spline.para_dim <= 0 || spline.dim <= 0) {
-    throw SplinepyException("Invalid spline dimensions", Status::kInvalidArgument);
+    throw SplinepyException("Invalid spline dimensions",
+                            Status::kInvalidArgument);
   }
-  const int64_t num_queries = static_cast<int64_t>(queries.size()) / spline.para_dim;
+  const int64_t num_queries =
+      static_cast<int64_t>(queries.size()) / spline.para_dim;
   Buffer<double> out(num_queries * spline.dim);
   Evaluate(spline, queries, out.span(), options);
   return out;
@@ -223,25 +233,28 @@ void Evaluate(SplineBatchView batch,
   }
 
   if (out_per_spline.size() != batch.size()) {
-    throw SplinepyException(
-        "out_per_spline size must match batch size", Status::kDimensionMismatch);
+    throw SplinepyException("out_per_spline size must match batch size",
+                            Status::kDimensionMismatch);
   }
 
-  const bool broadcast_queries = (queries_per_spline.size() == 1 && batch.size() > 1);
+  const bool broadcast_queries =
+      (queries_per_spline.size() == 1 && batch.size() > 1);
   if (!broadcast_queries && queries_per_spline.size() != batch.size()) {
     throw SplinepyException(
         "queries_per_spline size must match batch size (or be 1 for broadcast)",
         Status::kDimensionMismatch);
   }
 
-  // Evaluate each patch with options.validate = false since batch was already validated
+  // Evaluate each patch with options.validate = false since batch was already
+  // validated
   Options per_patch_opts = options;
   per_patch_opts.validate = false;
 
   for (std::size_t i = 0; i < batch.size(); ++i) {
-    const auto& q_span = broadcast_queries ? queries_per_spline[0] : queries_per_spline[i];
+    const auto& q_span =
+        broadcast_queries ? queries_per_spline[0] : queries_per_spline[i];
     Evaluate(batch[i], q_span, out_per_spline[i], per_patch_opts);
   }
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

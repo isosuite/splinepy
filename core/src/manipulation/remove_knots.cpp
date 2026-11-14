@@ -10,13 +10,14 @@
 namespace splinepy::core {
 
 KnotRemovalResult RemoveKnots(const SplineView& spline,
-                             int32_t axis,
-                             Span<const double> knots_to_remove,
-                             const Options& options) {
+                              int32_t axis,
+                              Span<const double> knots_to_remove,
+                              const Options& options) {
   if (options.validate) {
     ThrowIfInvalid(spline);
     if (axis < 0 || axis >= spline.para_dim) {
-      throw std::invalid_argument("RemoveKnots: axis out of range [0, para_dim).");
+      throw std::invalid_argument(
+          "RemoveKnots: axis out of range [0, para_dim).");
     }
   }
 
@@ -29,7 +30,9 @@ KnotRemovalResult RemoveKnots(const SplineView& spline,
     result.spline.para_dim = spline.para_dim;
     result.spline.dim = spline.dim;
     result.spline.degrees.resize(spline.para_dim);
-    std::copy_n(spline.degrees.data(), spline.para_dim, result.spline.degrees.data());
+    std::copy_n(spline.degrees.data(),
+                spline.para_dim,
+                result.spline.degrees.data());
     result.spline.control_points.resize(spline.num_control_points * spline.dim);
     for (int64_t i = 0; i < spline.num_control_points; ++i) {
       for (int32_t c = 0; c < spline.dim; ++c) {
@@ -80,7 +83,8 @@ KnotRemovalResult RemoveKnots(const SplineView& spline,
   for (std::size_t k_idx = 0; k_idx < knots_to_remove.size(); ++k_idx) {
     const double u_rem = knots_to_remove[k_idx];
     for (int32_t d = 0; d < spline.para_dim; ++d) {
-      kv_views[d] = Span<const double>(current_kvs[d].data(), current_kvs[d].size());
+      kv_views[d] =
+          Span<const double>(current_kvs[d].data(), current_kvs[d].size());
     }
 
     std::vector<double> out_axis_knots;
@@ -110,7 +114,9 @@ KnotRemovalResult RemoveKnots(const SplineView& spline,
   result.spline.para_dim = spline.para_dim;
   result.spline.dim = spline.dim;
   result.spline.degrees.resize(spline.para_dim);
-  std::copy_n(spline.degrees.data(), spline.para_dim, result.spline.degrees.data());
+  std::copy_n(spline.degrees.data(),
+              spline.para_dim,
+              result.spline.degrees.data());
 
   result.spline.knot_vectors.resize(spline.para_dim);
   for (int32_t d = 0; d < spline.para_dim; ++d) {
@@ -136,4 +142,4 @@ KnotRemovalResult RemoveKnots(const SplineView& spline,
   return result;
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

@@ -39,17 +39,18 @@ BasisSplinePrecomputation ComputeCompositionBasis(const SplineView& outer,
   if (options.validate) {
     if (outer.para_dim != inner.dim) {
       throw std::invalid_argument(
-          "Compose: outer.para_dim must equal inner.dim. Got outer.para_dim=" +
-          std::to_string(outer.para_dim) +
-          ", inner.dim=" + std::to_string(inner.dim));
+          "Compose: outer.para_dim must equal inner.dim. Got outer.para_dim="
+          + std::to_string(outer.para_dim)
+          + ", inner.dim=" + std::to_string(inner.dim));
     }
-    if (outer.para_dim <= 0 || outer.dim <= 0 || inner.para_dim <= 0 ||
-        inner.dim <= 0) {
+    if (outer.para_dim <= 0 || outer.dim <= 0 || inner.para_dim <= 0
+        || inner.dim <= 0) {
       throw std::invalid_argument("Compose: dimensions must be positive.");
     }
-    if (outer.control_points_data == nullptr ||
-        inner.control_points_data == nullptr) {
-      throw std::invalid_argument("Compose: control points data cannot be null.");
+    if (outer.control_points_data == nullptr
+        || inner.control_points_data == nullptr) {
+      throw std::invalid_argument(
+          "Compose: control points data cannot be null.");
     }
   }
 
@@ -212,7 +213,7 @@ BasisSplinePrecomputation ComputeCompositionBasis(const SplineView& outer,
   return prep;
 }
 
-}  // namespace
+} // namespace
 
 SplineData Compose(const SplineView& outer,
                    const SplineView& inner,
@@ -323,8 +324,10 @@ SplineData CompositionDerivative(const SplineView& outer,
 
   for (int32_t d = 0; d < M; ++d) {
     orders[d] = 1;
-    SplineData outer_der = DerivativeSpline(
-        outer, Span<const int32_t>(orders.data(), orders.size()), options);
+    SplineData outer_der =
+        DerivativeSpline(outer,
+                         Span<const int32_t>(orders.data(), orders.size()),
+                         options);
     orders[d] = 0;
 
     SplineData comp_d = Compose(outer_der.View(), inner, options);
@@ -341,4 +344,4 @@ SplineData CompositionDerivative(const SplineView& outer,
   return result;
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

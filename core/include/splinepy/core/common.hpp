@@ -23,37 +23,39 @@ enum class Status : int32_t {
 
 inline std::string_view StatusToString(Status status) noexcept {
   switch (status) {
-    case Status::kOk:
-      return "Ok";
-    case Status::kInvalidArgument:
-      return "Invalid argument";
-    case Status::kDimensionMismatch:
-      return "Dimension mismatch";
-    case Status::kOutOfBounds:
-      return "Query out of bounds";
-    case Status::kNotConverged:
-      return "Numerical iteration failed to converge";
-    case Status::kDegenerate:
-      return "Degenerate geometry or zero Jacobian";
-    default:
-      return "Unknown error";
+  case Status::kOk:
+    return "Ok";
+  case Status::kInvalidArgument:
+    return "Invalid argument";
+  case Status::kDimensionMismatch:
+    return "Dimension mismatch";
+  case Status::kOutOfBounds:
+    return "Query out of bounds";
+  case Status::kNotConverged:
+    return "Numerical iteration failed to converge";
+  case Status::kDegenerate:
+    return "Degenerate geometry or zero Jacobian";
+  default:
+    return "Unknown error";
   }
 }
 
 class SplinepyException : public std::runtime_error {
- public:
+public:
   explicit SplinepyException(const std::string& message,
                              Status status = Status::kInvalidArgument)
-      : std::runtime_error(message), status_(status) {}
+      : std::runtime_error(message),
+        status_(status) {}
 
   explicit SplinepyException(const char* message,
                              Status status = Status::kInvalidArgument)
-      : std::runtime_error(message), status_(status) {}
+      : std::runtime_error(message),
+        status_(status) {}
 
   Status status() const noexcept { return status_; }
 
- private:
+private:
   Status status_;
 };
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

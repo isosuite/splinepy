@@ -12,15 +12,17 @@
 
 namespace splinepy::core {
 
-/// Multi-threaded workspace holding independent MemoryArena instances per worker thread.
-/// Provides zero-lock thread-local scratch allocation in parallel evaluation loops.
+/// Multi-threaded workspace holding independent MemoryArena instances per
+/// worker thread. Provides zero-lock thread-local scratch allocation in
+/// parallel evaluation loops.
 class Workspace {
- public:
+public:
   explicit Workspace(std::size_t per_thread_bytes = 64 * 1024,
                      std::size_t num_threads = 0)
       : per_thread_bytes_(std::max(per_thread_bytes, std::size_t{1024})) {
-    const std::size_t hw_threads =
-        std::max<std::size_t>(1, static_cast<std::size_t>(std::thread::hardware_concurrency()));
+    const std::size_t hw_threads = std::max<std::size_t>(
+        1,
+        static_cast<std::size_t>(std::thread::hardware_concurrency()));
     const std::size_t count = (num_threads > 0) ? num_threads : hw_threads;
 
     arenas_.reserve(count);
@@ -40,7 +42,8 @@ class Workspace {
   /// Retrieves the MemoryArena corresponding to the given thread ID.
   /// If thread_id exceeds the current pool, safely expands under lock.
   MemoryArena& GetThreadArena(int thread_id = 0) {
-    const std::size_t idx = static_cast<std::size_t>(thread_id >= 0 ? thread_id : 0);
+    const std::size_t idx =
+        static_cast<std::size_t>(thread_id >= 0 ? thread_id : 0);
 
     if (idx < arenas_.size()) {
       return *arenas_[idx];
@@ -82,10 +85,10 @@ class Workspace {
     return per_thread_bytes_;
   }
 
- private:
+private:
   std::size_t per_thread_bytes_{64 * 1024};
   std::vector<std::unique_ptr<MemoryArena>> arenas_;
   std::mutex mutex_;
 };
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

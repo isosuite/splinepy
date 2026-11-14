@@ -8,10 +8,10 @@
 
 namespace splinepy::core {
 
-/// Computes partial derivatives of specified multi-index orders at query points.
-/// orders: length spline.para_dim, specifies the derivative order along each axis.
-/// queries: flat Span of (num_queries * para_dim) doubles.
-/// out: flat Span of (num_queries * dim) doubles.
+/// Computes partial derivatives of specified multi-index orders at query
+/// points. orders: length spline.para_dim, specifies the derivative order along
+/// each axis. queries: flat Span of (num_queries * para_dim) doubles. out: flat
+/// Span of (num_queries * dim) doubles.
 void Derivative(const SplineView& spline,
                 Span<const double> queries,
                 Span<const int32_t> orders,
@@ -30,4 +30,4 @@ void Derivative(SplineBatchView batch,
                 Span<Span<double>> out_per_spline,
                 const Options& options = {});
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

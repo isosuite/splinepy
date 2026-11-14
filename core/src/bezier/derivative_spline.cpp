@@ -28,7 +28,8 @@ void DifferentiateAxisByOne(int32_t para_dim,
   in_strides[0] = 1;
   for (int32_t d = 0; d < para_dim; ++d) {
     in_n[d] = in_degrees[d] + 1;
-    if (d > 0) in_strides[d] = in_strides[d - 1] * in_n[d - 1];
+    if (d > 0)
+      in_strides[d] = in_strides[d - 1] * in_n[d - 1];
   }
 
   std::vector<int64_t> out_n = in_n;
@@ -45,7 +46,8 @@ void DifferentiateAxisByOne(int32_t para_dim,
 
   int64_t num_rows = 1;
   for (int32_t d = 0; d < para_dim; ++d) {
-    if (d != axis) num_rows *= in_n[d];
+    if (d != axis)
+      num_rows *= in_n[d];
   }
 
   const double p_factor = static_cast<double>(p);
@@ -57,7 +59,8 @@ void DifferentiateAxisByOne(int32_t para_dim,
     int64_t out_base = 0;
     int64_t rem = r;
     for (int32_t d = 0; d < para_dim; ++d) {
-      if (d == axis) continue;
+      if (d == axis)
+        continue;
       const int64_t idx_d = rem % in_n[d];
       rem /= in_n[d];
       in_base += idx_d * in_strides[d];
@@ -77,7 +80,7 @@ void DifferentiateAxisByOne(int32_t para_dim,
   }
 }
 
-}  // namespace
+} // namespace
 
 SplineData DerivativeSpline(const SplineView& spline,
                             Span<const int32_t> orders,
@@ -142,13 +145,15 @@ SplineData DerivativeSpline(const SplineView& spline,
           zero_spline.degrees[i] = std::max(0, spline.degrees[i] - orders[i]);
         }
         int64_t total_zeros = 1;
-        for (int32_t i = 0; i < para_dim; ++i) total_zeros *= (zero_spline.degrees[i] + 1);
+        for (int32_t i = 0; i < para_dim; ++i)
+          total_zeros *= (zero_spline.degrees[i] + 1);
         zero_spline.control_points.resize(total_zeros * dim, 0.0);
         return zero_spline;
       }
     }
 
-    std::vector<int32_t> current_degrees(spline.degrees.begin(), spline.degrees.end());
+    std::vector<int32_t> current_degrees(spline.degrees.begin(),
+                                         spline.degrees.end());
     Buffer<double> working_cps(spline.num_control_points * dim);
     if (spline.IsCpContiguous()) {
       std::copy_n(spline.control_points_data,
@@ -165,12 +170,13 @@ SplineData DerivativeSpline(const SplineView& spline,
     for (int32_t d = 0; d < para_dim; ++d) {
       for (int32_t step = 0; step < orders[d]; ++step) {
         Buffer<double> next_cps;
-        DifferentiateAxisByOne(para_dim,
-                               dim,
-                               Span<const int32_t>(current_degrees.data(), para_dim),
-                               d,
-                               working_cps.cspan(),
-                               next_cps);
+        DifferentiateAxisByOne(
+            para_dim,
+            dim,
+            Span<const int32_t>(current_degrees.data(), para_dim),
+            d,
+            working_cps.cspan(),
+            next_cps);
         working_cps = std::move(next_cps);
         current_degrees[d] -= 1;
       }
@@ -221,9 +227,11 @@ SplineData DerivativeSpline(const SplineView& spline,
 
     for (int32_t step = 0; step < orders[d]; ++step) {
       // u' = DerivativeSpline(u_num, e_d)
-      SplineData u_prime = DerivativeSpline(current_num.View(), unit_order_span, options);
+      SplineData u_prime =
+          DerivativeSpline(current_num.View(), unit_order_span, options);
       // w' = DerivativeSpline(w_den, e_d)
-      SplineData w_prime = DerivativeSpline(current_den.View(), unit_order_span, options);
+      SplineData w_prime =
+          DerivativeSpline(current_den.View(), unit_order_span, options);
 
       // term1 = u' * w
       SplineData term1 = Multiply(u_prime.View(), current_den.View(), options);
@@ -241,7 +249,8 @@ SplineData DerivativeSpline(const SplineView& spline,
       new_num = ElevateDegree(new_num.View(), d, 1, options);
 
       // new_den = w * w
-      SplineData new_den = Multiply(current_den.View(), current_den.View(), options);
+      SplineData new_den =
+          Multiply(current_den.View(), current_den.View(), options);
 
       current_num = std::move(new_num);
       current_den = std::move(new_den);
@@ -263,11 +272,12 @@ SplineData DerivativeSpline(const SplineView& spline,
     const double inv_w = (w != 0.0) ? (1.0 / w) : 0.0;
     result.weights[i] = w;
     for (int32_t c = 0; c < dim; ++c) {
-      result.control_points[i * dim + c] = current_num.control_points[i * dim + c] * inv_w;
+      result.control_points[i * dim + c] =
+          current_num.control_points[i * dim + c] * inv_w;
     }
   }
 
   return result;
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

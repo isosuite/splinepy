@@ -8,7 +8,8 @@
 
 namespace splinepy::core {
 
-/// Non-owning view of a multipatch geometry (batch of splines + topology tables).
+/// Non-owning view of a multipatch geometry (batch of splines + topology
+/// tables).
 struct MultipatchView {
   /// Batch of patches (each patch is a SplineView).
   SplineBatchView patches{};
@@ -21,7 +22,8 @@ struct MultipatchView {
   /// Orientations table: orientation transformation data per interface.
   Span<const int32_t> interface_orientations{};
 
-  /// Boundary specifications: patch index, boundary face index, boundary ID tag.
+  /// Boundary specifications: patch index, boundary face index, boundary ID
+  /// tag.
   Span<const int32_t> boundaries{};
   int64_t num_boundaries{0};
 
@@ -64,4 +66,4 @@ struct MultipatchData {
   }
 };
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

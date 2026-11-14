@@ -11,9 +11,9 @@ namespace splinepy::core {
 inline constexpr std::size_t dynamic_extent = static_cast<std::size_t>(-1);
 
 /// Non-owning contiguous view over a sequence of elements.
-template <typename T>
+template<typename T>
 class Span {
- public:
+public:
   using element_type = T;
   using value_type = std::remove_cv_t<T>;
   using size_type = std::size_t;
@@ -27,20 +27,24 @@ class Span {
 
   constexpr Span() noexcept : data_(nullptr), size_(0) {}
   constexpr Span(pointer data, size_type size) noexcept
-      : data_(data), size_(size) {}
+      : data_(data),
+        size_(size) {}
 
-  template <typename Container,
-            typename = std::enable_if_t<
-                !std::is_same_v<std::decay_t<Container>, Span> &&
-                std::is_convertible_v<decltype(std::declval<Container>().data()),
-                                      pointer>>>
+  template<
+      typename Container,
+      typename = std::enable_if_t<
+          !std::is_same_v<std::decay_t<Container>, Span>
+          && std::is_convertible_v<decltype(std::declval<Container>().data()),
+                                   pointer>>>
   constexpr Span(Container&& c) noexcept
-      : data_(c.data()), size_(static_cast<size_type>(c.size())) {}
+      : data_(c.data()),
+        size_(static_cast<size_type>(c.size())) {}
 
-  template <typename U,
-            typename = std::enable_if_t<std::is_convertible_v<U*, pointer>>>
+  template<typename U,
+           typename = std::enable_if_t<std::is_convertible_v<U*, pointer>>>
   constexpr Span(const Span<U>& other) noexcept
-      : data_(other.data()), size_(other.size()) {}
+      : data_(other.data()),
+        size_(other.size()) {}
 
   constexpr pointer data() const noexcept { return data_; }
   constexpr size_type size() const noexcept { return size_; }
@@ -71,31 +75,31 @@ class Span {
     assert(offset <= size_ && "Span::subspan offset exceeds size");
     const size_type actual_count =
         (count == dynamic_extent) ? (size_ - offset) : count;
-    assert(offset + actual_count <= size_ && "Span::subspan range out of bounds");
+    assert(offset + actual_count <= size_
+           && "Span::subspan range out of bounds");
     return Span(data_ + offset, actual_count);
   }
 
- private:
+private:
   pointer data_{nullptr};
   size_type size_{0};
 };
 
 /// Deduction guides
-template <typename T>
+template<typename T>
 Span(T*, std::size_t) -> Span<T>;
 
-template <typename Container>
+template<typename Container>
 Span(Container&) -> Span<typename Container::value_type>;
 
-template <typename Container>
+template<typename Container>
 Span(const Container&) -> Span<const typename Container::value_type>;
-
 
 /// Non-owning strided view over an array where consecutive elements
 /// are separated by a constant stride (in number of elements T).
-template <typename T>
+template<typename T>
 class StridedSpan {
- public:
+public:
   using element_type = T;
   using value_type = std::remove_cv_t<T>;
   using size_type = std::size_t;
@@ -104,8 +108,12 @@ class StridedSpan {
   using reference = T&;
 
   constexpr StridedSpan() noexcept : data_(nullptr), size_(0), stride_(1) {}
-  constexpr StridedSpan(pointer data, size_type size, difference_type stride = 1) noexcept
-      : data_(data), size_(size), stride_(stride) {}
+  constexpr StridedSpan(pointer data,
+                        size_type size,
+                        difference_type stride = 1) noexcept
+      : data_(data),
+        size_(size),
+        stride_(stride) {}
 
   constexpr pointer data() const noexcept { return data_; }
   constexpr size_type size() const noexcept { return size_; }
@@ -123,10 +131,10 @@ class StridedSpan {
     return data_ + static_cast<difference_type>(idx) * stride_;
   }
 
- private:
+private:
   pointer data_{nullptr};
   size_type size_{0};
   difference_type stride_{1};
 };
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

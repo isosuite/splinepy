@@ -38,17 +38,18 @@ int32_t FindSpan(int32_t n_cps,
 }
 
 void EvaluateBSplineBasis(int32_t span,
-                         double u,
-                         int32_t p,
-                         Span<const double> knots,
-                         Span<double> out_basis) noexcept {
+                          double u,
+                          int32_t p,
+                          Span<const double> knots,
+                          Span<double> out_basis) noexcept {
   assert(p >= 0);
   assert(out_basis.size() >= static_cast<std::size_t>(p + 1));
   assert(span >= p);
   assert(knots.size() >= static_cast<std::size_t>(span + p + 1));
 
   out_basis[0] = 1.0;
-  if (p == 0) return;
+  if (p == 0)
+    return;
 
   constexpr int32_t kStackLimit = 32;
   double left_stack[kStackLimit];
@@ -76,11 +77,11 @@ void EvaluateBSplineBasis(int32_t span,
 }
 
 void EvaluateBSplineBasisDerivatives(int32_t span,
-                                    double u,
-                                    int32_t p,
-                                    int32_t max_order,
-                                    Span<const double> knots,
-                                    Span<double> out_ders) noexcept {
+                                     double u,
+                                     int32_t p,
+                                     int32_t max_order,
+                                     Span<const double> knots,
+                                     Span<double> out_ders) noexcept {
   assert(p >= 0);
   assert(max_order >= 0);
   assert(span >= p);
@@ -190,4 +191,4 @@ void EvaluateBSplineBasisDerivatives(int32_t span,
   }
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

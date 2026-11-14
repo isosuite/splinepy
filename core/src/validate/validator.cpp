@@ -7,11 +7,9 @@ namespace splinepy::core {
 
 namespace {
 
-bool IsFinite(double val) noexcept {
-  return std::isfinite(val);
-}
+bool IsFinite(double val) noexcept { return std::isfinite(val); }
 
-}  // namespace
+} // namespace
 
 Status Validate(const SplineView& view, const Options& options) {
   if (view.para_dim <= 0 || view.dim <= 0) {
@@ -187,7 +185,8 @@ void ThrowIfInvalid(const SplineView& view, const Options& options) {
       }
       if (w <= 0.0) {
         std::ostringstream oss;
-        oss << "Weight at index " << i << " (" << w << ") must be strictly positive";
+        oss << "Weight at index " << i << " (" << w
+            << ") must be strictly positive";
         throw SplinepyException(oss.str(), Status::kInvalidArgument);
       }
     }
@@ -206,4 +205,4 @@ void ThrowIfInvalid(SplineBatchView batch, const Options& options) {
   }
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

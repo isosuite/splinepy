@@ -62,7 +62,8 @@ void ElevateTensorProductAxisByOne(int32_t para_dim,
     int64_t rem = r;
 
     for (int32_t d = 0; d < para_dim; ++d) {
-      if (d == axis) continue;
+      if (d == axis)
+        continue;
       const int64_t idx_d = rem % in_n[d];
       rem /= in_n[d];
       in_base += idx_d * in_strides[d];
@@ -95,13 +96,15 @@ void ElevateTensorProductAxisByOne(int32_t para_dim,
   }
 }
 
-/// Inverts degree elevation on a 1D row from degree p to p - 1 within tolerance.
+/// Inverts degree elevation on a 1D row from degree p to p - 1 within
+/// tolerance.
 bool InvertElevateBezier1D(int32_t p,
-                          Span<const double> in_cps,
-                          int32_t coord_dim,
-                          double tolerance,
-                          Buffer<double>& out_cps) {
-  if (p < 1) return false;
+                           Span<const double> in_cps,
+                           int32_t coord_dim,
+                           double tolerance,
+                           Buffer<double>& out_cps) {
+  if (p < 1)
+    return false;
   const int32_t new_p = p - 1;
   const int32_t n_out = new_p + 1;
   out_cps.resize(n_out * coord_dim);
@@ -114,13 +117,16 @@ bool InvertElevateBezier1D(int32_t p,
     q_left[0 * coord_dim + c] = in_cps[0 * coord_dim + c];
   }
   for (int32_t i = 1; i <= new_p; ++i) {
-    const double one_minus_alpha = 1.0 - (static_cast<double>(i) / static_cast<double>(p));
-    if (std::abs(one_minus_alpha) < 1e-14) return false;
+    const double one_minus_alpha =
+        1.0 - (static_cast<double>(i) / static_cast<double>(p));
+    if (std::abs(one_minus_alpha) < 1e-14)
+      return false;
     const double inv = 1.0 / one_minus_alpha;
     const double alpha = static_cast<double>(i) / static_cast<double>(p);
     for (int32_t c = 0; c < coord_dim; ++c) {
       q_left[i * coord_dim + c] =
-          (in_cps[i * coord_dim + c] - alpha * q_left[(i - 1) * coord_dim + c]) * inv;
+          (in_cps[i * coord_dim + c] - alpha * q_left[(i - 1) * coord_dim + c])
+          * inv;
     }
   }
 
@@ -130,12 +136,15 @@ bool InvertElevateBezier1D(int32_t p,
   }
   for (int32_t i = new_p - 1; i >= 0; --i) {
     const double alpha = static_cast<double>(i + 1) / static_cast<double>(p);
-    if (std::abs(alpha) < 1e-14) return false;
+    if (std::abs(alpha) < 1e-14)
+      return false;
     const double inv = 1.0 / alpha;
     const double one_minus_alpha = 1.0 - alpha;
     for (int32_t c = 0; c < coord_dim; ++c) {
       q_right[i * coord_dim + c] =
-          (in_cps[(i + 1) * coord_dim + c] - one_minus_alpha * q_right[(i + 1) * coord_dim + c]) * inv;
+          (in_cps[(i + 1) * coord_dim + c]
+           - one_minus_alpha * q_right[(i + 1) * coord_dim + c])
+          * inv;
     }
   }
 
@@ -143,9 +152,11 @@ bool InvertElevateBezier1D(int32_t p,
   for (int32_t i = 0; i <= new_p; ++i) {
     double dist_sq = 0.0;
     for (int32_t c = 0; c < coord_dim; ++c) {
-      const double diff = q_left[i * coord_dim + c] - q_right[i * coord_dim + c];
+      const double diff =
+          q_left[i * coord_dim + c] - q_right[i * coord_dim + c];
       dist_sq += diff * diff;
-      out_cps[i * coord_dim + c] = 0.5 * (q_left[i * coord_dim + c] + q_right[i * coord_dim + c]);
+      out_cps[i * coord_dim + c] =
+          0.5 * (q_left[i * coord_dim + c] + q_right[i * coord_dim + c]);
     }
     if (std::sqrt(dist_sq) > tolerance) {
       return false;
@@ -154,7 +165,7 @@ bool InvertElevateBezier1D(int32_t p,
   return true;
 }
 
-}  // namespace
+} // namespace
 
 SplineData ElevateDegree(const SplineView& spline,
                          int32_t axis,
@@ -168,7 +179,8 @@ SplineData ElevateDegree(const SplineView& spline,
   if (options.validate) {
     ThrowIfInvalid(spline);
     if (axis < 0 || axis >= spline.para_dim) {
-      throw std::invalid_argument("ElevateDegree: axis out of range [0, para_dim).");
+      throw std::invalid_argument(
+          "ElevateDegree: axis out of range [0, para_dim).");
     }
   }
 
@@ -195,16 +207,18 @@ SplineData ElevateDegree(const SplineView& spline,
       }
     }
 
-    std::vector<int32_t> current_degrees(spline.degrees.begin(), spline.degrees.end());
+    std::vector<int32_t> current_degrees(spline.degrees.begin(),
+                                         spline.degrees.end());
 
     for (int32_t step = 0; step < amount; ++step) {
       Buffer<double> next_cps;
-      ElevateTensorProductAxisByOne(spline.para_dim,
-                                   coord_dim,
-                                   Span<const int32_t>(current_degrees.data(), current_degrees.size()),
-                                   axis,
-                                   working_cps.cspan(),
-                                   next_cps);
+      ElevateTensorProductAxisByOne(
+          spline.para_dim,
+          coord_dim,
+          Span<const int32_t>(current_degrees.data(), current_degrees.size()),
+          axis,
+          working_cps.cspan(),
+          next_cps);
       working_cps = std::move(next_cps);
       current_degrees[axis] += 1;
     }
@@ -244,8 +258,8 @@ SplineData ElevateDegree(const SplineView& spline,
   for (std::size_t i = 0; i < axis_knots.size(); ++i) {
     const double u = axis_knots[i];
     if (u > u_min + kEps && u < u_max - kEps) {
-      if (unique_internal_knots.empty() ||
-          std::abs(u - unique_internal_knots.back()) > kEps) {
+      if (unique_internal_knots.empty()
+          || std::abs(u - unique_internal_knots.back()) > kEps) {
         unique_internal_knots.push_back(u);
         internal_mults.push_back(1);
       } else {
@@ -254,7 +268,8 @@ SplineData ElevateDegree(const SplineView& spline,
     }
   }
 
-  // Step 1: Decompose into Bezier segments by inserting internal knots to multiplicity p
+  // Step 1: Decompose into Bezier segments by inserting internal knots to
+  // multiplicity p
   std::vector<double> knots_to_insert;
   for (std::size_t k = 0; k < unique_internal_knots.size(); ++k) {
     const int32_t needed = p - internal_mults[k];
@@ -265,7 +280,8 @@ SplineData ElevateDegree(const SplineView& spline,
 
   SplineData bezier_decomposed;
   if (!knots_to_insert.empty()) {
-    bezier_decomposed = InsertKnots(spline, axis, Span<const double>(knots_to_insert), options);
+    bezier_decomposed =
+        InsertKnots(spline, axis, Span<const double>(knots_to_insert), options);
   } else {
     bezier_decomposed = InsertKnots(spline, 0, {}, options);
   }
@@ -273,7 +289,8 @@ SplineData ElevateDegree(const SplineView& spline,
   SplineView decomp_view = bezier_decomposed.View();
 
   // Step 2: Elevate each Bezier segment along axis by amount
-  const int32_t num_segments = static_cast<int32_t>(unique_internal_knots.size()) + 1;
+  const int32_t num_segments =
+      static_cast<int32_t>(unique_internal_knots.size()) + 1;
   const int32_t p_new = p + amount;
 
   // Compute number of control points along each axis for decomposed spline
@@ -296,7 +313,8 @@ SplineData ElevateDegree(const SplineView& spline,
     out_strides[d] = out_strides[d - 1] * out_n[d - 1];
   }
 
-  const int64_t total_elevated_cps = out_strides[spline.para_dim - 1] * out_n[spline.para_dim - 1];
+  const int64_t total_elevated_cps =
+      out_strides[spline.para_dim - 1] * out_n[spline.para_dim - 1];
   Buffer<double> elevated_cps(total_elevated_cps * coord_dim);
 
   Buffer<double> decomp_homo;
@@ -329,7 +347,8 @@ SplineData ElevateDegree(const SplineView& spline,
     int64_t rem = r;
 
     for (int32_t d = 0; d < spline.para_dim; ++d) {
-      if (d == axis) continue;
+      if (d == axis)
+        continue;
       const int64_t idx_d = rem % in_n[d];
       rem /= in_n[d];
       in_base += idx_d * in_strides[d];
@@ -359,7 +378,8 @@ SplineData ElevateDegree(const SplineView& spline,
 
       // Scatter elevated segment
       for (int32_t i = 0; i <= p_new; ++i) {
-        double* dst = elevated_cps.data() + out_base + (seg * p_new + i) * out_s;
+        double* dst =
+            elevated_cps.data() + out_base + (seg * p_new + i) * out_s;
         for (int32_t c = 0; c < coord_dim; ++c) {
           dst[c] = cur_seg[i * coord_dim + c];
         }
@@ -387,7 +407,9 @@ SplineData ElevateDegree(const SplineView& spline,
   intermediate.para_dim = spline.para_dim;
   intermediate.dim = spline.dim;
   intermediate.degrees.resize(spline.para_dim);
-  std::copy_n(spline.degrees.data(), spline.para_dim, intermediate.degrees.data());
+  std::copy_n(spline.degrees.data(),
+              spline.para_dim,
+              intermediate.degrees.data());
   intermediate.degrees[axis] = p_new;
 
   intermediate.knot_vectors.resize(spline.para_dim);
@@ -426,8 +448,10 @@ SplineData ElevateDegree(const SplineView& spline,
   if (!knots_to_remove.empty()) {
     Options rem_options = options;
     rem_options.tolerance = 1e-10;
-    KnotRemovalResult rem_res =
-        RemoveKnots(intermediate.View(), axis, Span<const double>(knots_to_remove), rem_options);
+    KnotRemovalResult rem_res = RemoveKnots(intermediate.View(),
+                                            axis,
+                                            Span<const double>(knots_to_remove),
+                                            rem_options);
     return std::move(rem_res.spline);
   }
 
@@ -477,10 +501,12 @@ SplineData ReduceDegree(const SplineView& spline,
   if (options.validate) {
     ThrowIfInvalid(spline);
     if (axis < 0 || axis >= spline.para_dim) {
-      throw std::invalid_argument("ReduceDegree: axis out of range [0, para_dim).");
+      throw std::invalid_argument(
+          "ReduceDegree: axis out of range [0, para_dim).");
     }
     if (spline.degrees[axis] - amount < 0) {
-      throw std::invalid_argument("ReduceDegree: resulting degree cannot be negative.");
+      throw std::invalid_argument(
+          "ReduceDegree: resulting degree cannot be negative.");
     }
   }
 
@@ -501,7 +527,8 @@ SplineData ReduceDegree(const SplineView& spline,
                   working_cps.data());
     }
 
-    std::vector<int32_t> current_degrees(spline.degrees.begin(), spline.degrees.end());
+    std::vector<int32_t> current_degrees(spline.degrees.begin(),
+                                         spline.degrees.end());
 
     for (int32_t step = 0; step < amount; ++step) {
       const int32_t cur_p = current_degrees[axis];
@@ -510,7 +537,8 @@ SplineData ReduceDegree(const SplineView& spline,
       in_strides[0] = 1;
       for (int32_t d = 0; d < spline.para_dim; ++d) {
         in_n[d] = current_degrees[d] + 1;
-        if (d > 0) in_strides[d] = in_strides[d - 1] * in_n[d - 1];
+        if (d > 0)
+          in_strides[d] = in_strides[d - 1] * in_n[d - 1];
       }
 
       std::vector<int64_t> out_n = in_n;
@@ -521,12 +549,14 @@ SplineData ReduceDegree(const SplineView& spline,
         out_strides[d] = out_strides[d - 1] * out_n[d - 1];
       }
 
-      const int64_t total_out = out_strides[spline.para_dim - 1] * out_n[spline.para_dim - 1];
+      const int64_t total_out =
+          out_strides[spline.para_dim - 1] * out_n[spline.para_dim - 1];
       Buffer<double> next_cps(total_out * coord_dim);
 
       int64_t num_rows = 1;
       for (int32_t d = 0; d < spline.para_dim; ++d) {
-        if (d != axis) num_rows *= in_n[d];
+        if (d != axis)
+          num_rows *= in_n[d];
       }
 
       const int64_t in_s = in_strides[axis] * coord_dim;
@@ -540,7 +570,8 @@ SplineData ReduceDegree(const SplineView& spline,
         int64_t out_base = 0;
         int64_t rem = r;
         for (int32_t d = 0; d < spline.para_dim; ++d) {
-          if (d == axis) continue;
+          if (d == axis)
+            continue;
           const int64_t idx_d = rem % in_n[d];
           rem /= in_n[d];
           in_base += idx_d * in_strides[d];
@@ -556,13 +587,15 @@ SplineData ReduceDegree(const SplineView& spline,
           }
         }
 
-        const bool ok = InvertElevateBezier1D(cur_p,
-                                             Span<const double>(row_in.data(), row_in.size()),
-                                             coord_dim,
-                                             tol,
-                                             row_out);
+        const bool ok = InvertElevateBezier1D(
+            cur_p,
+            Span<const double>(row_in.data(), row_in.size()),
+            coord_dim,
+            tol,
+            row_out);
         if (!ok) {
-          throw std::runtime_error("ReduceDegree: could not reduce degree within tolerance.");
+          throw std::runtime_error(
+              "ReduceDegree: could not reduce degree within tolerance.");
         }
 
         for (int32_t i = 0; i < cur_p; ++i) {
@@ -610,8 +643,8 @@ SplineData ReduceDegree(const SplineView& spline,
   for (std::size_t i = 0; i < axis_knots.size(); ++i) {
     const double u = axis_knots[i];
     if (u > u_min + kEps && u < u_max - kEps) {
-      if (unique_internal_knots.empty() ||
-          std::abs(u - unique_internal_knots.back()) > kEps) {
+      if (unique_internal_knots.empty()
+          || std::abs(u - unique_internal_knots.back()) > kEps) {
         unique_internal_knots.push_back(u);
         internal_mults.push_back(1);
       } else {
@@ -631,7 +664,8 @@ SplineData ReduceDegree(const SplineView& spline,
 
   SplineData bezier_decomposed;
   if (!knots_to_insert.empty()) {
-    bezier_decomposed = InsertKnots(spline, axis, Span<const double>(knots_to_insert), options);
+    bezier_decomposed =
+        InsertKnots(spline, axis, Span<const double>(knots_to_insert), options);
   } else {
     bezier_decomposed = InsertKnots(spline, 0, {}, options);
   }
@@ -639,7 +673,8 @@ SplineData ReduceDegree(const SplineView& spline,
   SplineView decomp_view = bezier_decomposed.View();
 
   // Step 2: Reduce each Bezier segment along axis by amount
-  const int32_t num_segments = static_cast<int32_t>(unique_internal_knots.size()) + 1;
+  const int32_t num_segments =
+      static_cast<int32_t>(unique_internal_knots.size()) + 1;
   const int32_t p_new = p - amount;
 
   std::vector<int64_t> in_n(spline.para_dim);
@@ -647,7 +682,8 @@ SplineData ReduceDegree(const SplineView& spline,
   in_strides[0] = 1;
   for (int32_t d = 0; d < spline.para_dim; ++d) {
     in_n[d] = decomp_view.NumControlPointsPerAxis(d);
-    if (d > 0) in_strides[d] = in_strides[d - 1] * in_n[d - 1];
+    if (d > 0)
+      in_strides[d] = in_strides[d - 1] * in_n[d - 1];
   }
 
   std::vector<int64_t> out_n = in_n;
@@ -659,7 +695,8 @@ SplineData ReduceDegree(const SplineView& spline,
     out_strides[d] = out_strides[d - 1] * out_n[d - 1];
   }
 
-  const int64_t total_reduced_cps = out_strides[spline.para_dim - 1] * out_n[spline.para_dim - 1];
+  const int64_t total_reduced_cps =
+      out_strides[spline.para_dim - 1] * out_n[spline.para_dim - 1];
   Buffer<double> reduced_cps(total_reduced_cps * coord_dim);
 
   Buffer<double> decomp_homo;
@@ -674,7 +711,8 @@ SplineData ReduceDegree(const SplineView& spline,
 
   int64_t num_rows = 1;
   for (int32_t d = 0; d < spline.para_dim; ++d) {
-    if (d != axis) num_rows *= in_n[d];
+    if (d != axis)
+      num_rows *= in_n[d];
   }
 
   const int64_t in_s = in_strides[axis] * coord_dim;
@@ -688,7 +726,8 @@ SplineData ReduceDegree(const SplineView& spline,
     int64_t rem = r;
 
     for (int32_t d = 0; d < spline.para_dim; ++d) {
-      if (d == axis) continue;
+      if (d == axis)
+        continue;
       const int64_t idx_d = rem % in_n[d];
       rem /= in_n[d];
       in_base += idx_d * in_strides[d];
@@ -710,9 +749,14 @@ SplineData ReduceDegree(const SplineView& spline,
 
       for (int32_t step = 0; step < amount; ++step) {
         Buffer<double> next_seg;
-        const bool ok = InvertElevateBezier1D(p - step, cur_seg.cspan(), coord_dim, tol, next_seg);
+        const bool ok = InvertElevateBezier1D(p - step,
+                                              cur_seg.cspan(),
+                                              coord_dim,
+                                              tol,
+                                              next_seg);
         if (!ok) {
-          throw std::runtime_error("ReduceDegree: could not reduce degree within tolerance.");
+          throw std::runtime_error(
+              "ReduceDegree: could not reduce degree within tolerance.");
         }
         cur_seg = std::move(next_seg);
       }
@@ -745,7 +789,9 @@ SplineData ReduceDegree(const SplineView& spline,
   intermediate.para_dim = spline.para_dim;
   intermediate.dim = spline.dim;
   intermediate.degrees.resize(spline.para_dim);
-  std::copy_n(spline.degrees.data(), spline.para_dim, intermediate.degrees.data());
+  std::copy_n(spline.degrees.data(),
+              spline.para_dim,
+              intermediate.degrees.data());
   intermediate.degrees[axis] = p_new;
 
   intermediate.knot_vectors.resize(spline.para_dim);
@@ -784,12 +830,14 @@ SplineData ReduceDegree(const SplineView& spline,
   if (!knots_to_remove.empty()) {
     Options rem_options = options;
     rem_options.tolerance = tol;
-    KnotRemovalResult rem_res =
-        RemoveKnots(intermediate.View(), axis, Span<const double>(knots_to_remove), rem_options);
+    KnotRemovalResult rem_res = RemoveKnots(intermediate.View(),
+                                            axis,
+                                            Span<const double>(knots_to_remove),
+                                            rem_options);
     return std::move(rem_res.spline);
   }
 
   return intermediate;
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

@@ -9,8 +9,18 @@ using namespace splinepy::core;
 TEST(ValidatorTest, ValidBezierView) {
   int32_t degrees[2] = {2, 1};
   double cps[6 * 2] = {
-      0.0, 0.0,  1.0, 0.0,  2.0, 0.0,
-      0.0, 1.0,  1.0, 1.0,  2.0, 1.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      2.0,
+      0.0,
+      0.0,
+      1.0,
+      1.0,
+      1.0,
+      2.0,
+      1.0,
   };
 
   SplineView v;

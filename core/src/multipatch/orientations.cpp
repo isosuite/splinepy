@@ -55,17 +55,15 @@ void GetInterfaceOrientation(const SplineView& spline_start,
 
   for (int32_t i = 0; i < para_dim; ++i) {
     if (i == boundary_start_p_dim) {
-      center_start[i] = boundary_start_orientation
-                            ? bounds_start[i]
-                            : bounds_start[i + para_dim];
+      center_start[i] = boundary_start_orientation ? bounds_start[i]
+                                                   : bounds_start[i + para_dim];
     } else {
       center_start[i] = 0.5 * (bounds_start[i] + bounds_start[i + para_dim]);
     }
 
     if (i == boundary_end_p_dim) {
-      center_end[i] = boundary_end_orientation
-                          ? bounds_end[i]
-                          : bounds_end[i + para_dim];
+      center_end[i] =
+          boundary_end_orientation ? bounds_end[i] : bounds_end[i + para_dim];
     } else {
       center_end[i] = 0.5 * (bounds_end[i] + bounds_end[i + para_dim]);
     }
@@ -73,9 +71,13 @@ void GetInterfaceOrientation(const SplineView& spline_start,
 
   // Calculate Jacobians at face centers
   Buffer<double> J_start =
-      Jacobian(spline_start, Span<const double>(center_start.data(), para_dim), options);
+      Jacobian(spline_start,
+               Span<const double>(center_start.data(), para_dim),
+               options);
   Buffer<double> J_end =
-      Jacobian(spline_end, Span<const double>(center_end.data(), para_dim), options);
+      Jacobian(spline_end,
+               Span<const double>(center_end.data(), para_dim),
+               options);
 
   // Compare angles between remaining tangent directions
   for (int32_t i_pd = 0; i_pd < para_dim; ++i_pd) {
@@ -116,9 +118,9 @@ void GetInterfaceOrientation(const SplineView& spline_start,
 }
 
 Buffer<int32_t> InterfaceOrientations(const SplineBatchView& patches,
-                                     Span<const int32_t> interfaces,
-                                     double tolerance,
-                                     const Options& options) {
+                                      Span<const int32_t> interfaces,
+                                      double tolerance,
+                                      const Options& options) {
   if (patches.empty()) {
     return {};
   }
@@ -152,24 +154,27 @@ Buffer<int32_t> InterfaceOrientations(const SplineBatchView& patches,
     }
   }
 
-  ParallelFor(int32_t{0}, number_of_interfaces, options.nthreads, [&](int32_t k) {
-    int32_t* row = &orientations[k * entries_per_line];
-    const int32_t p_start = row[0];
-    const int32_t f_start = row[1];
-    const int32_t p_end = row[2];
-    const int32_t f_end = row[3];
+  ParallelFor(int32_t{0},
+              number_of_interfaces,
+              options.nthreads,
+              [&](int32_t k) {
+                int32_t* row = &orientations[k * entries_per_line];
+                const int32_t p_start = row[0];
+                const int32_t f_start = row[1];
+                const int32_t p_end = row[2];
+                const int32_t f_end = row[3];
 
-    GetInterfaceOrientation(patches[p_start],
-                            f_start,
-                            patches[p_end],
-                            f_end,
-                            tolerance,
-                            &row[4],
-                            &row[4 + para_dim],
-                            options);
-  });
+                GetInterfaceOrientation(patches[p_start],
+                                        f_start,
+                                        patches[p_end],
+                                        f_end,
+                                        tolerance,
+                                        &row[4],
+                                        &row[4 + para_dim],
+                                        options);
+              });
 
   return orientations;
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

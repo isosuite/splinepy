@@ -10,19 +10,19 @@
 
 namespace splinepy::core {
 
-/// Parallelizes a loop [start, end) across worker threads using standard std::thread.
-/// Zero external dependency (no OpenMP).
-template <typename IndexType, typename Function>
+/// Parallelizes a loop [start, end) across worker threads using standard
+/// std::thread. Zero external dependency (no OpenMP).
+template<typename IndexType, typename Function>
 void ParallelFor(IndexType start, IndexType end, int nthreads, Function&& fn) {
   if (start >= end) {
     return;
   }
 
   const auto total_work = static_cast<std::size_t>(end - start);
-  const int max_threads = static_cast<int>(std::clamp(
-      static_cast<std::size_t>(nthreads > 0 ? nthreads : 1),
-      std::size_t{1},
-      total_work));
+  const int max_threads = static_cast<int>(
+      std::clamp(static_cast<std::size_t>(nthreads > 0 ? nthreads : 1),
+                 std::size_t{1},
+                 total_work));
 
   if (max_threads <= 1 || total_work <= 1) {
     for (IndexType i = start; i < end; ++i) {
@@ -54,7 +54,8 @@ void ParallelFor(IndexType start, IndexType end, int nthreads, Function&& fn) {
 
   std::size_t current_offset = 0;
   for (int t = 0; t < max_threads - 1; ++t) {
-    const std::size_t this_chunk = chunk_size + (static_cast<std::size_t>(t) < remainder ? 1 : 0);
+    const std::size_t this_chunk =
+        chunk_size + (static_cast<std::size_t>(t) < remainder ? 1 : 0);
     const IndexType s = start + static_cast<IndexType>(current_offset);
     const IndexType e = s + static_cast<IndexType>(this_chunk);
     current_offset += this_chunk;
@@ -76,19 +77,23 @@ void ParallelFor(IndexType start, IndexType end, int nthreads, Function&& fn) {
   }
 }
 
-/// Parallelizes a loop [start, end) across worker threads, passing unique thread_id to fn(i, thread_id).
-/// Useful for index-based access to per-thread workspaces.
-template <typename IndexType, typename Function>
-void ParallelForWithThreadId(IndexType start, IndexType end, int nthreads, Function&& fn) {
+/// Parallelizes a loop [start, end) across worker threads, passing unique
+/// thread_id to fn(i, thread_id). Useful for index-based access to per-thread
+/// workspaces.
+template<typename IndexType, typename Function>
+void ParallelForWithThreadId(IndexType start,
+                             IndexType end,
+                             int nthreads,
+                             Function&& fn) {
   if (start >= end) {
     return;
   }
 
   const auto total_work = static_cast<std::size_t>(end - start);
-  const int max_threads = static_cast<int>(std::clamp(
-      static_cast<std::size_t>(nthreads > 0 ? nthreads : 1),
-      std::size_t{1},
-      total_work));
+  const int max_threads = static_cast<int>(
+      std::clamp(static_cast<std::size_t>(nthreads > 0 ? nthreads : 1),
+                 std::size_t{1},
+                 total_work));
 
   if (max_threads <= 1 || total_work <= 1) {
     for (IndexType i = start; i < end; ++i) {
@@ -105,22 +110,24 @@ void ParallelForWithThreadId(IndexType start, IndexType end, int nthreads, Funct
   const std::size_t chunk_size = total_work / max_threads;
   const std::size_t remainder = total_work % max_threads;
 
-  auto run_chunk = [&](IndexType chunk_start, IndexType chunk_end, int thread_id) {
-    try {
-      for (IndexType i = chunk_start; i < chunk_end; ++i) {
-        fn(i, thread_id);
-      }
-    } catch (...) {
-      std::lock_guard<std::mutex> lock(error_mutex);
-      if (!error_ptr) {
-        error_ptr = std::current_exception();
-      }
-    }
-  };
+  auto run_chunk =
+      [&](IndexType chunk_start, IndexType chunk_end, int thread_id) {
+        try {
+          for (IndexType i = chunk_start; i < chunk_end; ++i) {
+            fn(i, thread_id);
+          }
+        } catch (...) {
+          std::lock_guard<std::mutex> lock(error_mutex);
+          if (!error_ptr) {
+            error_ptr = std::current_exception();
+          }
+        }
+      };
 
   std::size_t current_offset = 0;
   for (int t = 0; t < max_threads - 1; ++t) {
-    const std::size_t this_chunk = chunk_size + (static_cast<std::size_t>(t) < remainder ? 1 : 0);
+    const std::size_t this_chunk =
+        chunk_size + (static_cast<std::size_t>(t) < remainder ? 1 : 0);
     const IndexType s = start + static_cast<IndexType>(current_offset);
     const IndexType e = s + static_cast<IndexType>(this_chunk);
     current_offset += this_chunk;
@@ -142,4 +149,4 @@ void ParallelForWithThreadId(IndexType start, IndexType end, int nthreads, Funct
   }
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

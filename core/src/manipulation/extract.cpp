@@ -41,7 +41,8 @@ SplineData ExtractBoundary(const SplineView& spline,
 
   // Degrees
   for (int32_t d = 0, out_d = 0; d < spline.para_dim; ++d) {
-    if (d == axis) continue;
+    if (d == axis)
+      continue;
     result.degrees[out_d++] = spline.degrees[d];
   }
 
@@ -49,7 +50,8 @@ SplineData ExtractBoundary(const SplineView& spline,
   if (spline.HasKnotVectors()) {
     result.knot_vectors.resize(out_para_dim);
     for (int32_t d = 0, out_d = 0; d < spline.para_dim; ++d) {
-      if (d == axis) continue;
+      if (d == axis)
+        continue;
       result.knot_vectors[out_d].assign(spline.knot_vectors[d].begin(),
                                         spline.knot_vectors[d].end());
       out_d++;
@@ -62,20 +64,24 @@ SplineData ExtractBoundary(const SplineView& spline,
   in_strides[0] = 1;
   for (int32_t d = 0; d < spline.para_dim; ++d) {
     in_n[d] = spline.NumControlPointsPerAxis(d);
-    if (d > 0) in_strides[d] = in_strides[d - 1] * in_n[d - 1];
+    if (d > 0)
+      in_strides[d] = in_strides[d - 1] * in_n[d - 1];
   }
 
   std::vector<int64_t> out_n(out_para_dim);
   std::vector<int64_t> out_strides(out_para_dim);
   out_strides[0] = 1;
   for (int32_t d = 0, out_d = 0; d < spline.para_dim; ++d) {
-    if (d == axis) continue;
+    if (d == axis)
+      continue;
     out_n[out_d] = in_n[d];
-    if (out_d > 0) out_strides[out_d] = out_strides[out_d - 1] * out_n[out_d - 1];
+    if (out_d > 0)
+      out_strides[out_d] = out_strides[out_d - 1] * out_n[out_d - 1];
     out_d++;
   }
 
-  const int64_t total_out_cps = out_strides[out_para_dim - 1] * out_n[out_para_dim - 1];
+  const int64_t total_out_cps =
+      out_strides[out_para_dim - 1] * out_n[out_para_dim - 1];
   result.control_points.resize(total_out_cps * spline.dim);
   if (spline.IsRational()) {
     result.weights.resize(total_out_cps);
@@ -87,7 +93,8 @@ SplineData ExtractBoundary(const SplineView& spline,
     int64_t in_cp_idx = fixed_idx * in_strides[axis];
 
     for (int32_t d = 0, out_d = 0; d < spline.para_dim; ++d) {
-      if (d == axis) continue;
+      if (d == axis)
+        continue;
       const int64_t idx_d = rem % out_n[out_d];
       rem /= out_n[out_d];
       in_cp_idx += idx_d * in_strides[d];
@@ -95,7 +102,8 @@ SplineData ExtractBoundary(const SplineView& spline,
     }
 
     for (int32_t c = 0; c < spline.dim; ++c) {
-      result.control_points[out_idx * spline.dim + c] = spline.Point(in_cp_idx, c);
+      result.control_points[out_idx * spline.dim + c] =
+          spline.Point(in_cp_idx, c);
     }
     if (spline.IsRational()) {
       result.weights[out_idx] = spline.Weight(in_cp_idx);
@@ -106,7 +114,7 @@ SplineData ExtractBoundary(const SplineView& spline,
 }
 
 SplineBatchData ExtractBezierPatches(const SplineView& spline,
-                                    const Options& options) {
+                                     const Options& options) {
   if (options.validate) {
     ThrowIfInvalid(spline);
   }
@@ -118,7 +126,8 @@ SplineBatchData ExtractBezierPatches(const SplineView& spline,
     return patches;
   }
 
-  // 1. Decompose by inserting knots to multiplicity equal to degree on every axis
+  // 1. Decompose by inserting knots to multiplicity equal to degree on every
+  // axis
   constexpr double kEps = 1e-12;
   SplineData decomposed = InsertKnots(spline, 0, {}, options);
 
@@ -134,7 +143,8 @@ SplineBatchData ExtractBezierPatches(const SplineView& spline,
     for (std::size_t i = 0; i < kv.size(); ++i) {
       const double u = kv[i];
       if (u > u_min + kEps && u < u_max - kEps) {
-        if (unique_internal.empty() || std::abs(u - unique_internal.back()) > kEps) {
+        if (unique_internal.empty()
+            || std::abs(u - unique_internal.back()) > kEps) {
           unique_internal.push_back(u);
           mults.push_back(1);
         } else {
@@ -182,7 +192,8 @@ SplineBatchData ExtractBezierPatches(const SplineView& spline,
     total_patches *= num_elements[d];
 
     decomp_n[d] = decomp_view.NumControlPointsPerAxis(d);
-    if (d > 0) decomp_strides[d] = decomp_strides[d - 1] * decomp_n[d - 1];
+    if (d > 0)
+      decomp_strides[d] = decomp_strides[d - 1] * decomp_n[d - 1];
 
     cps_per_patch *= (static_cast<int64_t>(spline.degrees[d]) + 1);
   }
@@ -207,7 +218,7 @@ SplineBatchData ExtractBezierPatches(const SplineView& spline,
     patch.dim = spline.dim;
     patch.degrees.resize(spline.para_dim);
     std::copy_n(spline.degrees.data(), spline.para_dim, patch.degrees.data());
-    patch.knot_vectors.clear();  // Pure Bezier patch
+    patch.knot_vectors.clear(); // Pure Bezier patch
 
     patch.control_points.resize(cps_per_patch * spline.dim);
     if (spline.IsRational()) {
@@ -290,4 +301,4 @@ SplineData ExtractDim(const SplineView& spline,
   return result;
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

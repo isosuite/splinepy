@@ -11,4 +11,4 @@ int64_t Binomial(int32_t n, int32_t k) noexcept;
 /// Floating-point binomial coefficient for higher orders or divisions.
 double BinomialDouble(int32_t n, int32_t k) noexcept;
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

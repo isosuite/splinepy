@@ -29,7 +29,8 @@ inline void ComputeAxisStrides(const SplineView& spline,
   supp_strides[0] = 1;
   for (int32_t d = 1; d < spline.para_dim; ++d) {
     cp_strides[d] = cp_strides[d - 1] * spline.NumControlPointsPerAxis(d - 1);
-    supp_strides[d] = supp_strides[d - 1] * (static_cast<int64_t>(spline.degrees[d - 1]) + 1);
+    supp_strides[d] =
+        supp_strides[d - 1] * (static_cast<int64_t>(spline.degrees[d - 1]) + 1);
   }
 }
 
@@ -44,13 +45,23 @@ inline void Evaluate1DAxisBasis(const SplineView& spline,
                                 Span<double> out_ders) {
   const int32_t p = spline.degrees[d];
   if (spline.HasKnotVectors()) {
-    const int32_t n_cps = static_cast<int32_t>(spline.NumControlPointsPerAxis(d));
+    const int32_t n_cps =
+        static_cast<int32_t>(spline.NumControlPointsPerAxis(d));
     out_span = FindSpan(n_cps, p, u, spline.knot_vectors[d]);
     out_start = out_span - p;
     if (max_order == 0) {
-      EvaluateBSplineBasis(out_span, u, p, spline.knot_vectors[d], out_ders.subspan(0, p + 1));
+      EvaluateBSplineBasis(out_span,
+                           u,
+                           p,
+                           spline.knot_vectors[d],
+                           out_ders.subspan(0, p + 1));
     } else {
-      EvaluateBSplineBasisDerivatives(out_span, u, p, max_order, spline.knot_vectors[d], out_ders);
+      EvaluateBSplineBasisDerivatives(out_span,
+                                      u,
+                                      p,
+                                      max_order,
+                                      spline.knot_vectors[d],
+                                      out_ders);
     }
   } else {
     out_span = 0;
@@ -89,4 +100,4 @@ inline void DecodeSupport(int64_t s,
   out_poly_basis = basis_val;
 }
 
-}  // namespace splinepy::core::detail
+} // namespace splinepy::core::detail

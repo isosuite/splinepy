@@ -23,11 +23,18 @@ TEST(SpanTest, ContiguousAccess) {
 }
 
 TEST(SpanTest, StridedSpanAccess) {
-  // 3 points in 2D with interleaved z coordinate: [x0, y0, z0, x1, y1, z1, x2, y2, z2]
+  // 3 points in 2D with interleaved z coordinate: [x0, y0, z0, x1, y1, z1, x2,
+  // y2, z2]
   std::vector<double> interleaved{
-      1.0, 2.0, 0.0,
-      3.0, 4.0, 0.0,
-      5.0, 6.0, 0.0,
+      1.0,
+      2.0,
+      0.0,
+      3.0,
+      4.0,
+      0.0,
+      5.0,
+      6.0,
+      0.0,
   };
 
   // Strided view of x coordinates (stride = 3)

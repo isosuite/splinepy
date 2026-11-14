@@ -10,8 +10,7 @@ namespace splinepy::core {
 /// Adds two Bezier splines: R(u) = a(u) + b(u).
 /// a and b must have identical para_dim and dim.
 /// Degrees along each axis are elevated to max(a.degrees[d], b.degrees[d]).
-SplineData Add(const SplineView& a,
-               const SplineView& b,
-               const Options& options = {});
+SplineData
+Add(const SplineView& a, const SplineView& b, const Options& options = {});
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

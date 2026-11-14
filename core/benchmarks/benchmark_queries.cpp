@@ -31,7 +31,8 @@ int main() {
     v.dim_stride = 1;
 
     std::vector<double> queries(kNumQueries * 2);
-    for (auto& x : queries) x = dist(rng);
+    for (auto& x : queries)
+      x = dist(rng);
 
     Buffer<double> out(kNumQueries * 2);
 
@@ -56,8 +57,10 @@ int main() {
     double ms_4th = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
     std::cout << "bezier_2d_eval_100k:\n";
-    std::cout << "  1 thread : " << std::fixed << std::setprecision(2) << ms_1th << " ms\n";
-    std::cout << "  4 threads: " << ms_4th << " ms (speedup: " << (ms_1th / ms_4th) << "x)\n\n";
+    std::cout << "  1 thread : " << std::fixed << std::setprecision(2) << ms_1th
+              << " ms\n";
+    std::cout << "  4 threads: " << ms_4th
+              << " ms (speedup: " << (ms_1th / ms_4th) << "x)\n\n";
   }
 
   // 2. BSpline 2D in 3D (degree 2, 3 -> 24 CPs)
@@ -65,7 +68,8 @@ int main() {
     int32_t degrees[2] = {2, 3};
     double kv0[7] = {0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 1.0};
     double kv1[10] = {0.0, 0.0, 0.0, 0.0, 0.4, 0.8, 1.0, 1.0, 1.0, 1.0};
-    Span<const double> kvs[2] = {Span<const double>(kv0, 7), Span<const double>(kv1, 10)};
+    Span<const double> kvs[2] = {Span<const double>(kv0, 7),
+                                 Span<const double>(kv1, 10)};
     std::vector<double> cps(24 * 3, 1.0);
 
     SplineView v;
@@ -79,7 +83,8 @@ int main() {
     v.dim_stride = 1;
 
     std::vector<double> queries(kNumQueries * 2);
-    for (auto& x : queries) x = dist(rng);
+    for (auto& x : queries)
+      x = dist(rng);
 
     Buffer<double> out(kNumQueries * 3);
 
@@ -102,7 +107,8 @@ int main() {
 
     std::cout << "bspline_2d_eval_100k:\n";
     std::cout << "  1 thread : " << ms_1th << " ms\n";
-    std::cout << "  4 threads: " << ms_4th << " ms (speedup: " << (ms_1th / ms_4th) << "x)\n\n";
+    std::cout << "  4 threads: " << ms_4th
+              << " ms (speedup: " << (ms_1th / ms_4th) << "x)\n\n";
 
     // Basis
     Buffer<double> basis_out(kNumQueries * 12);
@@ -118,7 +124,8 @@ int main() {
 
     std::cout << "bspline_2d_basis_100k:\n";
     std::cout << "  1 thread : " << ms_1th << " ms\n";
-    std::cout << "  4 threads: " << ms_4th << " ms (speedup: " << (ms_1th / ms_4th) << "x)\n\n";
+    std::cout << "  4 threads: " << ms_4th
+              << " ms (speedup: " << (ms_1th / ms_4th) << "x)\n\n";
 
     // Jacobian
     Buffer<double> jac_out(kNumQueries * 3 * 2);
@@ -134,7 +141,8 @@ int main() {
 
     std::cout << "bspline_2d_jacobian_100k:\n";
     std::cout << "  1 thread : " << ms_1th << " ms\n";
-    std::cout << "  4 threads: " << ms_4th << " ms (speedup: " << (ms_1th / ms_4th) << "x)\n\n";
+    std::cout << "  4 threads: " << ms_4th
+              << " ms (speedup: " << (ms_1th / ms_4th) << "x)\n\n";
   }
 
   // 3. NURBS 2D in 2D (degree 2, 1 -> 18 CPs)
@@ -142,7 +150,8 @@ int main() {
     int32_t degrees[2] = {2, 1};
     double kv0[12] = {0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 4};
     double kv1[4] = {0, 0, 1, 1};
-    Span<const double> kvs[2] = {Span<const double>(kv0, 12), Span<const double>(kv1, 4)};
+    Span<const double> kvs[2] = {Span<const double>(kv0, 12),
+                                 Span<const double>(kv1, 4)};
     std::vector<double> cps(18 * 2, 1.0);
     std::vector<double> weights(18, 1.0);
 
@@ -186,7 +195,8 @@ int main() {
 
     std::cout << "nurbs_2d_eval_100k:\n";
     std::cout << "  1 thread : " << ms_1th << " ms\n";
-    std::cout << "  4 threads: " << ms_4th << " ms (speedup: " << (ms_1th / ms_4th) << "x)\n\n";
+    std::cout << "  4 threads: " << ms_4th
+              << " ms (speedup: " << (ms_1th / ms_4th) << "x)\n\n";
   }
 
   // 4. BSpline 3D in 3D (degree 1, 2, 2 -> 24 CPs)
@@ -213,7 +223,8 @@ int main() {
     v.dim_stride = 1;
 
     std::vector<double> queries(kNumQueries * 3);
-    for (auto& x : queries) x = dist(rng);
+    for (auto& x : queries)
+      x = dist(rng);
 
     Buffer<double> out(kNumQueries * 3);
 
@@ -235,7 +246,8 @@ int main() {
 
     std::cout << "bspline_3d_eval_100k:\n";
     std::cout << "  1 thread : " << ms_1th << " ms\n";
-    std::cout << "  4 threads: " << ms_4th << " ms (speedup: " << (ms_1th / ms_4th) << "x)\n";
+    std::cout << "  4 threads: " << ms_4th
+              << " ms (speedup: " << (ms_1th / ms_4th) << "x)\n";
   }
 
   return 0;

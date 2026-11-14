@@ -15,18 +15,20 @@
 namespace splinepy::core {
 namespace {
 
-template <typename T>
+template<typename T>
 std::vector<T> LoadBin(const std::string& filename) {
   const std::string full_path = std::string(TEST_DATA_DIR) + "/" + filename;
   std::ifstream is(full_path, std::ios::binary | std::ios::ate);
   if (!is) {
-    throw std::runtime_error("Could not open binary test data file: " + full_path);
+    throw std::runtime_error("Could not open binary test data file: "
+                             + full_path);
   }
   const std::streamsize size = is.tellg();
   is.seekg(0, std::ios::beg);
   std::vector<T> buffer(static_cast<std::size_t>(size) / sizeof(T));
   if (!is.read(reinterpret_cast<char*>(buffer.data()), size)) {
-    throw std::runtime_error("Failed to read binary test data file: " + full_path);
+    throw std::runtime_error("Failed to read binary test data file: "
+                             + full_path);
   }
   return buffer;
 }
@@ -43,7 +45,7 @@ double MaxAbsDiff(Span<const double> a, Span<const double> b) {
   return max_diff;
 }
 
-}  // namespace
+} // namespace
 
 TEST(ManipulationKernelsTest, InsertKnotsBSpline) {
   auto orig_degrees = LoadBin<int32_t>("operations_bspline_orig_degrees.bin");
@@ -76,17 +78,23 @@ TEST(ManipulationKernelsTest, InsertKnotsBSpline) {
   SplineData ins1 = InsertKnots(ins0.View(), 1, Span<const double>(knots_1, 1));
 
   // Verify knot vectors and control points match golden oracle
-  EXPECT_LT(MaxAbsDiff(ins1.knot_vectors[0].cspan(), Span<const double>(exp_ins_kv_0)),
+  EXPECT_LT(MaxAbsDiff(ins1.knot_vectors[0].cspan(),
+                       Span<const double>(exp_ins_kv_0)),
             1e-14);
-  EXPECT_LT(MaxAbsDiff(ins1.knot_vectors[1].cspan(), Span<const double>(exp_ins_kv_1)),
+  EXPECT_LT(MaxAbsDiff(ins1.knot_vectors[1].cspan(),
+                       Span<const double>(exp_ins_kv_1)),
             1e-14);
-  EXPECT_LT(MaxAbsDiff(ins1.control_points.cspan(), Span<const double>(exp_ins_cps)),
-            1e-14);
+  EXPECT_LT(
+      MaxAbsDiff(ins1.control_points.cspan(), Span<const double>(exp_ins_cps)),
+      1e-14);
 
-  // Invariance check: evaluation must match original spline at arbitrary parameter points
+  // Invariance check: evaluation must match original spline at arbitrary
+  // parameter points
   const double test_queries[8] = {0.1, 0.1, 0.35, 0.45, 0.75, 0.6, 0.9, 0.85};
-  Buffer<double> eval_orig = Evaluate(orig_spline, Span<const double>(test_queries, 8));
-  Buffer<double> eval_ins = Evaluate(ins1.View(), Span<const double>(test_queries, 8));
+  Buffer<double> eval_orig =
+      Evaluate(orig_spline, Span<const double>(test_queries, 8));
+  Buffer<double> eval_ins =
+      Evaluate(ins1.View(), Span<const double>(test_queries, 8));
 
   EXPECT_LT(MaxAbsDiff(eval_orig.cspan(), eval_ins.cspan()), 1e-14);
 }
@@ -124,8 +132,10 @@ TEST(ManipulationKernelsTest, RemoveKnotsBSpline) {
   EXPECT_EQ(rem0.removed[0], 1);
   EXPECT_EQ(rem0.removed[1], 1);
 
-  KnotRemovalResult rem1 =
-      RemoveKnots(rem0.spline.View(), 1, Span<const double>(knots_1, 1), rem_opt);
+  KnotRemovalResult rem1 = RemoveKnots(rem0.spline.View(),
+                                       1,
+                                       Span<const double>(knots_1, 1),
+                                       rem_opt);
   EXPECT_EQ(rem1.removed[0], 1);
 
   // Knot vectors and control points should match original
@@ -183,8 +193,10 @@ TEST(ManipulationKernelsTest, ElevateAndReduceDegreeBSpline) {
 
   // Invariance check: evaluation before == evaluation after
   const double test_queries[8] = {0.1, 0.2, 0.4, 0.5, 0.7, 0.8, 0.9, 0.3};
-  Buffer<double> eval_orig = Evaluate(orig_spline, Span<const double>(test_queries, 8));
-  Buffer<double> eval_ele = Evaluate(elevated.View(), Span<const double>(test_queries, 8));
+  Buffer<double> eval_orig =
+      Evaluate(orig_spline, Span<const double>(test_queries, 8));
+  Buffer<double> eval_ele =
+      Evaluate(elevated.View(), Span<const double>(test_queries, 8));
 
   EXPECT_LT(MaxAbsDiff(eval_orig.cspan(), eval_ele.cspan()), 1e-14);
 
@@ -195,15 +207,15 @@ TEST(ManipulationKernelsTest, ElevateAndReduceDegreeBSpline) {
   EXPECT_EQ(red1.degrees[0], orig_degrees[0]);
   EXPECT_EQ(red1.degrees[1], orig_degrees[1]);
 
-  EXPECT_LT(MaxAbsDiff(red1.knot_vectors[0].cspan(),
-                       Span<const double>(orig_kv_0)),
-            1e-14);
-  EXPECT_LT(MaxAbsDiff(red1.knot_vectors[1].cspan(),
-                       Span<const double>(orig_kv_1)),
-            1e-14);
-  EXPECT_LT(MaxAbsDiff(red1.control_points.cspan(),
-                       Span<const double>(orig_cps)),
-            1e-14);
+  EXPECT_LT(
+      MaxAbsDiff(red1.knot_vectors[0].cspan(), Span<const double>(orig_kv_0)),
+      1e-14);
+  EXPECT_LT(
+      MaxAbsDiff(red1.knot_vectors[1].cspan(), Span<const double>(orig_kv_1)),
+      1e-14);
+  EXPECT_LT(
+      MaxAbsDiff(red1.control_points.cspan(), Span<const double>(orig_cps)),
+      1e-14);
 }
 
 TEST(ManipulationKernelsTest, ExtractBoundaryBSpline) {
@@ -226,13 +238,17 @@ TEST(ManipulationKernelsTest, ExtractBoundaryBSpline) {
 
   for (int32_t b_id = 0; b_id < 4; ++b_id) {
     SplineData bnd = ExtractBoundary(orig_spline, b_id);
-    auto exp_cps = LoadBin<double>("operations_bspline_boundary_" + std::to_string(b_id) + "_cps.bin");
-    auto exp_deg = LoadBin<int32_t>("operations_bspline_boundary_" + std::to_string(b_id) + "_degrees.bin");
+    auto exp_cps = LoadBin<double>("operations_bspline_boundary_"
+                                   + std::to_string(b_id) + "_cps.bin");
+    auto exp_deg = LoadBin<int32_t>("operations_bspline_boundary_"
+                                    + std::to_string(b_id) + "_degrees.bin");
 
     EXPECT_EQ(bnd.para_dim, 1);
     EXPECT_EQ(bnd.dim, 2);
     EXPECT_EQ(bnd.degrees[0], exp_deg[0]);
-    EXPECT_LT(MaxAbsDiff(bnd.control_points.cspan(), Span<const double>(exp_cps)), 1e-14);
+    EXPECT_LT(
+        MaxAbsDiff(bnd.control_points.cspan(), Span<const double>(exp_cps)),
+        1e-14);
   }
 }
 
@@ -264,14 +280,18 @@ TEST(ManipulationKernelsTest, ExtractBezierPatchesBSpline) {
   EXPECT_EQ(patches.size(), 6);
 
   for (std::size_t i = 0; i < 6; ++i) {
-    auto exp_cps = LoadBin<double>("operations_bspline_patch_" + std::to_string(i) + "_cps.bin");
-    auto exp_deg = LoadBin<int32_t>("operations_bspline_patch_" + std::to_string(i) + "_degrees.bin");
+    auto exp_cps = LoadBin<double>("operations_bspline_patch_"
+                                   + std::to_string(i) + "_cps.bin");
+    auto exp_deg = LoadBin<int32_t>("operations_bspline_patch_"
+                                    + std::to_string(i) + "_degrees.bin");
 
     EXPECT_EQ(patches[i].para_dim, 2);
     EXPECT_EQ(patches[i].dim, 2);
     EXPECT_EQ(patches[i].degrees[0], exp_deg[0]);
     EXPECT_EQ(patches[i].degrees[1], exp_deg[1]);
-    EXPECT_LT(MaxAbsDiff(patches[i].control_points.cspan(), Span<const double>(exp_cps)), 1e-14);
+    EXPECT_LT(MaxAbsDiff(patches[i].control_points.cspan(),
+                         Span<const double>(exp_cps)),
+              1e-14);
   }
 }
 
@@ -297,7 +317,9 @@ TEST(ManipulationKernelsTest, ExtractDimBSpline) {
   SplineData dim0 = ExtractDim(orig_spline, 0);
   EXPECT_EQ(dim0.para_dim, 2);
   EXPECT_EQ(dim0.dim, 1);
-  EXPECT_LT(MaxAbsDiff(dim0.control_points.cspan(), Span<const double>(exp_b_dim0)), 1e-14);
+  EXPECT_LT(
+      MaxAbsDiff(dim0.control_points.cspan(), Span<const double>(exp_b_dim0)),
+      1e-14);
 }
 
 TEST(ManipulationKernelsTest, GrevilleAbscissae) {
@@ -319,14 +341,21 @@ TEST(ManipulationKernelsTest, GrevilleAbscissae) {
   // Axis 0 has xi = [0, 0.5, 1], Axis 1 has xi = [0, 1]
   // With Axis 0 varying fastest:
   const double exp_grev[12] = {
-      0.0, 0.0,
-      0.5, 0.0,
-      1.0, 0.0,
-      0.0, 1.0,
-      0.5, 1.0,
-      1.0, 1.0,
+      0.0,
+      0.0,
+      0.5,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      1.0,
+      0.5,
+      1.0,
+      1.0,
+      1.0,
   };
-  EXPECT_LT(MaxAbsDiff(grev_bez.cspan(), Span<const double>(exp_grev, 12)), 1e-14);
+  EXPECT_LT(MaxAbsDiff(grev_bez.cspan(), Span<const double>(exp_grev, 12)),
+            1e-14);
 
   // 2. Duplicate tolerance test (from test_greville.py)
   // BSpline degree 2, knot vector [0, 0, 0, 0.25, 0.5, 0.5, 0.5, 0.75, 1, 1, 1]
@@ -350,14 +379,17 @@ TEST(ManipulationKernelsTest, GrevilleAbscissae) {
   opt_neg.tolerance = -1.0;
   Buffer<double> grev_raw = GrevilleAbscissae(bsp, opt_neg);
   const double exp_raw[8] = {0, 0.125, 0.375, 0.5, 0.5, 0.625, 0.875, 1.0};
-  EXPECT_LT(MaxAbsDiff(grev_raw.cspan(), Span<const double>(exp_raw, 8)), 1e-14);
+  EXPECT_LT(MaxAbsDiff(grev_raw.cspan(), Span<const double>(exp_raw, 8)),
+            1e-14);
 
   // With duplicate_tolerance = 1e-4 (smoothed)
   Options opt_smooth;
   opt_smooth.tolerance = 1e-4;
   Buffer<double> grev_smooth = GrevilleAbscissae(bsp, opt_smooth);
-  const double exp_smooth[8] = {0, 0.125, 0.375, 0.4375, 0.5625, 0.625, 0.875, 1.0};
-  EXPECT_LT(MaxAbsDiff(grev_smooth.cspan(), Span<const double>(exp_smooth, 8)), 1e-14);
+  const double exp_smooth[8] =
+      {0, 0.125, 0.375, 0.4375, 0.5625, 0.625, 0.875, 1.0};
+  EXPECT_LT(MaxAbsDiff(grev_smooth.cspan(), Span<const double>(exp_smooth, 8)),
+            1e-14);
 }
 
 TEST(ManipulationKernelsTest, NURBSKnotInsertionAndElevationInvariance) {
@@ -398,8 +430,10 @@ TEST(ManipulationKernelsTest, NURBSKnotInsertionAndElevationInvariance) {
   // 2. Knot removal reversal
   Options rem_opt;
   rem_opt.tolerance = 1e-10;
-  KnotRemovalResult rem_nurbs =
-      RemoveKnots(ins_nurbs.View(), 0, Span<const double>(ins_knots_0, 2), rem_opt);
+  KnotRemovalResult rem_nurbs = RemoveKnots(ins_nurbs.View(),
+                                            0,
+                                            Span<const double>(ins_knots_0, 2),
+                                            rem_opt);
 
   EXPECT_EQ(rem_nurbs.removed[0], 1);
   EXPECT_EQ(rem_nurbs.removed[1], 1);
@@ -409,9 +443,9 @@ TEST(ManipulationKernelsTest, NURBSKnotInsertionAndElevationInvariance) {
   EXPECT_LT(MaxAbsDiff(rem_nurbs.spline.control_points.cspan(),
                        Span<const double>(cps)),
             1e-14);
-  EXPECT_LT(MaxAbsDiff(rem_nurbs.spline.weights.cspan(),
-                       Span<const double>(weights)),
-            1e-14);
+  EXPECT_LT(
+      MaxAbsDiff(rem_nurbs.spline.weights.cspan(), Span<const double>(weights)),
+      1e-14);
 
   // 3. Degree elevation invariance
   const int32_t ele_amounts[2] = {1, 0};
@@ -423,4 +457,4 @@ TEST(ManipulationKernelsTest, NURBSKnotInsertionAndElevationInvariance) {
   EXPECT_LT(MaxAbsDiff(eval_orig.cspan(), eval_ele.cspan()), 1e-14);
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

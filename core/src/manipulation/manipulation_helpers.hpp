@@ -15,7 +15,8 @@
 
 namespace splinepy::core::detail {
 
-/// Converts spline control points (and weights if rational) into homogeneous coordinates (dim + 1).
+/// Converts spline control points (and weights if rational) into homogeneous
+/// coordinates (dim + 1).
 inline Buffer<double> ToHomogeneous(const SplineView& spline) {
   const int64_t n_cps = spline.num_control_points;
   const int32_t dim = spline.dim;
@@ -41,7 +42,8 @@ inline Buffer<double> ToHomogeneous(const SplineView& spline) {
   return homo;
 }
 
-/// Converts homogeneous coordinates (dim + 1) back into physical coordinates and weights.
+/// Converts homogeneous coordinates (dim + 1) back into physical coordinates
+/// and weights.
 inline void FromHomogeneous(Span<const double> homo,
                             int64_t n_cps,
                             int32_t dim,
@@ -73,15 +75,16 @@ inline void FromHomogeneous(Span<const double> homo,
 
 /// N-D tensor-product single knot insertion along axis.
 /// Precomputes knot span and blending coefficients once for all parallel rows.
-inline void InsertKnotAlongAxisND(int32_t para_dim,
-                                  int32_t coord_dim,
-                                  Span<const int32_t> degrees,
-                                  const std::vector<Span<const double>>& current_kvs,
-                                  Span<const double> in_cps,
-                                  int32_t axis,
-                                  double u_new,
-                                  std::vector<double>& out_axis_knots,
-                                  Buffer<double>& out_cps) {
+inline void
+InsertKnotAlongAxisND(int32_t para_dim,
+                      int32_t coord_dim,
+                      Span<const int32_t> degrees,
+                      const std::vector<Span<const double>>& current_kvs,
+                      Span<const double> in_cps,
+                      int32_t axis,
+                      double u_new,
+                      std::vector<double>& out_axis_knots,
+                      Buffer<double>& out_cps) {
   assert(axis >= 0 && axis < para_dim);
 
   std::vector<int64_t> in_n(para_dim);
@@ -158,7 +161,8 @@ inline void InsertKnotAlongAxisND(int32_t para_dim,
     int64_t rem = r;
 
     for (int32_t d = 0; d < para_dim; ++d) {
-      if (d == axis) continue;
+      if (d == axis)
+        continue;
       const int64_t idx_d = rem % in_n[d];
       rem /= in_n[d];
       in_base += idx_d * in_strides[d];
@@ -203,16 +207,17 @@ inline void InsertKnotAlongAxisND(int32_t para_dim,
 
 /// N-D tensor-product single knot removal along axis within tolerance.
 /// Returns true if removal succeeded across all rows within tolerance.
-inline bool TryRemoveKnotAlongAxisND(int32_t para_dim,
-                                     int32_t coord_dim,
-                                     Span<const int32_t> degrees,
-                                     const std::vector<Span<const double>>& current_kvs,
-                                     Span<const double> in_cps,
-                                     int32_t axis,
-                                     double u_remove,
-                                     double tolerance,
-                                     std::vector<double>& out_axis_knots,
-                                     Buffer<double>& out_cps) {
+inline bool
+TryRemoveKnotAlongAxisND(int32_t para_dim,
+                         int32_t coord_dim,
+                         Span<const int32_t> degrees,
+                         const std::vector<Span<const double>>& current_kvs,
+                         Span<const double> in_cps,
+                         int32_t axis,
+                         double u_remove,
+                         double tolerance,
+                         std::vector<double>& out_axis_knots,
+                         Buffer<double>& out_cps) {
   assert(axis >= 0 && axis < para_dim);
 
   const int32_t p = degrees[axis];
@@ -221,7 +226,7 @@ inline bool TryRemoveKnotAlongAxisND(int32_t para_dim,
   const int32_t n = m - p - 1;
 
   if (n <= p) {
-    return false;  // cannot reduce control points below p + 1
+    return false; // cannot reduce control points below p + 1
   }
 
   // Find knot u_remove in knots
@@ -236,7 +241,7 @@ inline bool TryRemoveKnotAlongAxisND(int32_t para_dim,
   }
 
   if (s == 0) {
-    return false;  // knot not found
+    return false; // knot not found
   }
 
   // Check if boundary knot: cannot remove clamped boundary knots
@@ -288,7 +293,8 @@ inline bool TryRemoveKnotAlongAxisND(int32_t para_dim,
     int64_t in_base = 0;
     int64_t rem = r_idx;
     for (int32_t d = 0; d < para_dim; ++d) {
-      if (d == axis) continue;
+      if (d == axis)
+        continue;
       const int64_t idx_d = rem % in_n[d];
       rem /= in_n[d];
       in_base += idx_d * in_strides[d];
@@ -296,7 +302,8 @@ inline bool TryRemoveKnotAlongAxisND(int32_t para_dim,
     in_base *= coord_dim;
 
     // Boundary seeds
-    const double* p_first_minus_1 = in_cps.data() + in_base + (first - 1) * in_s;
+    const double* p_first_minus_1 =
+        in_cps.data() + in_base + (first - 1) * in_s;
     const double* p_last_plus_1 = in_cps.data() + in_base + (last + 1) * in_s;
 
     for (int32_t c = 0; c < coord_dim; ++c) {
@@ -324,7 +331,8 @@ inline bool TryRemoveKnotAlongAxisND(int32_t para_dim,
         temp_left[ii * coord_dim + c] =
             (pi[c] - (1.0 - alfi) * temp_left[(ii - 1) * coord_dim + c]) / alfi;
         temp_right[jj * coord_dim + c] =
-            (pj[c] - alfj * temp_right[(jj + 1) * coord_dim + c]) / (1.0 - alfj);
+            (pj[c] - alfj * temp_right[(jj + 1) * coord_dim + c])
+            / (1.0 - alfj);
       }
 
       i++;
@@ -336,17 +344,18 @@ inline bool TryRemoveKnotAlongAxisND(int32_t para_dim,
     // Distance check
     double dist_sq = 0.0;
     for (int32_t c = 0; c < coord_dim; ++c) {
-      const double diff =
-          temp_left[(ii - 1) * coord_dim + c] - temp_right[(jj + 1) * coord_dim + c];
+      const double diff = temp_left[(ii - 1) * coord_dim + c]
+                          - temp_right[(jj + 1) * coord_dim + c];
       dist_sq += diff * diff;
     }
 
     if (std::sqrt(dist_sq) > tolerance) {
-      return false;  // cannot remove knot within tolerance
+      return false; // cannot remove knot within tolerance
     }
   }
 
-  // All rows passed tolerance check! Construct new knot vector and new control points.
+  // All rows passed tolerance check! Construct new knot vector and new control
+  // points.
   out_axis_knots.resize(knots.size() - 1);
   for (int32_t i = 0; i < r; ++i) {
     out_axis_knots[i] = knots[i];
@@ -364,7 +373,8 @@ inline bool TryRemoveKnotAlongAxisND(int32_t para_dim,
     int64_t out_base = 0;
     int64_t rem = r_idx;
     for (int32_t d = 0; d < para_dim; ++d) {
-      if (d == axis) continue;
+      if (d == axis)
+        continue;
       const int64_t idx_d = rem % in_n[d];
       rem /= in_n[d];
       in_base += idx_d * in_strides[d];
@@ -383,7 +393,8 @@ inline bool TryRemoveKnotAlongAxisND(int32_t para_dim,
     }
 
     // 2. Compute candidate points
-    const double* p_first_minus_1 = in_cps.data() + in_base + (first - 1) * in_s;
+    const double* p_first_minus_1 =
+        in_cps.data() + in_base + (first - 1) * in_s;
     const double* p_last_plus_1 = in_cps.data() + in_base + (last + 1) * in_s;
     for (int32_t c = 0; c < coord_dim; ++c) {
       temp_left[0 * coord_dim + c] = p_first_minus_1[c];
@@ -406,10 +417,13 @@ inline bool TryRemoveKnotAlongAxisND(int32_t para_dim,
         temp_left[ii * coord_dim + c] =
             (pi[c] - (1.0 - alfi) * temp_left[(ii - 1) * coord_dim + c]) / alfi;
         temp_right[jj * coord_dim + c] =
-            (pj[c] - alfj * temp_right[(jj + 1) * coord_dim + c]) / (1.0 - alfj);
+            (pj[c] - alfj * temp_right[(jj + 1) * coord_dim + c])
+            / (1.0 - alfj);
       }
-      i++; ii++;
-      j--; jj--;
+      i++;
+      ii++;
+      j--;
+      jj--;
     }
 
     // Replace modified points: first ... last - 1
@@ -425,16 +439,18 @@ inline bool TryRemoveKnotAlongAxisND(int32_t para_dim,
     if (i - j == 2) {
       double* dst = out_cps.data() + out_base + k_dst * out_s;
       for (int32_t c = 0; c < coord_dim; ++c) {
-        dst[c] = 0.5 * (temp_left[(ii - 1) * coord_dim + c] +
-                        temp_right[(jj + 1) * coord_dim + c]);
+        dst[c] = 0.5
+                 * (temp_left[(ii - 1) * coord_dim + c]
+                    + temp_right[(jj + 1) * coord_dim + c]);
       }
       k_dst++;
     } else {
       // Adjacent
       double* dst = out_cps.data() + out_base + k_dst * out_s;
       for (int32_t c = 0; c < coord_dim; ++c) {
-        dst[c] = 0.5 * (temp_left[(ii - 1) * coord_dim + c] +
-                        temp_right[(jj + 1) * coord_dim + c]);
+        dst[c] = 0.5
+                 * (temp_left[(ii - 1) * coord_dim + c]
+                    + temp_right[(jj + 1) * coord_dim + c]);
       }
       k_dst++;
     }
@@ -479,8 +495,8 @@ inline void ElevateBezier1D(int32_t p,
     const double one_minus_alpha = 1.0 - alpha;
     for (int32_t c = 0; c < coord_dim; ++c) {
       out_cps[i * coord_dim + c] =
-          alpha * in_cps[(i - 1) * coord_dim + c] +
-          one_minus_alpha * in_cps[i * coord_dim + c];
+          alpha * in_cps[(i - 1) * coord_dim + c]
+          + one_minus_alpha * in_cps[i * coord_dim + c];
     }
   }
 
@@ -490,4 +506,4 @@ inline void ElevateBezier1D(int32_t p,
   }
 }
 
-}  // namespace splinepy::core::detail
+} // namespace splinepy::core::detail

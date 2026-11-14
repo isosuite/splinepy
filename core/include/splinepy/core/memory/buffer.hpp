@@ -52,12 +52,12 @@ inline void AlignedFree(void* ptr) noexcept {
 #endif
 }
 
-}  // namespace detail
+} // namespace detail
 
 /// Owning contiguous memory buffer with guaranteed alignment.
-template <typename T>
+template<typename T>
 class Buffer {
- public:
+public:
   using value_type = T;
   using size_type = std::size_t;
   using pointer = T*;
@@ -68,7 +68,9 @@ class Buffer {
   Buffer() noexcept : data_(nullptr), size_(0), alignment_(kDefaultAlignment) {}
 
   explicit Buffer(size_type size, size_type alignment = kDefaultAlignment)
-      : data_(nullptr), size_(size), alignment_(alignment) {
+      : data_(nullptr),
+        size_(size),
+        alignment_(alignment) {
     if (size_ > 0) {
       data_ = static_cast<pointer>(
           detail::AlignedAlloc(size_ * sizeof(T), alignment_));
@@ -79,7 +81,9 @@ class Buffer {
   }
 
   Buffer(size_type size, const T& val, size_type alignment = kDefaultAlignment)
-      : data_(nullptr), size_(size), alignment_(alignment) {
+      : data_(nullptr),
+        size_(size),
+        alignment_(alignment) {
     if (size_ > 0) {
       data_ = static_cast<pointer>(
           detail::AlignedAlloc(size_ * sizeof(T), alignment_));
@@ -89,15 +93,12 @@ class Buffer {
     }
   }
 
-  Buffer(std::initializer_list<T> init,
-         size_type alignment = kDefaultAlignment)
+  Buffer(std::initializer_list<T> init, size_type alignment = kDefaultAlignment)
       : Buffer(init.size(), alignment) {
     std::copy(init.begin(), init.end(), data_);
   }
 
-  ~Buffer() {
-    clear();
-  }
+  ~Buffer() { clear(); }
 
   // Move semantics (O(1) pointer swap)
   Buffer(Buffer&& other) noexcept
@@ -121,8 +122,7 @@ class Buffer {
   }
 
   // Copy semantics
-  Buffer(const Buffer& other)
-      : Buffer(other.size_, other.alignment_) {
+  Buffer(const Buffer& other) : Buffer(other.size_, other.alignment_) {
     if (size_ > 0) {
       std::copy_n(other.data_, size_, data_);
     }
@@ -171,7 +171,7 @@ class Buffer {
     size_ = new_size;
   }
 
-  template <typename InputIt>
+  template<typename InputIt>
   void assign(InputIt first, InputIt last) {
     const size_type n = std::distance(first, last);
     resize(n);
@@ -234,10 +234,10 @@ class Buffer {
   const_pointer cbegin() const noexcept { return data_; }
   const_pointer cend() const noexcept { return data_ + size_; }
 
- private:
+private:
   pointer data_{nullptr};
   size_type size_{0};
   size_type alignment_{kDefaultAlignment};
 };
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

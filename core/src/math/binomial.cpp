@@ -10,7 +10,8 @@ namespace {
 constexpr int32_t kMaxPrecomputedN = 62;
 
 struct PascalTriangle {
-  std::array<std::array<int64_t, kMaxPrecomputedN + 1>, kMaxPrecomputedN + 1> table{};
+  std::array<std::array<int64_t, kMaxPrecomputedN + 1>, kMaxPrecomputedN + 1>
+      table{};
 
   constexpr PascalTriangle() noexcept {
     for (int32_t n = 0; n <= kMaxPrecomputedN; ++n) {
@@ -25,7 +26,7 @@ struct PascalTriangle {
 
 constexpr PascalTriangle kPascal{};
 
-}  // namespace
+} // namespace
 
 int64_t Binomial(int32_t n, int32_t k) noexcept {
   if (k < 0 || k > n || n < 0) {
@@ -68,4 +69,4 @@ double BinomialDouble(int32_t n, int32_t k) noexcept {
   return res;
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

@@ -62,9 +62,9 @@ SplineBatchData BoundaryMultipatch(const SplineBatchView& patches,
 }
 
 SplineBatchData ExtractAllBoundarySplines(const SplineBatchView& patches,
-                                         Span<const int32_t> interfaces,
-                                         const Options& options) {
+                                          Span<const int32_t> interfaces,
+                                          const Options& options) {
   return BoundaryMultipatch(patches, interfaces, -1, options);
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

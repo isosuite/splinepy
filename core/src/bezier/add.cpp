@@ -11,9 +11,8 @@
 
 namespace splinepy::core {
 
-SplineData Add(const SplineView& a,
-               const SplineView& b,
-               const Options& options) {
+SplineData
+Add(const SplineView& a, const SplineView& b, const Options& options) {
   if (options.validate) {
     ThrowIfInvalid(a);
     ThrowIfInvalid(b);
@@ -41,21 +40,29 @@ SplineData Add(const SplineView& a,
     target_degrees[d] = std::max(a.degrees[d], b.degrees[d]);
     amounts_a[d] = target_degrees[d] - a.degrees[d];
     amounts_b[d] = target_degrees[d] - b.degrees[d];
-    if (amounts_a[d] > 0) elevate_a = true;
-    if (amounts_b[d] > 0) elevate_b = true;
+    if (amounts_a[d] > 0)
+      elevate_a = true;
+    if (amounts_b[d] > 0)
+      elevate_b = true;
   }
 
   SplineData a_elevated_data;
   SplineView a_view = a;
   if (elevate_a) {
-    a_elevated_data = ElevateDegrees(a, Span<const int32_t>(amounts_a.data(), para_dim), options);
+    a_elevated_data =
+        ElevateDegrees(a,
+                       Span<const int32_t>(amounts_a.data(), para_dim),
+                       options);
     a_view = a_elevated_data.View();
   }
 
   SplineData b_elevated_data;
   SplineView b_view = b;
   if (elevate_b) {
-    b_elevated_data = ElevateDegrees(b, Span<const int32_t>(amounts_b.data(), para_dim), options);
+    b_elevated_data =
+        ElevateDegrees(b,
+                       Span<const int32_t>(amounts_b.data(), para_dim),
+                       options);
     b_view = b_elevated_data.View();
   }
 
@@ -181,11 +188,12 @@ SplineData Add(const SplineView& a,
     const double inv_w = (w != 0.0) ? (1.0 / w) : 0.0;
     result.weights[i] = w;
     for (int32_t c = 0; c < dim; ++c) {
-      result.control_points[i * dim + c] = num_sum.control_points[i * dim + c] * inv_w;
+      result.control_points[i * dim + c] =
+          num_sum.control_points[i * dim + c] * inv_w;
     }
   }
 
   return result;
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

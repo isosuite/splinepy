@@ -43,11 +43,11 @@ Buffer<double> ComputeBoundaryCenters(const SplineBatchView& patches,
   if (options.validate) {
     ThrowIfInvalid(patches, options);
     for (std::size_t i = 0; i < patches.size(); ++i) {
-      if (patches[i].para_dim != patches[0].para_dim ||
-          patches[i].dim != patches[0].dim) {
-        throw std::invalid_argument(
-            "ComputeBoundaryCenters: all patches must have the same para_dim and "
-            "dim.");
+      if (patches[i].para_dim != patches[0].para_dim
+          || patches[i].dim != patches[0].dim) {
+        throw std::invalid_argument("ComputeBoundaryCenters: all patches must "
+                                    "have the same para_dim and "
+                                    "dim.");
       }
     }
   }
@@ -77,7 +77,8 @@ Buffer<double> ComputeBoundaryCenters(const SplineBatchView& patches,
         }
       }
 
-      Buffer<double> phys = Evaluate(patch, Span<const double>(u.data(), para_dim), options);
+      Buffer<double> phys =
+          Evaluate(patch, Span<const double>(u.data(), para_dim), options);
       const int64_t face_idx = p * num_faces + f;
       for (int32_t c = 0; c < dim; ++c) {
         centers[face_idx * dim + c] = phys[c];
@@ -89,10 +90,10 @@ Buffer<double> ComputeBoundaryCenters(const SplineBatchView& patches,
 }
 
 Buffer<int32_t> InterfacesFromBoundaryCenters(Span<const double> centers,
-                                             int32_t num_patches,
-                                             int32_t para_dim,
-                                             int32_t dim,
-                                             double tolerance) {
+                                              int32_t num_patches,
+                                              int32_t para_dim,
+                                              int32_t dim,
+                                              double tolerance) {
   const int32_t num_faces = 2 * para_dim;
   const int64_t total_faces = static_cast<int64_t>(num_patches) * num_faces;
 
@@ -107,8 +108,10 @@ Buffer<int32_t> InterfacesFromBoundaryCenters(Span<const double> centers,
   for (int64_t i = 0; i < total_faces; ++i) {
     for (int32_t c = 0; c < dim; ++c) {
       const double val = centers[i * dim + c];
-      if (val < min_v[c]) min_v[c] = val;
-      if (val > max_v[c]) max_v[c] = val;
+      if (val < min_v[c])
+        min_v[c] = val;
+      if (val > max_v[c])
+        max_v[c] = val;
     }
   }
 
@@ -156,8 +159,7 @@ Buffer<int32_t> InterfacesFromBoundaryCenters(Span<const double> centers,
     bool found_duplicate = false;
     int32_t match_cand = -1;
 
-    while (upper < total_faces &&
-           (s[order[upper]] - s[lower]) < tolerance) {
+    while (upper < total_faces && (s[order[upper]] - s[lower]) < tolerance) {
       const int32_t cand = order[upper];
       double dist_sq = 0.0;
       for (int32_t c = 0; c < dim; ++c) {
@@ -210,4 +212,4 @@ Buffer<int32_t> DetermineInterfaces(const SplineBatchView& patches,
                                        tolerance);
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

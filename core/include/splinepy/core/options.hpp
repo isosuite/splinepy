@@ -23,4 +23,4 @@ struct Options {
   Workspace* workspace{nullptr};
 };
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

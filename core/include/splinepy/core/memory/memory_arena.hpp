@@ -16,11 +16,13 @@
 namespace splinepy::core {
 
 /// High-performance linear bump allocator (memory arena).
-/// Allocates 64-byte aligned contiguous blocks with O(1) allocation and O(1) scoped reset.
+/// Allocates 64-byte aligned contiguous blocks with O(1) allocation and O(1)
+/// scoped reset.
 class MemoryArena {
- public:
-  static constexpr std::size_t kDefaultBlockSize = 64 * 1024;  // 64 KB
-  static constexpr std::size_t kDefaultAlignment = 64;         // 64-byte cache line / AVX-512
+public:
+  static constexpr std::size_t kDefaultBlockSize = 64 * 1024; // 64 KB
+  static constexpr std::size_t kDefaultAlignment =
+      64; // 64-byte cache line / AVX-512
 
   struct Checkpoint {
     std::size_t block_index{0};
@@ -29,9 +31,10 @@ class MemoryArena {
 
   /// RAII scope for restoring arena allocation state upon exit.
   class Scope {
-   public:
+  public:
     explicit Scope(MemoryArena& arena) noexcept
-        : arena_(&arena), checkpoint_(arena.GetCheckpoint()) {}
+        : arena_(&arena),
+          checkpoint_(arena.GetCheckpoint()) {}
 
     ~Scope() noexcept {
       if (arena_) {
@@ -43,7 +46,8 @@ class MemoryArena {
     Scope& operator=(const Scope&) = delete;
 
     Scope(Scope&& other) noexcept
-        : arena_(other.arena_), checkpoint_(other.checkpoint_) {
+        : arena_(other.arena_),
+          checkpoint_(other.checkpoint_) {
       other.arena_ = nullptr;
     }
 
@@ -59,7 +63,7 @@ class MemoryArena {
       return *this;
     }
 
-   private:
+  private:
     MemoryArena* arena_{nullptr};
     Checkpoint checkpoint_{};
   };
@@ -79,10 +83,9 @@ class MemoryArena {
   MemoryArena(MemoryArena&&) noexcept = default;
   MemoryArena& operator=(MemoryArena&&) noexcept = default;
 
-  /// Creates an RAII scope checkpointing the arena's current allocation position.
-  [[nodiscard]] Scope CreateScope() noexcept {
-    return Scope(*this);
-  }
+  /// Creates an RAII scope checkpointing the arena's current allocation
+  /// position.
+  [[nodiscard]] Scope CreateScope() noexcept { return Scope(*this); }
 
   /// Allocates raw aligned memory.
   void* AllocateRaw(std::size_t bytes, std::size_t align = kDefaultAlignment) {
@@ -92,16 +95,20 @@ class MemoryArena {
 
     const std::size_t eff_align = std::max(alignment_, align);
     std::size_t aligned_offset =
-        (blocks_[current_block_index_].offset + eff_align - 1) & ~(eff_align - 1);
+        (blocks_[current_block_index_].offset + eff_align - 1)
+        & ~(eff_align - 1);
 
     if (aligned_offset + bytes > blocks_[current_block_index_].buffer.size()) {
-      // Current block cannot fit request. Advance to next block or allocate new.
-      const std::size_t new_block_size = std::max(block_size_, bytes + eff_align);
+      // Current block cannot fit request. Advance to next block or allocate
+      // new.
+      const std::size_t new_block_size =
+          std::max(block_size_, bytes + eff_align);
 
       if (current_block_index_ + 1 < blocks_.size()) {
         current_block_index_++;
         if (blocks_[current_block_index_].buffer.size() < bytes + eff_align) {
-          blocks_[current_block_index_].buffer = Buffer<uint8_t>(new_block_size);
+          blocks_[current_block_index_].buffer =
+              Buffer<uint8_t>(new_block_size);
         }
         blocks_[current_block_index_].offset = 0;
       } else {
@@ -118,7 +125,7 @@ class MemoryArena {
   }
 
   /// Allocates typed array of elements.
-  template <typename T>
+  template<typename T>
   T* Allocate(std::size_t count = 1) {
     if (count == 0) {
       return nullptr;
@@ -127,7 +134,7 @@ class MemoryArena {
   }
 
   /// Allocates typed Span of elements.
-  template <typename T>
+  template<typename T>
   Span<T> AllocateSpan(std::size_t count) {
     if (count == 0) {
       return Span<T>();
@@ -136,7 +143,7 @@ class MemoryArena {
   }
 
   /// Allocates typed Span filled with a constant value.
-  template <typename T>
+  template<typename T>
   Span<T> AllocateSpan(std::size_t count, const T& fill_value) {
     if (count == 0) {
       return Span<T>();
@@ -149,7 +156,8 @@ class MemoryArena {
   /// Returns current allocation checkpoint.
   [[nodiscard]] Checkpoint GetCheckpoint() const noexcept {
     return Checkpoint{current_block_index_,
-                      blocks_.empty() ? 0 : blocks_[current_block_index_].offset};
+                      blocks_.empty() ? 0
+                                      : blocks_[current_block_index_].offset};
   }
 
   /// Restores arena allocation state to a previous checkpoint.
@@ -187,7 +195,7 @@ class MemoryArena {
     return total;
   }
 
- private:
+private:
   struct Block {
     Buffer<uint8_t> buffer;
     std::size_t offset{0};
@@ -199,4 +207,4 @@ class MemoryArena {
   std::size_t current_block_index_{0};
 };
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

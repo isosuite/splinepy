@@ -44,13 +44,18 @@ TEST(BernsteinTest, Endpoints) {
 TEST(BernsteinTest, DeCasteljau1D) {
   // Linear polynomial f(t) = 2 + 5t (control points: 2, 7)
   double cps1[2] = {2.0, 7.0};
-  EXPECT_NEAR(DeCasteljau1D(1, 0.4, Span<const double>(cps1, 2)), 2.0 + 5.0 * 0.4, 1e-12);
+  EXPECT_NEAR(DeCasteljau1D(1, 0.4, Span<const double>(cps1, 2)),
+              2.0 + 5.0 * 0.4,
+              1e-12);
 
   // Quadratic polynomial f(t) = (1-t)^2 * 1 + 2*t*(1-t)*3 + t^2 * 8
   double cps2[3] = {1.0, 3.0, 8.0};
   double t = 0.3;
-  double expected = (1.0 - t) * (1.0 - t) * 1.0 + 2.0 * t * (1.0 - t) * 3.0 + t * t * 8.0;
-  EXPECT_NEAR(DeCasteljau1D(2, t, Span<const double>(cps2, 3)), expected, 1e-12);
+  double expected =
+      (1.0 - t) * (1.0 - t) * 1.0 + 2.0 * t * (1.0 - t) * 3.0 + t * t * 8.0;
+  EXPECT_NEAR(DeCasteljau1D(2, t, Span<const double>(cps2, 3)),
+              expected,
+              1e-12);
 }
 
 TEST(BernsteinTest, DeCasteljauSplit1D) {
@@ -60,17 +65,23 @@ TEST(BernsteinTest, DeCasteljauSplit1D) {
   double right[3];
   double t_split = 0.4;
 
-  DeCasteljauSplit1D(2, t_split, Span<const double>(cps, 3), 1,
-                     Span<double>(left, 3), Span<double>(right, 3));
+  DeCasteljauSplit1D(2,
+                     t_split,
+                     Span<const double>(cps, 3),
+                     1,
+                     Span<double>(left, 3),
+                     Span<double>(right, 3));
 
   // The evaluated point at t_split must match left[2] and right[0]
   double eval_pt = DeCasteljau1D(2, t_split, Span<const double>(cps, 3));
   EXPECT_NEAR(left[2], eval_pt, 1e-13);
   EXPECT_NEAR(right[0], eval_pt, 1e-13);
 
-  // Evaluate left subsegment at t_local = 0.5 (corresponds to t = 0.2 in original)
+  // Evaluate left subsegment at t_local = 0.5 (corresponds to t = 0.2 in
+  // original)
   double eval_left = DeCasteljau1D(2, 0.5, Span<const double>(left, 3));
-  double eval_orig = DeCasteljau1D(2, 0.5 * t_split, Span<const double>(cps, 3));
+  double eval_orig =
+      DeCasteljau1D(2, 0.5 * t_split, Span<const double>(cps, 3));
   EXPECT_NEAR(eval_left, eval_orig, 1e-13);
 }
 

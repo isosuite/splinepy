@@ -23,12 +23,13 @@ void Derivative(const SplineView& spline,
   }
 
   if (spline.para_dim <= 0 || spline.dim <= 0) {
-    throw SplinepyException("Invalid spline dimensions", Status::kInvalidArgument);
+    throw SplinepyException("Invalid spline dimensions",
+                            Status::kInvalidArgument);
   }
 
   if (orders.size() != static_cast<std::size_t>(spline.para_dim)) {
-    throw SplinepyException(
-        "Orders length must match parametric dimension", Status::kDimensionMismatch);
+    throw SplinepyException("Orders length must match parametric dimension",
+                            Status::kDimensionMismatch);
   }
 
   bool all_zero = true;
@@ -54,7 +55,8 @@ void Derivative(const SplineView& spline,
         Status::kDimensionMismatch);
   }
 
-  const int64_t num_queries = static_cast<int64_t>(queries.size()) / spline.para_dim;
+  const int64_t num_queries =
+      static_cast<int64_t>(queries.size()) / spline.para_dim;
   if (num_queries == 0) {
     return;
   }
@@ -70,7 +72,8 @@ void Derivative(const SplineView& spline,
   const int32_t dim = spline.dim;
   const int64_t num_supports = spline.NumSupports();
 
-  // If non-rational and any order exceeds degree, derivative is identically zero
+  // If non-rational and any order exceeds degree, derivative is identically
+  // zero
   if (!spline.IsRational()) {
     for (int32_t d = 0; d < para_dim; ++d) {
       if (orders[d] > spline.degrees[d]) {
@@ -120,7 +123,8 @@ void Derivative(const SplineView& spline,
 
   // Workspace for zero-allocation scratch in derivative evaluations
   Workspace local_workspace(64 * 1024, options.nthreads);
-  Workspace* ws = options.workspace != nullptr ? options.workspace : &local_workspace;
+  Workspace* ws =
+      options.workspace != nullptr ? options.workspace : &local_workspace;
 
   auto evaluate_single_derivative = [&](int64_t q, int thread_id) {
     MemoryArena& arena = ws->GetThreadArena(thread_id);
@@ -175,10 +179,13 @@ void Derivative(const SplineView& spline,
     }
 
     // Lambda to get 1D basis derivative d^k/du^k at basis index j
-    auto get_1d_der = [&](int32_t axis, int32_t order_k, int32_t basis_j) -> double {
+    auto get_1d_der =
+        [&](int32_t axis, int32_t order_k, int32_t basis_j) -> double {
       const int32_t p_d = spline.degrees[axis];
-      if (order_k > p_d) return 0.0;
-      return ders_1d_storage[p_axis_offsets[axis] + order_k * (p_d + 1) + basis_j];
+      if (order_k > p_d)
+        return 0.0;
+      return ders_1d_storage[p_axis_offsets[axis] + order_k * (p_d + 1)
+                             + basis_j];
     };
 
     if (!spline.IsRational()) {
@@ -296,7 +303,8 @@ void Derivative(const SplineView& spline,
             C_beta[0 * dim + c] = a_ptr[c] * inv_w0;
           }
         } else {
-          // C^(beta) = (A^(beta) - sum_{0 < gamma <= beta} binom(beta, gamma) W^(gamma) C^(beta - gamma)) / W^(0)
+          // C^(beta) = (A^(beta) - sum_{0 < gamma <= beta} binom(beta, gamma)
+          // W^(gamma) C^(beta - gamma)) / W^(0)
           const double inv_w0 = (W_beta[0] != 0.0) ? (1.0 / W_beta[0]) : 0.0;
           double corr[detail::kStackParaDim];
           double* corr_ptr = corr;
@@ -325,7 +333,8 @@ void Derivative(const SplineView& spline,
                 break;
               }
               binom_prod *= Binomial(beta[d], gamma[d]);
-              beta_minus_gamma_idx += (beta[d] - gamma[d]) * p_sub_order_strides[d];
+              beta_minus_gamma_idx +=
+                  (beta[d] - gamma[d]) * p_sub_order_strides[d];
             }
 
             if (!gamma_le_beta) {
@@ -353,7 +362,10 @@ void Derivative(const SplineView& spline,
     }
   };
 
-  ParallelForWithThreadId(int64_t{0}, num_queries, options.nthreads, evaluate_single_derivative);
+  ParallelForWithThreadId(int64_t{0},
+                          num_queries,
+                          options.nthreads,
+                          evaluate_single_derivative);
 }
 
 Buffer<double> Derivative(const SplineView& spline,
@@ -361,9 +373,11 @@ Buffer<double> Derivative(const SplineView& spline,
                           Span<const int32_t> orders,
                           const Options& options) {
   if (spline.para_dim <= 0 || spline.dim <= 0) {
-    throw SplinepyException("Invalid spline dimensions", Status::kInvalidArgument);
+    throw SplinepyException("Invalid spline dimensions",
+                            Status::kInvalidArgument);
   }
-  const int64_t num_queries = static_cast<int64_t>(queries.size()) / spline.para_dim;
+  const int64_t num_queries =
+      static_cast<int64_t>(queries.size()) / spline.para_dim;
   Buffer<double> out(num_queries * spline.dim);
   Derivative(spline, queries, orders, out.span(), options);
   return out;
@@ -383,11 +397,12 @@ void Derivative(SplineBatchView batch,
   }
 
   if (out_per_spline.size() != batch.size()) {
-    throw SplinepyException(
-        "out_per_spline size must match batch size", Status::kDimensionMismatch);
+    throw SplinepyException("out_per_spline size must match batch size",
+                            Status::kDimensionMismatch);
   }
 
-  const bool broadcast_queries = (queries_per_spline.size() == 1 && batch.size() > 1);
+  const bool broadcast_queries =
+      (queries_per_spline.size() == 1 && batch.size() > 1);
   if (!broadcast_queries && queries_per_spline.size() != batch.size()) {
     throw SplinepyException(
         "queries_per_spline size must match batch size (or be 1 for broadcast)",
@@ -398,9 +413,10 @@ void Derivative(SplineBatchView batch,
   per_patch_opts.validate = false;
 
   for (std::size_t i = 0; i < batch.size(); ++i) {
-    const auto& q_span = broadcast_queries ? queries_per_spline[0] : queries_per_spline[i];
+    const auto& q_span =
+        broadcast_queries ? queries_per_spline[0] : queries_per_spline[i];
     Derivative(batch[i], q_span, orders, out_per_spline[i], per_patch_opts);
   }
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

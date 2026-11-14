@@ -17,7 +17,8 @@ SplineData InsertKnots(const SplineView& spline,
   if (options.validate) {
     ThrowIfInvalid(spline);
     if (axis < 0 || axis >= spline.para_dim) {
-      throw std::invalid_argument("InsertKnots: axis out of range [0, para_dim).");
+      throw std::invalid_argument(
+          "InsertKnots: axis out of range [0, para_dim).");
     }
   }
 
@@ -117,27 +118,29 @@ SplineData InsertKnots(const SplineView& spline,
   }
 
   // Sort knots to insert
-  std::vector<double> sorted_knots(knots_to_insert.begin(), knots_to_insert.end());
+  std::vector<double> sorted_knots(knots_to_insert.begin(),
+                                   knots_to_insert.end());
   std::sort(sorted_knots.begin(), sorted_knots.end());
 
   // Sequentially insert each knot
   std::vector<Span<const double>> kv_views(spline.para_dim);
   for (double u_new : sorted_knots) {
     for (int32_t d = 0; d < spline.para_dim; ++d) {
-      kv_views[d] = Span<const double>(current_kvs[d].data(), current_kvs[d].size());
+      kv_views[d] =
+          Span<const double>(current_kvs[d].data(), current_kvs[d].size());
     }
     std::vector<double> out_axis_knots;
     Buffer<double> out_cps;
 
     detail::InsertKnotAlongAxisND(spline.para_dim,
-                                 coord_dim,
-                                 spline.degrees,
-                                 kv_views,
-                                 working_cps.cspan(),
-                                 axis,
-                                 u_new,
-                                 out_axis_knots,
-                                 out_cps);
+                                  coord_dim,
+                                  spline.degrees,
+                                  kv_views,
+                                  working_cps.cspan(),
+                                  axis,
+                                  u_new,
+                                  out_axis_knots,
+                                  out_cps);
 
     current_kvs[axis] = std::move(out_axis_knots);
     working_cps = std::move(out_cps);
@@ -183,9 +186,10 @@ SplineBatchData InsertKnots(SplineBatchView batch,
               static_cast<int64_t>(batch.size()),
               options.nthreads,
               [&](int64_t i) {
-                result[i] = InsertKnots(batch[i], axis, knots_to_insert, options);
+                result[i] =
+                    InsertKnots(batch[i], axis, knots_to_insert, options);
               });
   return result;
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

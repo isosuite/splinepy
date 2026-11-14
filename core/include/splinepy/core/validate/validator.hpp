@@ -7,7 +7,8 @@
 namespace splinepy::core {
 
 /// Validates a single SplineView.
-/// Returns Status::kOk if the spline geometry and memory layouts are well-formed.
+/// Returns Status::kOk if the spline geometry and memory layouts are
+/// well-formed.
 Status Validate(const SplineView& view, const Options& options = {});
 
 /// Validates an entire batch of splines.
@@ -20,4 +21,4 @@ void ThrowIfInvalid(const SplineView& view, const Options& options = {});
 /// Validates an entire batch and throws if any spline is malformed.
 void ThrowIfInvalid(SplineBatchView batch, const Options& options = {});
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

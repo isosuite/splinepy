@@ -8,12 +8,13 @@
 
 namespace splinepy::core {
 
-/// Groups exterior boundaries into smooth patches based on G1 normal continuity.
-/// Modifies global_interfaces in-place: negative entries become -1, -2, -3, ... for each group.
-/// Returns the total number of distinct continuous boundary groups.
+/// Groups exterior boundaries into smooth patches based on G1 normal
+/// continuity. Modifies global_interfaces in-place: negative entries become -1,
+/// -2, -3, ... for each group. Returns the total number of distinct continuous
+/// boundary groups.
 int32_t BoundariesFromContinuity(const SplineBatchView& patches,
-                                Buffer<int32_t>& global_interfaces,
-                                double tolerance = 1e-4,
-                                const Options& options = {});
+                                 Buffer<int32_t>& global_interfaces,
+                                 double tolerance = 1e-4,
+                                 const Options& options = {});
 
-}  // namespace splinepy::core
+} // namespace splinepy::core

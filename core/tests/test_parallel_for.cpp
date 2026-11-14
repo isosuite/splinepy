@@ -27,24 +27,22 @@ TEST(ParallelForTest, SequentialEquivalence) {
 
 TEST(ParallelForTest, EmptyRange) {
   int count = 0;
-  ParallelFor(5, 5, 4, [&](int) {
-    count++;
-  });
+  ParallelFor(5, 5, 4, [&](int) { count++; });
   EXPECT_EQ(count, 0);
 
-  ParallelFor(10, 5, 4, [&](int) {
-    count++;
-  });
+  ParallelFor(10, 5, 4, [&](int) { count++; });
   EXPECT_EQ(count, 0);
 }
 
 TEST(ParallelForTest, ExceptionPropagation) {
-  EXPECT_THROW(
-      ParallelFor(0, 100, 4,
-                  [](int i) {
-                    if (i == 42) {
-                      throw std::runtime_error("Simulated error in worker");
-                    }
-                  }),
-      std::runtime_error);
+  EXPECT_THROW(ParallelFor(0,
+                           100,
+                           4,
+                           [](int i) {
+                             if (i == 42) {
+                               throw std::runtime_error(
+                                   "Simulated error in worker");
+                             }
+                           }),
+               std::runtime_error);
 }

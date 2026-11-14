@@ -15,18 +15,20 @@
 namespace splinepy::core {
 namespace {
 
-template <typename T>
+template<typename T>
 std::vector<T> LoadBin(const std::string& filename) {
   const std::string full_path = std::string(TEST_DATA_DIR) + "/" + filename;
   std::ifstream is(full_path, std::ios::binary | std::ios::ate);
   if (!is) {
-    throw std::runtime_error("Could not open binary test data file: " + full_path);
+    throw std::runtime_error("Could not open binary test data file: "
+                             + full_path);
   }
   const std::streamsize size = is.tellg();
   is.seekg(0, std::ios::beg);
   std::vector<T> buffer(static_cast<std::size_t>(size) / sizeof(T));
   if (!is.read(reinterpret_cast<char*>(buffer.data()), size)) {
-    throw std::runtime_error("Failed to read binary test data file: " + full_path);
+    throw std::runtime_error("Failed to read binary test data file: "
+                             + full_path);
   }
   return buffer;
 }
@@ -63,7 +65,7 @@ SplineView MakeBezierView(Span<const int32_t> degrees,
   return v;
 }
 
-}  // namespace
+} // namespace
 
 TEST(BezierAlgebraTest, SplitGolden) {
   auto b1_degrees = LoadBin<int32_t>("operations_bezier_b1_degrees.bin");
@@ -154,9 +156,9 @@ TEST(BezierAlgebraTest, AddGolden) {
 
   EXPECT_EQ(b_add.degrees[0], 2);
   EXPECT_EQ(b_add.degrees[1], 2);
-  EXPECT_LT(MaxAbsDiff(b_add.control_points.cspan(),
-                       Span<const double>(exp_add_cps)),
-            1e-14);
+  EXPECT_LT(
+      MaxAbsDiff(b_add.control_points.cspan(), Span<const double>(exp_add_cps)),
+      1e-14);
 }
 
 TEST(BezierAlgebraTest, AddDegreePromotion) {
@@ -205,9 +207,9 @@ TEST(BezierAlgebraTest, MultiplyGolden) {
 
   EXPECT_EQ(b_mul.degrees[0], exp_mul_degrees[0]);
   EXPECT_EQ(b_mul.degrees[1], exp_mul_degrees[1]);
-  EXPECT_LT(MaxAbsDiff(b_mul.control_points.cspan(),
-                       Span<const double>(exp_mul_cps)),
-            1e-14);
+  EXPECT_LT(
+      MaxAbsDiff(b_mul.control_points.cspan(), Span<const double>(exp_mul_cps)),
+      1e-14);
 }
 
 TEST(BezierAlgebraTest, MultiplyDotProduct) {
@@ -253,17 +255,17 @@ TEST(BezierAlgebraTest, DerivativeSplineGolden) {
   auto d10 = DerivativeSpline(b1, Span<const int32_t>(order10, 2));
   EXPECT_EQ(d10.degrees[0], exp_d10_degrees[0]);
   EXPECT_EQ(d10.degrees[1], exp_d10_degrees[1]);
-  EXPECT_LT(MaxAbsDiff(d10.control_points.cspan(),
-                       Span<const double>(exp_d10_cps)),
-            1e-14);
+  EXPECT_LT(
+      MaxAbsDiff(d10.control_points.cspan(), Span<const double>(exp_d10_cps)),
+      1e-14);
 
   int32_t order01[2] = {0, 1};
   auto d01 = DerivativeSpline(b1, Span<const int32_t>(order01, 2));
   EXPECT_EQ(d01.degrees[0], exp_d01_degrees[0]);
   EXPECT_EQ(d01.degrees[1], exp_d01_degrees[1]);
-  EXPECT_LT(MaxAbsDiff(d01.control_points.cspan(),
-                       Span<const double>(exp_d01_cps)),
-            1e-14);
+  EXPECT_LT(
+      MaxAbsDiff(d01.control_points.cspan(), Span<const double>(exp_d01_cps)),
+      1e-14);
 }
 
 TEST(BezierAlgebraTest, DerivativeSplineEvaluationEquivalence) {
@@ -279,10 +281,10 @@ TEST(BezierAlgebraTest, DerivativeSplineEvaluationEquivalence) {
   for (double u0 = 0.1; u0 < 1.0; u0 += 0.3) {
     for (double u1 = 0.1; u1 < 1.0; u1 += 0.3) {
       double q[2] = {u0, u1};
-      auto query_deriv =
-          Derivative(b1, Span<const double>(q, 2), Span<const int32_t>(order, 2));
-      auto spline_eval =
-          Evaluate(d_spline.View(), Span<const double>(q, 2));
+      auto query_deriv = Derivative(b1,
+                                    Span<const double>(q, 2),
+                                    Span<const int32_t>(order, 2));
+      auto spline_eval = Evaluate(d_spline.View(), Span<const double>(q, 2));
       EXPECT_LT(MaxAbsDiff(query_deriv.cspan(), spline_eval.cspan()), 1e-14);
     }
   }
@@ -330,8 +332,8 @@ TEST(BezierAlgebraTest, ComposeSensitivitiesGolden) {
   ASSERT_EQ(sens.size(), 9u);
 
   for (std::size_t i = 0; i < 9; ++i) {
-    auto exp_sens_cps =
-        LoadBin<double>("operations_bezier_sens_" + std::to_string(i) + "_cps.bin");
+    auto exp_sens_cps = LoadBin<double>("operations_bezier_sens_"
+                                        + std::to_string(i) + "_cps.bin");
     EXPECT_LT(MaxAbsDiff(sens[i].control_points.cspan(),
                          Span<const double>(exp_sens_cps)),
               1e-14);
@@ -381,8 +383,7 @@ TEST(BezierAlgebraTest, CompositionDerivative) {
   int32_t order[2] = {1, 0};
   auto inner_deriv = DerivativeSpline(inner, Span<const int32_t>(order, 2));
 
-  auto comp_deriv =
-      CompositionDerivative(outer, inner, inner_deriv.View());
+  auto comp_deriv = CompositionDerivative(outer, inner, inner_deriv.View());
 
   // Evaluate composition directly and compute its derivative along dim 0
   auto composed = Compose(outer, inner);
@@ -390,7 +391,8 @@ TEST(BezierAlgebraTest, CompositionDerivative) {
       DerivativeSpline(composed.View(), Span<const int32_t>(order, 2));
 
   // The composition derivative with respect to inner coordinate 0 should equal
-  // the derivative of the composed spline with respect to parametric coordinate 0!
+  // the derivative of the composed spline with respect to parametric coordinate
+  // 0!
   for (double v0 = 0.2; v0 < 0.8; v0 += 0.3) {
     for (double v1 = 0.2; v1 < 0.8; v1 += 0.3) {
       double v[2] = {v0, v1};
@@ -401,4 +403,4 @@ TEST(BezierAlgebraTest, CompositionDerivative) {
   }
 }
 
-}  // namespace splinepy::core
+} // namespace splinepy::core
