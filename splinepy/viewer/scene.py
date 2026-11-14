@@ -12,6 +12,7 @@ import json as _json
 import numpy as _np
 
 from splinepy.viewer import mesh as _mesh
+from splinepy.viewer.compat import to_css as _to_css
 from splinepy.viewer.texture import to_data_url as _to_data_url
 
 COLORMAPS = ("viridis", "plasma", "coolwarm", "jet", "gray")
@@ -52,9 +53,20 @@ def _patches(spline):
     return list(spline.patches) if spline.name.startswith("Multi") else [spline]
 
 
-def _enforce_len(res, n):
-    res = _np.asarray(res, dtype=int).ravel()
-    return tuple(_np.repeat(res, n) if res.size == 1 else res)
+def _sampling_resolution(value, default, dim, name):
+    res = _np.atleast_1d(default if value is None else value)
+    if (
+        res.ndim != 1
+        or res.size not in (1, dim)
+        or res.dtype.kind not in "iu"
+        or _np.any(res <= 0)
+    ):
+        raise ValueError(f"{name} must be a positive integer or {dim} positive integers")
+    return tuple(_np.broadcast_to(res, (dim,)))
+
+
+class _DataLookupError(KeyError):
+    """No matching data source for this patch."""
 
 
 def _arrow_locations(spline, source):
@@ -91,15 +103,27 @@ def _eval_data(spline, source, queries, parent=None):
         if hasattr(data, "patches"):
             try:
                 idx = parent.patches.index(spline)
-                return _np.asarray(data.patches[idx].evaluate(queries))
+                patch = data.patches[idx]
             except (ValueError, IndexError):
-                pass
+                raise _DataLookupError(
+                    f"Data '{source}' has no field for {spline}"
+                ) from None
+            return _np.asarray(patch.evaluate(queries))
         if hasattr(data, "as_vertex_data"):
             return _np.asarray(data.as_vertex_data(on=queries))
         elif hasattr(data, "evaluate"):
             return _np.asarray(data.evaluate(queries))
         return _np.asarray(data)
-    raise KeyError(f"Data '{source}' not found on {spline}")
+    raise _DataLookupError(f"Data '{source}' not found on {spline}")
+
+
+def _scalar_values(values, count):
+    values = _np.asarray(values)
+    if values.ndim == 2 and values.shape[1] > 1:
+        values = _np.linalg.norm(values, axis=1)
+    if values.shape not in ((count,), (count, 1)):
+        raise ValueError(f"Expected one scalar or vector per vertex ({count})")
+    return values.reshape(-1)
 
 
 def _surface_meshes(spline, res, scalars, uv=False, parent=None):
@@ -120,13 +144,8 @@ def _surface_meshes(spline, res, scalars, uv=False, parent=None):
             conn, etype = _mesh.grid_quads(shape), "quad"
         data = {}
         if scalars is not None:
-            try:
-                vals = _eval_data(spline, scalars, q, parent=parent)
-                if vals.ndim > 1 and vals.shape[-1] > 1:
-                    vals = _np.linalg.norm(vals, axis=-1)
-                data["scalars"] = vals.reshape(-1)
-            except Exception:
-                pass
+            values = _eval_data(spline, scalars, q, parent=parent)
+            data["scalars"] = _scalar_values(values, len(verts))
         if uv and pdim > 1:
             free = [d for d in range(pdim) if d not in fixed]
             lb, ub = _np.asarray(bounds, dtype=float)
@@ -173,7 +192,7 @@ def _lighting(lighting, dim):
 
 
 def _color(name, default):
-    return name if name is not None else default
+    return _to_css(name) or default
 
 
 def _layer(kind, name, positions, **kw):
@@ -269,35 +288,32 @@ def scene_from_splines(
             if (p.para_dim, p.dim) not in _SHOWABLE:
                 raise ValueError(f"Can't show para_dim={p.para_dim}, dim={p.dim}")
         defaults = {1: 100, 2: 50, 3: 50}
-        rows = []
-        for p in sub:
-            n = p.para_dim
-            res = _enforce_len(resolutions or (10 if multi else defaults[n]), n)
-            surf = _mesh.merge(
-                _surface_meshes(p, res, scalars, texture is not None, parent=s)
+        patch_resolutions = [
+            _sampling_resolution(
+                resolutions, 10 if multi else defaults[p.para_dim],
+                p.para_dim, "resolutions",
             )
-            rows.append((p, res, surf))
-
-        surface = _mesh.merge([r[2] for r in rows])
-        if (
-            multi
-            and scalars is not None
-            and "scalars" not in surface["vertex_data"]
-            and hasattr(s, "spline_data")
-            and scalars in s.spline_data._saved
-        ):
-            try:
-                s_vals = s.spline_data.as_scalar(
-                    scalars,
-                    resolutions=_enforce_len(resolutions or 10, sub[0].para_dim),
-                )
-                if s_vals is not None:
-                    s_vals = _np.asarray(s_vals)
-                    if s_vals.ndim > 1 and s_vals.shape[-1] > 1:
-                        s_vals = _np.linalg.norm(s_vals, axis=-1)
-                    surface["vertex_data"]["scalars"] = s_vals.reshape(-1)
-            except Exception:
-                pass
+            for p in sub
+        ]  # fmt: skip
+        uv_needed = texture is not None
+        try:
+            surface = _mesh.merge(
+                m
+                for p, res in zip(sub, patch_resolutions, strict=False)
+                for m in _surface_meshes(p, res, scalars, uv_needed, parent=s)
+            )
+        except _DataLookupError:
+            if not multi or callable(scalars) or scalars not in s.spline_data._saved:
+                raise
+            surface = _mesh.merge(
+                m
+                for p, res in zip(sub, patch_resolutions, strict=False)
+                for m in _surface_meshes(p, res, None, uv_needed)
+            )
+            values = s.spline_data.as_scalar(scalars, patch_resolutions[0])
+            surface["vertex_data"]["scalars"] = _scalar_values(
+                values, len(surface["vertices"])
+            )
         et = surface["element_type"]
         if et == "quad":
             surface = _mesh.to_triangles(surface)
@@ -323,7 +339,7 @@ def scene_from_splines(
         )
 
         if knots:
-            kn = [_knot_lines(p, r[1]) for p, r in zip(sub, rows, strict=False)]
+            kn = [_knot_lines(p, res) for p, res in zip(sub, patch_resolutions, strict=False)]
             kn = [k for k in kn if len(k["vertices"])]
             if kn and kn[0]["element_type"] == "line":
                 k = _mesh.merge(kn)
@@ -370,7 +386,9 @@ def scene_from_splines(
                     else:
                         q, _ = _query_grid(
                             p.parametric_bounds,
-                            _enforce_len(arrow_resolutions or 10, p.para_dim),
+                            _sampling_resolution(
+                                arrow_resolutions, 10, p.para_dim, "arrow_resolutions"
+                            ),
                         )
                     ap.append(p.evaluate(q))
                     av.append(_pad3(_eval_data(p, arrows, q, parent=s)))
@@ -454,7 +472,7 @@ def _gustaf_to_mesh(obj):
         etype = "triangle"
         connectivity = elements
     elif elements.shape[1] == 4:
-        etype = "quad"
+        etype = "tet" if whatami.startswith("tet") else "quad"
         connectivity = elements
     elif elements.shape[1] == 8:
         etype = "hexa"
@@ -464,7 +482,7 @@ def _gustaf_to_mesh(obj):
         connectivity = None
     vdata = {}
     if hasattr(obj, "vertex_data"):
-        for k in obj.vertex_data:
+        for k in obj.vertex_data.keys():
             vdata[k] = obj.vertex_data[k]
     return _mesh.make_mesh(etype, vertices, connectivity, vertex_data=vdata)
 

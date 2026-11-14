@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -9,6 +11,28 @@ from splinepy.viewer import mesh
 @pytest.fixture(autouse=True)
 def _no_browser(monkeypatch):
     monkeypatch.setattr(viewer.Viewer, "open", lambda _self, **_kw: None)
+
+
+@pytest.fixture
+def chromium():
+    playwright = pytest.importorskip("playwright.sync_api")
+    with playwright.sync_playwright() as pw:
+        if not Path(pw.chromium.executable_path).exists():
+            pytest.skip("Chromium is not installed for Playwright")
+
+
+def test_headless_launch_failure_cleans_up(monkeypatch):
+    playwright = pytest.importorskip("playwright.sync_api")
+
+    def fail_launch(*_args, **_kwargs):
+        raise RuntimeError("test launch failure")
+
+    monkeypatch.setattr(playwright.BrowserType, "launch", fail_launch)
+    with pytest.raises(RuntimeError, match="test launch failure"):
+        with viewer.show(np.zeros((1, 2)))._page(200, 150):
+            pytest.fail("Headless page opened despite launch failure")
+    with playwright.sync_playwright():
+        pass
 
 
 def _hex_grid(n):
@@ -34,6 +58,18 @@ def test_boundary_faces_of_hexa_block():
     b = mesh.boundary_faces(m)
     assert b["element_type"] == "quad"
     assert len(b["connectivity"]) == 6 * 3 * 3
+
+
+def test_gustaf_tetrahedron():
+    gustaf = pytest.importorskip("gustaf")
+    volume = gustaf.Volumes(
+        vertices=[[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]],
+        volumes=[[0, 1, 2, 3]],
+    )
+    faces = viewer.scene_from_mesh(volume, mode="faces")["layers"][0]
+    edges = viewer.scene_from_mesh(volume, mode="edges")["layers"][0]
+    assert faces["indices"].shape == (4, 3)
+    assert edges["indices"].shape == (6, 2)
 
 
 def test_unique_edges_of_hexa_block():
@@ -92,9 +128,15 @@ def test_multipatch_scene():
     a = splinepy.Bezier(degrees=[1, 1], control_points=[[0, 0], [1, 0], [0, 1], [1, 1]])
     b = a.copy()
     b.control_points[:, 0] += 1
-    s = viewer.scene_from_splines(splinepy.Multipatch([a, b]), resolutions=4)
+    patches = splinepy.Multipatch([a, b])
+    patches.spline_data["field"] = splinepy.Multipatch([a.copy(), b.copy()])
+    s = viewer.scene_from_splines(patches, resolutions=4, scalars="field")
     spline_layer = s["layers"][0]
     assert len(spline_layer["positions"]) == 2 * 16
+    np.testing.assert_allclose(
+        spline_layer["scalars"],
+        np.linalg.norm(spline_layer["positions"], axis=1),
+    )
 
 
 def test_show_bare_vertices_as_points():
@@ -153,15 +195,37 @@ def test_control_point_ids_layer():
     assert ids["visible"] is True
 
 
-def test_headless_screenshot(tmp_path):
-    pytest.importorskip("playwright")
+def test_headless_screenshot(tmp_path, chromium):
     a = splinepy.Bezier(degrees=[2], control_points=[[0, 0], [1, 1], [2, 0]])
-    try:
-        out = viewer.show(a).screenshot(tmp_path / "s.png", 200, 150)
-    except Exception as e:  # browsers not installed
-        pytest.skip(f"headless browser unavailable: {e}")
+    out = viewer.show(a).screenshot(tmp_path / "s.png", 200, 150)
     assert (tmp_path / "s.png").stat().st_size > 500
     assert out == tmp_path / "s.png"
+
+
+def test_layer_category_toggles(chromium):
+    spline = _surface()
+    shown = viewer.show([spline, spline], resolutions=4)
+    with shown._page(400, 300) as page:
+        page.get_by_text("Layers (", exact=False).click()
+        category = page.get_by_role("checkbox", name="All control points", exact=True)
+        first = page.get_by_role("checkbox", name="control_points", exact=True)
+        second = page.get_by_role("checkbox", name="control_points [1]", exact=True)
+        details = page.locator("details").filter(has=category)
+        assert not first.is_visible()
+        category.uncheck()
+        assert not first.is_visible()
+        details.locator("summary").press("Enter")
+        assert not first.is_checked()
+        assert not second.is_checked()
+        assert page.get_by_role("checkbox", name="All spline", exact=True).is_checked()
+        first.check()
+        assert category.evaluate("(input) => input.indeterminate")
+        category.click()
+        assert first.is_checked()
+        assert second.is_checked()
+        assert category.is_checked()
+        details.locator("summary").press("Enter")
+        assert not first.is_visible()
 
 
 def test_show_groups_overlay_and_positional_args_make_panels():
@@ -188,6 +252,40 @@ def _surface():
     )
 
 
+def test_sampling_resolutions_accept_arrays():
+    scene = viewer.scene_from_splines(
+        _surface(),
+        resolutions=np.array([3, 4]),
+        arrows=lambda q: np.ones_like(q),
+        arrow_resolutions=np.array([2, 3]),
+    )
+    layers = {layer["name"]: layer for layer in scene["layers"]}
+    assert len(layers["spline"]["positions"]) == 12
+    assert len(layers["arrows"]["positions"]) == 6
+
+
+@pytest.mark.parametrize("option", ["resolutions", "arrow_resolutions"])
+@pytest.mark.parametrize("value", [0, [2, 3, 4], [2, 1.5], [[2, 3]]])
+def test_sampling_resolutions_reject_invalid_values(option, value):
+    with pytest.raises(ValueError, match=option):
+        viewer.scene_from_splines(
+            _surface(), arrows=lambda q: np.ones_like(q), **{option: value}
+        )
+
+
+def test_scalar_errors_are_reported():
+    def broken_callback(_):
+        raise ValueError("scalar callback failed")
+
+    spline = _surface()
+    with pytest.raises(KeyError, match="missing"):
+        viewer.show(spline, scalars="missing")
+    with pytest.raises(ValueError, match="scalar callback failed"):
+        viewer.show(spline, scalars=broken_callback)
+    with pytest.raises(ValueError, match="per vertex"):
+        viewer.show(spline, scalars=lambda _: [0])
+
+
 def test_vedo_names_are_aliases():
     from splinepy.viewer import compat
 
@@ -204,6 +302,34 @@ def test_vedo_names_are_aliases():
     assert layer["color"] == "red" and layer["opacity"] == 0.5
 
 
+def test_integer_colors():
+    spline = _surface()
+    colors = [
+        viewer.show(spline, c=index).scene["layers"][0]["color"]
+        for index in range(10)
+    ]
+    assert len(set(colors)) == 10
+    indexed = viewer.show(spline, color=np.int64(-11)).scene["layers"][0]
+    assert indexed["color"] == colors[1]
+    points = viewer.scene_from_mesh(spline.control_points, color=0)["layers"][0]
+    assert points["color"] == colors[0]
+    spline.show_options["c"] = 2
+    shown = spline.show(backend="viewer", open=False)
+    assert shown.scene["layers"][0]["color"] == colors[2]
+
+
+def test_refined_thb_renders_headlessly(tmp_path, chromium):
+    spline = splinepy.THBSpline(
+        [1, 1],
+        [[0, 0, 1, 1]] * 2,
+        [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 1]],
+    )
+    spline.refine([0], admissible=None)
+    shown = spline.show(backend="viewer", open=False, resolutions=4, c=1)
+    path = shown.screenshot(tmp_path / "thb.png", 320, 240)
+    assert path.stat().st_size > 500
+
+
 def test_spline_show_backend_switch(monkeypatch):
     s = _surface()
     assert isinstance(s.show(backend="viewer"), viewer.Viewer)
@@ -213,6 +339,12 @@ def test_spline_show_backend_switch(monkeypatch):
     assert "spline" in s.show(return_gustaf=True)
     with pytest.raises(ValueError):
         s.show(backend="nope")
+
+
+def test_widget_cannot_open_browser():
+    pytest.importorskip("anywidget")
+    with pytest.raises(ValueError, match="open=True is incompatible"):
+        _surface().show(backend="viewer", widget=True, open=True)
 
 
 def test_show_backend_reads_show_options_and_spline_data():
@@ -286,15 +418,11 @@ def test_png_encoder_roundtrip():
     assert np.array_equal(np.asarray(Image.open(io.BytesIO(_png(arr)))), arr)
 
 
-def test_headless_render_with_texture_and_lighting(tmp_path):
-    pytest.importorskip("playwright")
+def test_headless_render_with_texture_and_lighting(tmp_path, chromium):
     img = np.zeros((2, 2, 3))
     img[0, 0] = img[1, 1] = 1
     v = viewer.show(_surface(), texture=img, lighting="glossy")
-    try:
-        v.screenshot(tmp_path / "t.png", 200, 150)
-    except Exception as e:
-        pytest.skip(f"headless browser unavailable: {e}")
+    v.screenshot(tmp_path / "t.png", 200, 150)
     assert (tmp_path / "t.png").stat().st_size > 500
 
 

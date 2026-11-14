@@ -35,7 +35,8 @@ def show_viewer(spline, **kwargs):
     ``q`` / Esc is pressed, like the vedo window; later calls reuse the same
     tab unless ``new_window=True``. ``block=False`` returns right away.
     ``open=False`` only returns the ``Viewer`` (``.save(path)``,
-    ``.screenshot(...)``).
+    ``.screenshot(...)``). With ``widget=True``, the widget is returned for
+    inline display. Passing ``open=True`` with a widget raises ``ValueError``.
     """
     from splinepy import viewer
 
@@ -74,8 +75,12 @@ def show_viewer(spline, **kwargs):
 
 def _finish(shown, open_browser=None, block=True, new_window=False):
     """Opens outside of notebooks, unless ``open_browser`` says otherwise."""
+    if hasattr(shown, "scene_json"):
+        if open_browser:
+            raise ValueError("open=True is incompatible with widget=True")
+        return shown
     if open_browser is None:
-        open_browser = not _in_notebook() and not hasattr(shown, "scene_json")
+        open_browser = not _in_notebook()
     if open_browser:
         shown.open(block=block, new_window=new_window)
     return shown

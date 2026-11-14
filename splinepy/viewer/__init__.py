@@ -84,7 +84,11 @@ def _panel_scene(obj, kwargs):
         for original_layer in sc["layers"]:
             layer = original_layer
             if i:
-                layer = {**layer, "name": f"{layer['name']} [{i}]"}
+                layer = {
+                    **layer,
+                    "category": layer.get("category", layer["name"]),
+                    "name": f"{layer['name']} [{i}]",
+                }
             layers.append(layer)
     opt = scenes[0]["options"]
     return _assemble(layers, opt["axes"], opt["background"], opt["camera"])
@@ -117,8 +121,9 @@ def show(
     "target": ..., "up": ...}``. ``ncols``, ``titles`` and ``link_cameras``
     control the panel layout. The gustaf / vedo names ``c``, ``alpha``,
     ``cmap``, ``data``, ``arrow_data*`` etc. are accepted as aliases, see
-    :mod:`splinepy.viewer.compat`. A dict with ``"layers"`` is taken as
-    an already built scene.
+    :mod:`splinepy.viewer.compat`. Integer colors index a fixed ten-color
+    palette, wrapping by absolute value. A dict with ``"layers"`` is taken
+    as an already built scene.
 
     Returns a :class:`Viewer` that displays itself in notebooks (offline,
     through an iframe) and can ``.save(path)`` / ``.open()``. With
@@ -126,9 +131,6 @@ def show(
     """
     if not objs:
         raise TypeError("show() needs at least one object")
-    if "title" in kwargs:
-        title = title or kwargs.pop("title")
-
     # Extract titled panels [title, *items]
     extracted_titles = []
     has_extracted = False

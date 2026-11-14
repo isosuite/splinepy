@@ -3,8 +3,11 @@
 import numpy as _np
 
 from splinepy.utils import log as _log
-from splinepy.viewer.scene import COLORMAPS as _COLORMAPS
-from splinepy.viewer.scene import LIGHTING as _LIGHTING
+
+_INDEXED_COLORS = (
+    "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+    "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
+)  # fmt: skip
 
 ALIASES = {
     "c": "color",
@@ -43,7 +46,9 @@ IGNORED = {
 
 
 def to_css(c):
-    """Color given as name / hex / rgb(a) tuple -> css string (or None)."""
+    """Convert a color name, RGB(A) value, or integer index to CSS."""
+    if isinstance(c, (int, _np.integer)) and not isinstance(c, bool):
+        return _INDEXED_COLORS[abs(int(c)) % len(_INDEXED_COLORS)]
     if isinstance(c, str):
         return c
     if isinstance(c, (tuple, list, _np.ndarray)) and len(c) in (3, 4):
@@ -61,6 +66,8 @@ def translate(kwargs):
     options without equivalent are dropped with a debug message. Everything
     else is passed through unchanged, so typos still raise in ``show``.
     """
+    from splinepy.viewer.scene import COLORMAPS, LIGHTING
+
     out = {}
     for original_key, original_value in kwargs.items():
         key, value = original_key, original_value
@@ -82,15 +89,15 @@ def translate(kwargs):
                 _log.debug(f"Viewer: can't use '{key}'={value!r} as color.")
                 continue
             value = css
-        elif key == "colormap" and value not in _COLORMAPS:
+        elif key == "colormap" and value not in COLORMAPS:
             _log.warning(
                 f"Viewer: colormap '{value}' unknown, using viridis. "
-                f"Available: {_COLORMAPS}"
+                f"Available: {COLORMAPS}"
             )
             value = "viridis"
         elif key == "axes" and not isinstance(value, bool):
             value = True  # vedo axes dict
-        elif key == "lighting" and value not in (None, *_LIGHTING):
+        elif key == "lighting" and value not in (None, *LIGHTING):
             _log.warning(f"Viewer: lighting '{value}' unknown, using default.")
             value = "default"
         out[key] = value
