@@ -130,6 +130,8 @@ struct SearchData {
     double alpha, f0, gs, h1, h2, h3, h4, t, t0, tol;
     int iexact, incons, ireset, itermx, line, n1, n2, n3;
 
+    SlsqpLineSearchState line_search{};
+
     /// @brief space
     Span<double> w_space;
     Span<int> jw_space;   // int array
@@ -1287,7 +1289,8 @@ void Proximity::Slsqp(SearchData& d) const {
           &d.SLSQP.line,
           &d.SLSQP.n1,
           &d.SLSQP.n2,
-          &d.SLSQP.n3);
+          &d.SLSQP.n3,
+          &d.SLSQP.line_search);
 
     PrepareIterationSlsqp(d);
 

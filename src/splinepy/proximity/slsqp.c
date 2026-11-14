@@ -54,7 +54,8 @@ const static int c__2 = 2;
                            int* line,
                            int* n1,
                            int* n2,
-                           int* n3) {
+                           int* n3,
+                           SlsqpLineSearchState* line_search) {
   /* System generated locals */
   int a_dim1, a_offset, i__1, i__2;
 
@@ -138,7 +139,8 @@ const static int c__2 = 2;
          line,
          n1,
          n2,
-         n3);
+         n3,
+         line_search);
   return 0;
 } /* slsqp */
 
@@ -182,7 +184,8 @@ const static int c__2 = 2;
                             int* line,
                             int* n1,
                             int* n2,
-                            int* n3) {
+                            int* n3,
+                            SlsqpLineSearchState* line_search) {
   /* Initialized data */
 
   const double zero = 0.;
@@ -436,7 +439,7 @@ L200:
 /*   EXACT LINESEARCH */
 L210:
   if (*line != 3) {
-    *alpha = linmin(line, &alfmin, &one, t, tol);
+    *alpha = linmin(line, &alfmin, &one, t, tol, line_search);
     dcopy(n, &x0[1], &c__1, &x[1], &c__1);
     daxpy_sl(n, alpha, &s[1], &c__1, &x[1], &c__1);
     *mode = 1;
@@ -2000,7 +2003,8 @@ double linmin(int* mode,
               const double* ax,
               const double* bx,
               const double* f,
-              const double* tol) {
+              const double* tol,
+              SlsqpLineSearchState* state) {
   /* Initialized data */
 
   const double c__ = .381966011;
@@ -2011,7 +2015,7 @@ double linmin(int* mode,
   double ret_val, d__1;
 
   /* Local variables */
-  double a, b, d__, e, m, p, q, r__, u, v, w, x, fu, fv, fw, fx, tol1, tol2;
+  double m, p, q, r__, fu, tol1, tol2;
 
   switch (*mode) {
   case 1:
@@ -2020,38 +2024,38 @@ double linmin(int* mode,
     goto L55;
   }
   /*  INITIALIZATION */
-  a = *ax;
-  b = *bx;
-  e = zero;
-  v = a + c__ * (b - a);
-  w = v;
-  x = w;
-  ret_val = x;
+  state->a = *ax;
+  state->b = *bx;
+  state->e = zero;
+  state->v = state->a + c__ * (state->b - state->a);
+  state->w = state->v;
+  state->x = state->w;
+  ret_val = state->x;
   *mode = 1;
   goto L100;
 /*  MAIN LOOP STARTS HERE */
 L10:
-  fx = *f;
-  fv = fx;
-  fw = fv;
+  state->fx = *f;
+  state->fv = state->fx;
+  state->fw = state->fv;
 L20:
-  m = (a + b) * .5;
-  tol1 = eps * fabs(x) + *tol;
+  m = (state->a + state->b) * .5;
+  tol1 = eps * fabs(state->x) + *tol;
   tol2 = tol1 + tol1;
   /*  TEST CONVERGENCE */
-  if ((d__1 = x - m, fabs(d__1)) <= tol2 - (b - a) * .5) {
+  if ((d__1 = state->x - m, fabs(d__1)) <= tol2 - (state->b - state->a) * .5) {
     goto L90;
   }
   r__ = zero;
   q = r__;
   p = q;
-  if (fabs(e) <= tol1) {
+  if (fabs(state->e) <= tol1) {
     goto L30;
   }
   /*  FIT PARABOLA */
-  r__ = (x - w) * (fx - fv);
-  q = (x - v) * (fx - fw);
-  p = (x - v) * q - (x - w) * r__;
+  r__ = (state->x - state->w) * (state->fx - state->fv);
+  q = (state->x - state->v) * (state->fx - state->fw);
+  p = (state->x - state->v) * q - (state->x - state->w) * r__;
   q -= r__;
   q += q;
   if (q > zero) {
@@ -2060,91 +2064,92 @@ L20:
   if (q < zero) {
     q = -q;
   }
-  r__ = e;
-  e = d__;
+  r__ = state->e;
+  state->e = state->d__;
 /*  IS PARABOLA ACCEPTABLE */
 L30:
-  if (fabs(p) >= (d__1 = q * r__, fabs(d__1)) * .5 || p <= q * (a - x)
-      || p >= q * (b - x)) {
+  if (fabs(p) >= (d__1 = q * r__, fabs(d__1)) * .5
+      || p <= q * (state->a - state->x) || p >= q * (state->b - state->x)) {
     goto L40;
   }
   /*  PARABOLIC INTERPOLATION STEP */
-  d__ = p / q;
+  state->d__ = p / q;
+  state->u = state->x + state->d__;
   /*  F MUST NOT BE EVALUATED TOO CLOSE TO A OR B */
-  if (u - a < tol2) {
-    d__1 = m - x;
-    d__ = copysign(tol1, d__1);
+  if (state->u - state->a < tol2) {
+    d__1 = m - state->x;
+    state->d__ = copysign(tol1, d__1);
   }
-  if (b - u < tol2) {
-    d__1 = m - x;
-    d__ = copysign(tol1, d__1);
+  if (state->b - state->u < tol2) {
+    d__1 = m - state->x;
+    state->d__ = copysign(tol1, d__1);
   }
   goto L50;
 /*  GOLDEN SECTION STEP */
 L40:
-  if (x >= m) {
-    e = a - x;
+  if (state->x >= m) {
+    state->e = state->a - state->x;
   }
-  if (x < m) {
-    e = b - x;
+  if (state->x < m) {
+    state->e = state->b - state->x;
   }
-  d__ = c__ * e;
+  state->d__ = c__ * state->e;
 /*  F MUST NOT BE EVALUATED TOO CLOSE TO X */
 L50:
-  if (fabs(d__) < tol1) {
-    d__ = copysign(tol1, d__);
+  if (fabs(state->d__) < tol1) {
+    state->d__ = copysign(tol1, state->d__);
   }
-  u = x + d__;
-  ret_val = u;
+  state->u = state->x + state->d__;
+  ret_val = state->u;
   *mode = 2;
   goto L100;
 L55:
   fu = *f;
   /*  UPDATE A, B, V, W, AND X */
-  if (fu > fx) {
+  if (fu > state->fx) {
     goto L60;
   }
-  if (u >= x) {
-    a = x;
+  if (state->u >= state->x) {
+    state->a = state->x;
   }
-  if (u < x) {
-    b = x;
+  if (state->u < state->x) {
+    state->b = state->x;
   }
-  v = w;
-  fv = fw;
-  w = x;
-  fw = fx;
-  x = u;
-  fx = fu;
+  state->v = state->w;
+  state->fv = state->fw;
+  state->w = state->x;
+  state->fw = state->fx;
+  state->x = state->u;
+  state->fx = fu;
   goto L85;
 L60:
-  if (u < x) {
-    a = u;
+  if (state->u < state->x) {
+    state->a = state->u;
   }
-  if (u >= x) {
-    b = u;
+  if (state->u >= state->x) {
+    state->b = state->u;
   }
-  if (fu <= fw || w == x) {
+  if (fu <= state->fw || state->w == state->x) {
     goto L70;
   }
-  if (fu <= fv || v == x || v == w) {
+  if (fu <= state->fv || state->v == state->x || state->v == state->w) {
     goto L80;
   }
   goto L85;
 L70:
-  v = w;
-  fv = fw;
-  w = u;
-  fw = fu;
+  state->v = state->w;
+  state->fv = state->fw;
+  state->w = state->u;
+  state->fw = fu;
   goto L85;
 L80:
-  v = u;
-  fv = fu;
+  state->v = state->u;
+  state->fv = fu;
 L85:
   goto L20;
 /*  END OF MAIN LOOP */
 L90:
-  ret_val = x;
+  ret_val = state->x;
   *mode = 3;
 L100:
   return ret_val;
@@ -2370,6 +2375,7 @@ L60:
 } /* ddot_sl */
 
 double dnrm1(const int* n, const double* x, const int* i__, const int* j) {
+  (void) n;
   /* Initialized data */
 
   const double zero = 0.;

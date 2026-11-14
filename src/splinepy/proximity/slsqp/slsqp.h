@@ -217,6 +217,11 @@ extern "C" {
 /*                    + N1*N/2 + 2*M + 3*N +3*N1 + 1           for SLSQPB */
 /*                      with MINEQ = M - MEQ + 2*N1  &  N1 = N+1 */
 /*   CHECK LENGTH OF WORKING ARRAYS */
+/* Exact line-search state retained across objective evaluations. */
+typedef struct {
+  double a, b, d__, e, u, v, w, x, fv, fw, fx;
+} SlsqpLineSearchState;
+
 int slsqp(int* m,
           int* meg,
           int* la,
@@ -252,7 +257,8 @@ int slsqp(int* m,
           int* line,
           int* n1,
           int* n2,
-          int* n3);
+          int* n3,
+          SlsqpLineSearchState* line_search);
 
 /*   NONLINEAR PROGRAMMING BY SOLVING SEQUENTIALLY QUADRATIC PROGRAMS */
 /*        -  L1 - LINE SEARCH,  POSITIVE DEFINITE  BFGS UPDATE  - */
@@ -301,7 +307,8 @@ int slsqpb(int* m,
            int* line,
            int* n1,
            int* n2,
-           int* n3);
+           int* n3,
+           SlsqpLineSearchState* line_search);
 
 /*   MINIMIZE with respect to X */
 /*             ||E*X - F|| */
@@ -682,7 +689,8 @@ double linmin(int* mode,
               const double* ax,
               const double* bx,
               const double* f,
-              const double* tol);
+              const double* tol,
+              SlsqpLineSearchState* state);
 
 /*     CONSTANT TIMES A VECTOR PLUS A VECTOR. */
 /*     USES UNROLLED LOOPS FOR INCREMENTS EQUAL TO ONE. */
