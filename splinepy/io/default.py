@@ -1,4 +1,4 @@
-import pathlib
+import pathlib as _pathlib
 
 from splinepy.io import gismo as _gismo
 from splinepy.io import iges as _iges
@@ -42,7 +42,7 @@ def export(fname, splinepy_obj):
 
     """
     # Determine file extension
-    extension = pathlib.Path(fname).suffix
+    extension = _pathlib.Path(fname).suffix
     if extension not in extension_to_io:
         raise ValueError("Extension not supported")
 
@@ -69,7 +69,7 @@ def load(fname):
 
     """
     # Determine file extension
-    extension = pathlib.Path(fname).suffix
+    extension = _pathlib.Path(fname).suffix
     if extension not in extension_to_io:
         raise ValueError("Extension not supported")
 

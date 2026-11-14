@@ -2,11 +2,11 @@
 iges io.
 """
 
-from datetime import datetime
+from datetime import datetime as _datetime
 
-import numpy as np
+import numpy as _np
 
-import splinepy
+import splinepy as _splinepy
 
 
 def _format_hollerith(s):
@@ -45,22 +45,22 @@ def _export_internal(fname, splines):
 
     for s in splines:
         # Bump to 3D if needed
-        cps = np.array(s.control_points, dtype=np.float64)
+        cps = _np.array(s.control_points, dtype=_np.float64)
         if cps.shape[1] < 3:
-            cps = np.hstack([cps, np.zeros((len(cps), 3 - cps.shape[1]))])
+            cps = _np.hstack([cps, _np.zeros((len(cps), 3 - cps.shape[1]))])
 
         is_rat = s.is_rational
         weights = (
-            np.array(s.weights, dtype=np.float64).flatten()
+            _np.array(s.weights, dtype=_np.float64).flatten()
             if is_rat
-            else np.ones(len(cps))
+            else _np.ones(len(cps))
         )
 
         kvs = s.knot_vectors
         if kvs is None or len(kvs) == 0:
             kvs = []
             for d in s.degrees:
-                kvs.append(np.concatenate([np.zeros(d + 1), np.ones(d + 1)]))
+                kvs.append(_np.concatenate([_np.zeros(d + 1), _np.ones(d + 1)]))
 
         degs = list(s.degrees)
 
@@ -104,7 +104,7 @@ def _export_internal(fname, splines):
 
         p_str = (
             ",".join(
-                str(int(t)) if isinstance(t, (int, np.integer)) else f"{t:.16g}"
+                str(int(t)) if isinstance(t, (int, _np.integer)) else f"{t:.16g}"
                 for t in tokens
             )
             + ";"
@@ -136,7 +136,7 @@ def _export_internal(fname, splines):
         d_line_num += 2
 
     # Global section
-    now = datetime.now().strftime("%Y%m%d.%H%M%S")
+    now = _datetime.now().strftime("%Y%m%d.%H%M%S")
     g_tokens = [
         _format_hollerith(","),
         _format_hollerith(";"),
@@ -251,7 +251,7 @@ def _load_internal(fname):
 
             if is_rat:
                 splines.append(
-                    splinepy.NURBS(
+                    _splinepy.NURBS(
                         degrees=[m],
                         knot_vectors=[knots],
                         control_points=cps,
@@ -260,7 +260,7 @@ def _load_internal(fname):
                 )
             else:
                 splines.append(
-                    splinepy.BSpline(
+                    _splinepy.BSpline(
                         degrees=[m], knot_vectors=[knots], control_points=cps
                     )
                 )
@@ -291,7 +291,7 @@ def _load_internal(fname):
 
             if is_rat:
                 splines.append(
-                    splinepy.NURBS(
+                    _splinepy.NURBS(
                         degrees=[m1, m2],
                         knot_vectors=[knots1, knots2],
                         control_points=cps,
@@ -300,7 +300,7 @@ def _load_internal(fname):
                 )
             else:
                 splines.append(
-                    splinepy.BSpline(
+                    _splinepy.BSpline(
                         degrees=[m1, m2],
                         knot_vectors=[knots1, knots2],
                         control_points=cps,

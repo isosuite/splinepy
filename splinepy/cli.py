@@ -1,8 +1,8 @@
-import argparse
-import contextlib
-from importlib import import_module
+import argparse as _argparse
+import contextlib as _contextlib
+from importlib import import_module as _import_module
 
-import splinepy
+import splinepy as _splinepy
 from splinepy._version import __version__
 
 
@@ -75,7 +75,7 @@ def show(args):
         loaded_object.show_options["control_mesh"] = args.no_control_mesh
         if args.resolution:
             loaded_object.show_options["resolutions"] = int(args.resolution)
-    show_vedo = splinepy.show(loaded, interactive=interactive, close=close)
+    show_vedo = _splinepy.show(loaded, interactive=interactive, close=close)
     if args.output_file:
         show_vedo.screenshot(args.output_file)
 
@@ -131,7 +131,7 @@ def entry():
         "          \\__|                                  \\__|       \\______/"
     )
     print()
-    parser = argparse.ArgumentParser()
+    parser = _argparse.ArgumentParser()
     subparsers = parser.add_subparsers(help="sub-command help", dest="command")
     parser.add_argument(
         "-v",
@@ -215,8 +215,8 @@ def entry():
         print(f"splinepy version: {__version__}")
         for lib in dependent_versions:
             version = "Not Installed"
-            with contextlib.suppress(ImportError):
-                module = import_module(lib)
+            with _contextlib.suppress(ImportError):
+                module = _import_module(lib)
                 version = module.__version__
             print(f"{lib} version: {version}")
         return
