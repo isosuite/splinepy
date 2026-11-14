@@ -312,7 +312,7 @@ def test_grid_columns_are_left_to_the_page_by_default():
     assert viewer.show(a, a, a, a, ncols=2).scene["options"]["ncols"] == 2
 
 
-def test_default_viewer_without_gustaf():
+def test_default_viewer_without_gustaf(tmp_path):
     import subprocess
     import sys
     from textwrap import dedent
@@ -334,4 +334,5 @@ def test_default_viewer_without_gustaf():
         assert spline.sample(3).shape == (3, 2)
         assert spline.show(open=False) is not None
     """)
-    subprocess.run([sys.executable, "-c", script], check=True)
+    # Import the installed package rather than the source tree in CI.
+    subprocess.run([sys.executable, "-c", script], cwd=tmp_path, check=True)
