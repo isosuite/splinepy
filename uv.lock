@@ -2342,10 +2342,12 @@ dependencies = [
 
 [package.optional-dependencies]
 all = [
+    { name = "anywidget" },
     { name = "gustaf", extra = ["all"] },
+    { name = "playwright" },
 ]
 gustaf = [
-    { name = "gustaf" },
+    { name = "gustaf", extra = ["all"] },
 ]
 test = [
     { name = "funi" },
@@ -2361,12 +2363,14 @@ viewer-export = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anywidget", marker = "extra == 'all'" },
     { name = "anywidget", marker = "extra == 'viewer'" },
     { name = "funi", marker = "extra == 'test'", specifier = ">=0.2.1" },
-    { name = "gustaf", marker = "extra == 'gustaf'", specifier = ">=0.0.25" },
     { name = "gustaf", marker = "extra == 'test'", specifier = ">=0.0.25" },
     { name = "gustaf", extras = ["all"], marker = "extra == 'all'", specifier = ">=0.0.25" },
+    { name = "gustaf", extras = ["all"], marker = "extra == 'gustaf'", specifier = ">=0.0.25" },
     { name = "numpy" },
+    { name = "playwright", marker = "extra == 'all'" },
     { name = "playwright", marker = "extra == 'viewer-export'" },
     { name = "pytest", marker = "extra == 'test'" },
 ]

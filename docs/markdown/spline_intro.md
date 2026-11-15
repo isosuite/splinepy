@@ -52,7 +52,7 @@ This means that the number of control points cannot be chosen freely, but is fix
 
 After this basic definition, we will continue with a few examples.
 
-#### Examples
+### Examples
 
 **Example 1**: Bézier curve with :math:`n=2` control points and degree :math:`p=1`
 In this case, there are two basis functions, both of degree :math:`1`. We denote the basis functions as :math:`N_{i,p}`, where :math:`i` indicates the number of the basis function and :math:`p` the degree of the basis function.
@@ -87,7 +87,7 @@ The resulting spline curve can then be computed as follows:
 
    \mathbf{S}(u)=(1-u)^{2}\mathbf{P}_{1}+2u (1-u)\mathbf{P}_{2}+u^{2}\mathbf{P}_{3}
 
-#### Properties of Bézier curves
+### Properties of Bézier curves
 
 Bézier curves have the following properties:
 
@@ -107,7 +107,7 @@ A similar argument can be made for :math:`\mathbf{P}_n`.
 
 -  Bernstein polynomials form a partition  of unity.
 
-#### Drawbacks of Bézier curves
+### Drawbacks of Bézier curves
 
 In modern CAD systems, Bézier curves no longer play a role. This is due to two drawbacks:
 
@@ -115,7 +115,7 @@ In modern CAD systems, Bézier curves no longer play a role. This is due to two 
 2. The control over the curve geometry is not sufficiently local (single segment curve). A high polynomial degree is required to satisfy a large number of constraints, i.e., complex shapes.
 
 
-#### Rational Bézier splines
+### Rational Bézier splines
 
 One of the drawbacks of Bézier spline listed above is that it cannot be used to represent certain conic sections exactly. To this end, rational functions are needed. In this case, we will use rational functions defined via the ratio of two polynomials. The new basis function becomes:
 
@@ -128,7 +128,7 @@ One of the drawbacks of Bézier spline listed above is that it cannot be used to
 Here, :math:`N_{i,p}` are the Bernstein polynomials discussed above. :math:`\omega_i` is a so-called weight. :math:`\omega_i` is greater than zero and provides a measure to scale the influence of a certain control point. If the weight tends to zero, the control point is technically excluded from the spline computation. If the weight becomes large, the spline moves very close to the respective control point. If all weights are equal, one retrieves a the Bézier spline (the weights cancel and the denominator than becomes zero due to the partition of unity property.
 
 
-#### Properties of Rational Bézier splines
+### Properties of Rational Bézier splines
 
 The same properties of Bézier splines hold.
 
@@ -192,7 +192,7 @@ Subsequently, the degree of the basis function can be raised bit by bit using
 until the desired degree has been reached.
 
 
-#### Properties of B-spline basis functions:
+### Properties of B-spline basis functions:
 -  constitute a partition of unity :math:`\sum_{i=1}^{n}N_{i,p}(u)=1`
 -  non-negative
 -  continuously differentiable within knot spans, :math:`p-k` times continuously differentiable across knots (:math:`k`: multiplicity of knot)
@@ -219,7 +219,7 @@ The NURBS basis functions :math:`R_{i,p}` are computed using the B-spline basis 
 Again, :math:`\omega_i` is a weight.
 
 
-#### Properties of NURBS basis functions:
+### Properties of NURBS basis functions:
 
 The same properties of B-spline basis functions hold with the following additions:
 

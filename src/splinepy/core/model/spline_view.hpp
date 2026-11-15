@@ -91,7 +91,7 @@ struct SplineView {
     return total;
   }
 
-  /// Total number of basis supports per query point: \prod (p_i + 1).
+  /// Total number of basis supports per query point: \f$\prod_i (p_i + 1)\f$.
   int64_t NumSupports() const noexcept {
     if (para_dim <= 0)
       return 0;

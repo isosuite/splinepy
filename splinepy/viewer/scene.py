@@ -280,9 +280,10 @@ def scene_from_splines(
     arrow_color, arrow_to_origin:
         Arrow color when all arrows have the same length, and whether arrows
         end (instead of start) at their location.
-    knot_color, control_point_color, control_point_size, control_mesh_color,
-    line_width:
-        Style of the respective layers. Sizes are in pixels.
+    knot_color, control_point_color, control_mesh_color : str, optional
+        Colors of the respective layers.
+    control_point_size, line_width : float, optional
+        Sizes in pixels.
     fitting_queries: bool
         Show ``spline._fitting_queries`` if the spline has any.
 

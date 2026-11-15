@@ -1,31 +1,22 @@
-# splinepy (c++)
+# splinepy C++ core
 
-Library for prototyping spline geometries of arbitrary dimensions and degrees, and IGA.
-`splinepy` implements core types and functions in c++ for better runtime performance.
-Using [nanobind](https://github.com/wjakob/nanobind), these implementations are available to use in python.
-You can, for example, either use this part of the project to create pure c++ executables or to interoperate with other `c++`/`c`/`fortran` libraries.
+The C++17 core provides spline evaluation, manipulation, Bézier algebra,
+and proximity queries. Python uses the same kernels through nanobind.
 
+## Build and test without Python bindings
 
-## Install guide
-There are two main ways to install the c++:
+Run these commands from the repository root:
 
-### 1) using `pip`
 ```bash
-# sample format
-# -> pip install -e. -v --config-settings=cmake.args="<cmake-build-args>" --config-settings=cmake.build-type="<build-type>"
-
-# for example, optimized build
-pip install -e. -v --config-settings=cmake.build-type="Release"
+cmake -S . -B build-core -DCMAKE_BUILD_TYPE=Release -DSPLINEPY_COMPILE_PYTHON=OFF -DSPLINEPY_CORE_BUILD_TESTS=ON
+cmake --build build-core --parallel
 ```
-This will install compiled library to `site-packges` path.
-You can find this path with:
+
+Some tests use golden fixtures. In an isolated Python 3.12 environment,
+generate them with the released oracle before running CTest:
+
 ```bash
-python -c "import site; print(site.getsitepackages())"
-```
-
-### 2) using `cmake` only
-```
-mkdir build
-cd build
-cmake .. # along with other cmake options
+python -m pip install "numpy==2.2.6" "splinepy==0.2.1"
+python -I tests/generate_golden_data.py
+ctest --test-dir build-core --output-on-failure --no-tests=error
 ```
