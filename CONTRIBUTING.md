@@ -2,16 +2,20 @@
 splinepy welcomes and appreciates discussions, issues and pull requests!
 
 ## Quick start
-Once the repo is forked, one possible starting point would be creating a new python environments, for example, using [conda](https://docs.conda.io/en/latest/miniconda.html) with, for example, `python=3.10`
+Fork and clone the repository, then create a branch for your changes. Use
+[uv](https://docs.astral.sh/uv/) to set up the development environment and
+install splinepy in editable mode.
+
 ```bash
-conda create -n splinepyenv python=3.10
-conda activate splinepyenv
 git clone git@github.com:<path-to-your-fork>
-cd splinepy  # or <forkname>
-git checkout -b new-feature0
-pip install -e. -v --config-settings=cmake.build-type="Debug"
+cd splinepy
+git switch -c my-feature
+uv sync --locked --extra test
+uv run --no-sync pytest
 ```
-`--config-settings=cmake.build-type="Debug"` build also reduces compile time. We are experimenting with ways to reduce compile time during development. Let us know if you have a good idea!
+
+For a C++ Debug build, add `--config-setting cmake.build-type=Debug` to
+`uv sync`.
 
 ## Python style / implementation preferences
 - use [`PEP 8`](https://peps.python.org/pep-0008/) style guide
@@ -27,17 +31,23 @@ Here's another preference:
 - `#pragma once`
 
 ## Automatic formatting / style check
-To check the format and style of your code use the following commands:
+Run all formatting and lint checks from the repository root.
+
 ```bash
-pip install pre-commit
-precommit run -a
+uv run --no-sync --with pre-commit pre-commit run -a
 ```
 
 ## Local documentation build
+
+Install Doxygen and Graphviz, then run these commands from the repository root.
+
 ```bash
-pip install -r docs/requirements.txt
-python3 docs/source/handle_markdown.py
-python3 docs/markdown/extra_docs.py
-sphinx-build -b html docs/source docs/build -E
-# you can now open `docs/build/index.html` with your browser
+uv sync --locked --extra gustaf --extra viewer
+(cd docs && mkdir -p build && doxygen Doxyfile)
+uv run --no-sync python docs/source/handle_markdown.py
+uv run --no-sync python docs/markdown/extra_docs.py
+uv run --no-sync --with-requirements docs/requirements.txt sphinx-build -W --keep-going -b html docs/source docs/build
 ```
+
+Open `docs/build/index.html` for Sphinx or `docs/build/doxy/html/index.html`
+for the C++ reference.

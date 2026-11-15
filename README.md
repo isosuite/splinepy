@@ -10,19 +10,22 @@
 ![gallery](docs/source/_static/gallery.png)
 
 ## Install guide
-splinepy wheels are available for python3.8+ for MacOS, Linux, and Windows:
+splinepy requires Python 3.10 or later. Wheels are available for macOS, Linux,
+and Windows.
+
 ```bash
-# including the legacy Vedo backend
-pip install "splinepy[all]"  # quotation marks required for some shells
-# or
 pip install splinepy
 ```
 
-The default viewer and spline operations work without Gustaf. Install
-`splinepy[gustaf]` for mesh extraction, FFD with Gustaf meshes, and MFEM
-Cartesian export. Install `splinepy[all]` for legacy Vedo rendering and SVG
-export.
+The base install includes spline operations and the browser viewer. Add extras
+as needed:
 
+| Extra | Adds |
+| --- | --- |
+| `splinepy[gustaf]` | Gustaf mesh tools and the legacy Vedo backend |
+| `splinepy[viewer]` | AnyWidget for interactive notebook output |
+| `splinepy[viewer-export]` | Playwright for headless screenshots; run `playwright install chromium` after installation |
+| `splinepy[all]` | All three extras |
 
 You can install it directly from the source:
 ```bash
@@ -35,7 +38,7 @@ pip install -e .
 Here are links to related documentation for the library:
 - [Documentation home](https://isosuite.github.io/splinepy)
 - [Introduction to splines](https://isosuite.github.io/splinepy/spline_intro.html#introduction-to-splines)
-- [Spline visualization](https://isosuite.github.io/splinepy/spline_intro.html#visualizing-splines)
+- [Spline visualization](https://isosuite.github.io/splinepy/spline_intro.html#spline-visualization)
 
 
 ## Quick start
@@ -198,7 +201,7 @@ swept = splinepy.helpme.create.swept(
 ![show_swept](docs/source/_static/show_swept.png)
 
 #### 4.2 Extract
-Using [splinepy.helpme.extract](https://isosuite.github.io/splinepy/_generated/splinepy.helpme.extract.html#module-splinepy.helpme.extract) module, you can extract meshes (as a [gustaf](https://isosuite.github.io/gustaf/index.html) object)
+Use `splinepy[gustaf]` to sample a spline into Gustaf mesh objects.
 ```python
 # extract meshes as gustaf objects
 control_mesh = nurbs.extract.control_mesh()
@@ -212,7 +215,7 @@ splinepy.show(
 )
 ```
 ![extract_mesh](docs/source/_static/readme_extract_mesh.png)
-or part of splines from an existing spline using [spline.extract](https://isosuite.github.io/splinepy/_generated/splinepy.spline.Spline.extract.html#splinepy.spline.Spline.extract).
+Extract spline geometry directly with `spline.extract`.
 ```python
 # extract splines
 boundaries = nurbs.extract.boundaries()
