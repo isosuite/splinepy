@@ -249,10 +249,20 @@ void Evaluate(SplineBatchView batch,
   Options per_patch_opts = options;
   per_patch_opts.validate = false;
 
-  for (std::size_t i = 0; i < batch.size(); ++i) {
+  const auto evaluate_patch = [&](std::size_t i) {
     const auto& q_span =
         broadcast_queries ? queries_per_spline[0] : queries_per_spline[i];
     Evaluate(batch[i], q_span, out_per_spline[i], per_patch_opts);
+  };
+
+  if (options.nthreads > 1 && options.workspace == nullptr
+      && batch.size() >= static_cast<std::size_t>(options.nthreads)) {
+    per_patch_opts.nthreads = 1;
+    ParallelFor(std::size_t{0}, batch.size(), options.nthreads, evaluate_patch);
+  } else {
+    for (std::size_t i = 0; i < batch.size(); ++i) {
+      evaluate_patch(i);
+    }
   }
 }
 

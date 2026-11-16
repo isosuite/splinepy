@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
+#include <numeric>
 #include <stdexcept>
 #include <vector>
 
@@ -10,6 +12,7 @@
 #include "splinepy/core/bezier/multiply.hpp"
 #include "splinepy/core/concurrency/parallel_for.hpp"
 #include "splinepy/core/manipulation/extract.hpp"
+#include "splinepy/core/manipulation/insert_knots.hpp"
 #include "splinepy/core/math/binomial.hpp"
 #include "splinepy/core/validate/validator.hpp"
 
@@ -392,13 +395,474 @@ void CheckSharedLayout(SplineBatchView outers,
   }
 }
 
+void ValidatePairOffsets(std::size_t outer_count,
+                         std::size_t tile_count,
+                         Span<const std::size_t> offsets) {
+  if (offsets.size() != outer_count + 1 || offsets.front() != 0
+      || offsets.back() != tile_count
+      || !std::is_sorted(offsets.begin(), offsets.end())) {
+    throw std::invalid_argument("Invalid offsets for paired composition.");
+  }
+}
+
+bool SameTileGeometry(const SplineData& a, const SplineData& b) {
+  return a.para_dim == b.para_dim && a.dim == b.dim
+         && std::equal(a.degrees.begin(),
+                       a.degrees.end(),
+                       b.degrees.begin(),
+                       b.degrees.end())
+         && std::equal(a.control_points.begin(),
+                       a.control_points.end(),
+                       b.control_points.begin(),
+                       b.control_points.end())
+         && std::equal(a.weights.begin(),
+                       a.weights.end(),
+                       b.weights.begin(),
+                       b.weights.end());
+}
+
+using ExtractionRow = std::vector<std::pair<int64_t, double>>;
+
+void AssembleMacroFields(Span<const ExtractionRow> rows,
+                         const SplineData& geometry,
+                         const BasisSplinePrecomputation& basis,
+                         std::size_t output,
+                         Buffer<SplineBatchData>& fields) {
+  const auto count = basis.total_comp_cps;
+  std::map<int64_t, Buffer<double>> mapped;
+  for (std::size_t local = 0; local < rows.size(); ++local) {
+    const auto& values = basis.basis_splines[local].control_points;
+    for (const auto& entry : rows[local]) {
+      auto& destination =
+          mapped.try_emplace(entry.first, count, 0.0).first->second;
+      for (int64_t j = 0; j < count; ++j) {
+        destination[j] += entry.second * values[j];
+      }
+    }
+  }
+
+  for (const auto& [coarse, values] : mapped) {
+    if (std::all_of(values.begin(), values.end(), [](double value) {
+          return value == 0.0;
+        })) {
+      continue;
+    }
+    for (int32_t c = 0; c < geometry.dim; ++c) {
+      auto& field = fields[coarse * geometry.dim + c][output];
+      field.para_dim = geometry.para_dim;
+      field.dim = geometry.dim;
+      field.degrees = basis.new_degrees;
+      field.weights = geometry.weights;
+      field.control_points = Buffer<double>(count * geometry.dim, 0.0);
+      for (int64_t j = 0; j < count; ++j) {
+        const double value = values[j];
+        if (basis.is_rational_result) {
+          const double weight = field.weights[j];
+          field.control_points[j * geometry.dim + c] =
+              weight == 0.0 ? 0.0 : value / weight;
+        } else {
+          field.control_points[j * geometry.dim + c] = value;
+        }
+      }
+    }
+  }
+}
+
 } // namespace
+
+struct MicrostructurePlan::Data {
+  struct TileBasis {
+    SplineData tile;
+    BasisSplinePrecomputation basis;
+  };
+
+  struct PairedCache {
+    Buffer<std::size_t> offsets;
+    Buffer<std::shared_ptr<const TileBasis>> entries;
+    std::size_t reused{0};
+  };
+
+  mutable std::shared_ptr<const PairedCache> paired_cache;
+  Buffer<int32_t> degrees;
+  Buffer<int32_t> tile_dimensions;
+  Buffer<BasisSplinePrecomputation> bases;
+  Buffer<Buffer<ExtractionRow>> extraction;
+  int64_t control_count;
+  int32_t dim;
+};
+
+MicrostructurePlan::MicrostructurePlan(
+    const SplineView& outer,
+    SplineBatchView tiles,
+    Span<const Span<const double>> additional_knots,
+    const Options& options) {
+  ThrowIfInvalid(outer);
+  if (!outer.HasKnotVectors() || outer.IsRational()
+      || additional_knots.size() != outer.degrees.size()) {
+    throw std::invalid_argument("Expected a polynomial B-spline and "
+                                "additional knots per axis.");
+  }
+
+  auto data = std::make_shared<Data>();
+  data->degrees.assign(outer.degrees.begin(), outer.degrees.end());
+  data->control_count = outer.num_control_points;
+  data->dim = outer.dim;
+  data->extraction.resize(1);
+  data->extraction[0].resize(1);
+  data->extraction[0][0].emplace_back(0, 1.0);
+  int64_t stride = 1;
+
+  for (int axis = 0; axis < outer.para_dim; ++axis) {
+    const auto knots = outer.knot_vectors[axis];
+    const auto degree = outer.degrees[axis];
+    if (knots[degree] != knots.front()
+        || knots[knots.size() - degree - 1] != knots.back()) {
+      throw std::invalid_argument("Expected clamped knots.");
+    }
+
+    // Extract an identity control net to recover the one-dimensional map.
+    const auto count = outer.NumControlPointsPerAxis(axis);
+    if (count > INT32_MAX) {
+      throw std::invalid_argument("Too many control points on one axis.");
+    }
+    SplineData identity;
+    identity.para_dim = 1;
+    identity.dim = static_cast<int32_t>(count);
+    identity.degrees = Buffer<int32_t>(1, degree);
+    identity.knot_vectors.resize(1);
+    identity.knot_vectors[0].assign(knots.begin(), knots.end());
+    identity.control_points = Buffer<double>(count * count, 0.);
+    for (int64_t i = 0; i < count; ++i) {
+      identity.control_points[i * count + i] = 1.;
+    }
+    auto refined =
+        InsertKnots(identity.View(), 0, additional_knots[axis], options);
+    auto axis_patches = ExtractBezierPatches(refined.View(), options);
+    Buffer<Buffer<ExtractionRow>> next(axis_patches.size()
+                                       * data->extraction.size());
+    std::size_t element = 0;
+    for (const auto& patch : axis_patches) {
+      const auto view = patch.View();
+      for (const auto& previous : data->extraction) {
+        auto& rows = next[element++];
+        rows.resize((static_cast<std::size_t>(degree) + 1) * previous.size());
+        for (int32_t j = 0; j <= degree; ++j) {
+          for (std::size_t i = 0; i < previous.size(); ++i) {
+            const auto& row = previous[i];
+            auto& combined = rows[j * previous.size() + i];
+            for (int64_t k = 0; k < count; ++k) {
+              const double coefficient = view.Point(j, k);
+              if (coefficient != 0.) {
+                for (const auto& entry : row) {
+                  combined.emplace_back(entry.first + stride * k,
+                                        entry.second * coefficient);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    stride *= count;
+    data->extraction = std::move(next);
+  }
+
+  data->tile_dimensions.resize(tiles.size());
+  data->bases.resize(tiles.size());
+  for (std::size_t i = 0; i < tiles.size(); ++i) {
+    const auto& tile = tiles[i];
+    if (tile.HasKnotVectors() || tile.hierarchy) {
+      throw std::invalid_argument("Expected Bézier tile patches.");
+    }
+    data->tile_dimensions[i] = tile.para_dim;
+    data->bases[i] = ComputeCompositionBasis(outer, tile, options);
+  }
+  data_ = std::move(data);
+}
+
+int64_t MicrostructurePlan::NumControlPoints() const {
+  return data_->control_count;
+}
+
+int32_t MicrostructurePlan::Dim() const { return data_->dim; }
+
+SplineBatchData MicrostructurePlan::Apply(Span<const double> control_points,
+                                          const Options& options) const {
+  return ApplyFixed(control_points, nullptr, options);
+}
+
+SplineBatchData MicrostructurePlan::ApplyWithMacroSensitivities(
+    Span<const double> control_points,
+    Buffer<SplineBatchData>& fields,
+    const Options& options) const {
+  if (data_->bases.empty()) {
+    throw std::invalid_argument("Macro sensitivities require fixed tiles.");
+  }
+  return ApplyFixed(control_points, &fields, options);
+}
+
+SplineBatchData
+MicrostructurePlan::ApplyFixed(Span<const double> control_points,
+                               Buffer<SplineBatchData>* fields,
+                               const Options& options) const {
+  const auto& data = *data_;
+  if (control_points.size()
+          != static_cast<std::size_t>(data.control_count * data.dim)
+      || !std::all_of(control_points.begin(),
+                      control_points.end(),
+                      [](double value) { return std::isfinite(value); })) {
+    throw std::invalid_argument(
+        "Expected finite macro control points with the prepared shape.");
+  }
+
+  const auto tile_count = data.bases.size();
+  SplineBatchData result(data.extraction.size()
+                         * std::max(tile_count, std::size_t{1}));
+  if (fields) {
+    fields->resize(data.control_count * data.dim);
+    for (auto& field : *fields) {
+      field.resize(result.size());
+    }
+  }
+  ParallelFor(
+      int64_t{0},
+      static_cast<int64_t>(data.extraction.size()),
+      options.nthreads,
+      [&](int64_t element) {
+        const auto& rows = data.extraction[element];
+        Buffer<double> points(rows.size() * data.dim, 0.);
+        for (std::size_t i = 0; i < rows.size(); ++i) {
+          for (const auto& entry : rows[i]) {
+            for (int32_t c = 0; c < data.dim; ++c) {
+              points[i * data.dim + c] +=
+                  entry.second * control_points[entry.first * data.dim + c];
+            }
+          }
+        }
+        SplineView outer;
+        outer.para_dim = static_cast<int32_t>(data.degrees.size());
+        outer.dim = data.dim;
+        outer.degrees = data.degrees;
+        outer.num_control_points = static_cast<int64_t>(rows.size());
+        outer.control_points_data = points.data();
+        outer.cp_stride = data.dim;
+        if (tile_count == 0) {
+          auto& patch = result[element];
+          patch.para_dim = outer.para_dim;
+          patch.dim = outer.dim;
+          patch.degrees = data.degrees;
+          patch.control_points = std::move(points);
+          return;
+        }
+        for (std::size_t tile = 0; tile < tile_count; ++tile) {
+          SplineView inner;
+          inner.para_dim = data.tile_dimensions[tile];
+          const auto output = element * tile_count + tile;
+          const auto& basis = data.bases[tile];
+          result[output] = AccumulateComposition(outer, inner, basis);
+          if (!fields) {
+            continue;
+          }
+
+          AssembleMacroFields(rows, result[output], basis, output, *fields);
+        }
+      });
+  return result;
+}
+
+SplineBatchData
+MicrostructurePlan::ApplyPaired(SplineBatchView outers,
+                                Span<const SplineData> tiles,
+                                Span<const std::size_t> offsets,
+                                const Options& options,
+                                Buffer<SplineBatchData>* macro_fields) const {
+  ValidatePairOffsets(outers.size(), tiles.size(), offsets);
+  if (outers.size() != data_->extraction.size() || !data_->bases.empty()) {
+    throw std::invalid_argument("Expected the prepared set of macro patches.");
+  }
+
+  auto previous = std::atomic_load(&data_->paired_cache);
+  auto next = std::make_shared<Data::PairedCache>();
+  next->offsets.assign(offsets.begin(), offsets.end());
+  next->entries.resize(tiles.size());
+
+  // Bound retained numerical coefficients. Uncached entries are composed
+  // normally.
+  double remaining = 64. * 1024 * 1024;
+  const auto degree_sum =
+      std::accumulate(data_->degrees.begin(), data_->degrees.end(), 0.0);
+  Buffer<uint8_t> retain(tiles.size());
+  for (std::size_t i = 0; i < outers.size(); ++i) {
+    const auto& outer = outers[i];
+    if (outer.IsRational() || outer.HasKnotVectors() || outer.dim != data_->dim
+        || !std::equal(outer.degrees.begin(),
+                       outer.degrees.end(),
+                       data_->degrees.begin(),
+                       data_->degrees.end())) {
+      throw std::invalid_argument("Expected the prepared macro patch layout.");
+    }
+    for (std::size_t j = offsets[i]; j < offsets[i + 1]; ++j) {
+      const auto& tile = tiles[j];
+      double bytes = sizeof(double) * (outer.num_control_points + 1.0);
+      for (const auto degree : tile.degrees) {
+        bytes *= 1.0 + degree * degree_sum;
+      }
+      if (!tile.HasKnotVectors() && bytes <= remaining) {
+        retain[j] = 1;
+        remaining -= bytes;
+      }
+    }
+  }
+
+  Options cell_options = options;
+  cell_options.nthreads = 1;
+  cell_options.workspace = nullptr;
+  SplineBatchData results(tiles.size());
+  if (macro_fields) {
+    macro_fields->resize(data_->control_count * data_->dim);
+    for (auto& field : *macro_fields) {
+      field.resize(results.size());
+    }
+  }
+  Buffer<std::size_t> hits(outers.size());
+  ParallelFor(
+      std::size_t{0},
+      outers.size(),
+      options.nthreads,
+      [&](std::size_t i) {
+        const auto& outer = outers[i];
+        for (std::size_t j = offsets[i]; j < offsets[i + 1]; ++j) {
+          const auto inner = tiles[j].View();
+          if (!retain[j]) {
+            auto basis = ComputeCompositionBasis(outer, inner, cell_options);
+            results[j] = AccumulateComposition(outer, inner, basis);
+            if (macro_fields) {
+              AssembleMacroFields(data_->extraction[i],
+                                  results[j],
+                                  basis,
+                                  j,
+                                  *macro_fields);
+            }
+            continue;
+          }
+          auto& entry = next->entries[j];
+          if (previous) {
+            const auto slot = j - offsets[i];
+            const auto old_start = previous->offsets[i];
+            if (slot < previous->offsets[i + 1] - old_start) {
+              const auto& old = previous->entries[old_start + slot];
+              if (old && SameTileGeometry(old->tile, tiles[j])) {
+                entry = old;
+                ++hits[i];
+              }
+            }
+          }
+          if (!entry) {
+            entry = std::make_shared<const Data::TileBasis>(Data::TileBasis{
+                tiles[j],
+                ComputeCompositionBasis(outer, inner, cell_options)});
+          }
+          results[j] = AccumulateComposition(outer, inner, entry->basis);
+          if (macro_fields) {
+            AssembleMacroFields(data_->extraction[i],
+                                results[j],
+                                entry->basis,
+                                j,
+                                *macro_fields);
+          }
+        }
+      });
+  next->reused = std::accumulate(hits.begin(), hits.end(), std::size_t{0});
+  std::shared_ptr<const Data::PairedCache> published = std::move(next);
+  std::atomic_store(&data_->paired_cache, std::move(published));
+  return results;
+}
+
+std::size_t MicrostructurePlan::NumReusedBases() const {
+  const auto cache = std::atomic_load(&data_->paired_cache);
+  return cache ? cache->reused : 0;
+}
 
 SplineData Compose(const SplineView& outer,
                    const SplineView& inner,
                    const Options& options) {
   const auto prep = ComputeCompositionBasis(outer, inner, options);
   return AccumulateComposition(outer, inner, prep);
+}
+
+SplineBatchData ComposePaired(SplineBatchView outers,
+                              SplineBatchView tiles,
+                              Span<const std::size_t> offsets,
+                              const Options& options) {
+  ValidatePairOffsets(outers.size(), tiles.size(), offsets);
+  Options cell_options = options;
+  cell_options.nthreads = 1;
+  cell_options.workspace = nullptr;
+  SplineBatchData results(tiles.size());
+  ParallelFor(std::size_t{0},
+              outers.size(),
+              options.nthreads,
+              [&](std::size_t i) {
+                for (std::size_t j = offsets[i]; j < offsets[i + 1]; ++j) {
+                  results[j] = Compose(outers[i], tiles[j], cell_options);
+                }
+              });
+  return results;
+}
+
+Buffer<SplineBatchData>
+ComposeParameterFields(SplineBatchView outers,
+                       SplineBatchView tiles,
+                       Span<const std::size_t> offsets,
+                       Span<const SplineData> geometry,
+                       Span<const TileParameterDerivative> derivatives,
+                       std::size_t parameter_count,
+                       const Options& options) {
+  ValidatePairOffsets(outers.size(), tiles.size(), offsets);
+  if (geometry.size() != tiles.size()) {
+    throw std::invalid_argument("Expected geometry for every tile patch.");
+  }
+  std::pair<std::size_t, std::size_t> previous{};
+  bool first = true;
+  for (const auto& group : derivatives) {
+    const auto key = std::make_pair(group.cell, group.parameter);
+    if (group.cell >= outers.size() || group.parameter >= parameter_count
+        || (!first && key <= previous)
+        || group.patches.size()
+               != offsets[group.cell + 1] - offsets[group.cell]) {
+      throw std::invalid_argument("Invalid parameter sensitivity group.");
+    }
+    previous = key;
+    first = false;
+  }
+
+  Buffer<SplineBatchData> fields(parameter_count);
+  for (auto& field : fields) {
+    field.resize(geometry.size());
+  }
+  Options local = options;
+  local.nthreads = 1;
+  local.workspace = nullptr;
+  ParallelFor(std::size_t{0},
+              derivatives.size(),
+              options.nthreads,
+              [&](std::size_t i) {
+                const auto& group = derivatives[i];
+                if (group.patches.empty()) {
+                  return;
+                }
+                const auto offset = offsets[group.cell];
+                auto patches = CompositionDerivativeBatch(
+                    {outers.data() + group.cell, 1},
+                    {tiles.data() + offset, group.patches.size()},
+                    group.patches,
+                    local);
+                for (std::size_t j = 0; j < patches.size(); ++j) {
+                  fields[group.parameter][offset + j] = std::move(patches[j]);
+                }
+              });
+
+  return fields;
 }
 
 SplineBatchData ComposeBatch(SplineBatchView outers,

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <vector>
 
 #include "splinepy/core/common.hpp"
@@ -28,6 +29,74 @@ SplineData Compose(const SplineView& outer,
 SplineBatchData ComposeBatch(SplineBatchView outers,
                              SplineBatchView inners,
                              const Options& options = {});
+
+/// Compose outer i with the tiles in [offsets[i], offsets[i+1]).
+/// Results are returned in tile order.
+SplineBatchData ComposePaired(SplineBatchView outers,
+                              SplineBatchView tiles,
+                              Span<const std::size_t> offsets,
+                              const Options& options = {});
+
+struct TileParameterDerivative {
+  std::size_t cell;
+  std::size_t parameter;
+  SplineBatchView patches;
+};
+
+/// Propagate inner tile derivatives into parameter fields. A default spline
+/// data entry represents zero with the layout of the corresponding geometry.
+Buffer<SplineBatchData>
+ComposeParameterFields(SplineBatchView outers,
+                       SplineBatchView tiles,
+                       Span<const std::size_t> offsets,
+                       Span<const SplineData> geometry,
+                       Span<const TileParameterDerivative> derivatives,
+                       std::size_t parameter_count,
+                       const Options& options = {});
+
+/// Reusable Bézier extraction and optional fixed-tile composition.
+class MicrostructurePlan {
+public:
+  MicrostructurePlan(const SplineView& outer,
+                     SplineBatchView tiles,
+                     Span<const Span<const double>> additional_knots,
+                     const Options& options = {});
+
+  /// Applies the maps to new row-major macro control points.
+  /// With no fixed tiles, returns the extracted macro patches.
+  SplineBatchData Apply(Span<const double> control_points,
+                        const Options& options = {}) const;
+
+  /// Build geometry and macro sensitivities in design-variable order.
+  /// Default spline data entries represent zero on the corresponding geometry.
+  SplineBatchData
+  ApplyWithMacroSensitivities(Span<const double> control_points,
+                              Buffer<SplineBatchData>& fields,
+                              const Options& options = {}) const;
+
+  /// Compose extracted polynomial macro patches with their current tile groups.
+  /// The last matching basis for each cell and tile slot may be reused.
+  /// Macro fields use default spline data entries for implicit zeros.
+  SplineBatchData
+  ApplyPaired(SplineBatchView outers,
+              Span<const SplineData> tiles,
+              Span<const std::size_t> offsets,
+              const Options& options = {},
+              Buffer<SplineBatchData>* macro_fields = nullptr) const;
+
+  std::size_t NumReusedBases() const;
+
+  int64_t NumControlPoints() const;
+  int32_t Dim() const;
+
+private:
+  SplineBatchData ApplyFixed(Span<const double> control_points,
+                             Buffer<SplineBatchData>* fields,
+                             const Options& options) const;
+
+  struct Data;
+  std::shared_ptr<const Data> data_;
+};
 
 /// Batched ComposeSensitivities with the same pairing and requirements as
 /// ComposeBatch: result[o * inners.size() + i] holds the sensitivities

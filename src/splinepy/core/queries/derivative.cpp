@@ -641,7 +641,14 @@ void Derivative(SplineBatchView batch,
   for (std::size_t i = 0; i < batch.size(); ++i) {
     const auto& q_span =
         broadcast_queries ? queries_per_spline[0] : queries_per_spline[i];
-    Derivative(batch[i], q_span, orders, out_per_spline[i], per_patch_opts);
+    if (orders.size() <= static_cast<std::size_t>(batch[i].para_dim)) {
+      Derivative(batch[i], q_span, orders, out_per_spline[i], per_patch_opts);
+    } else if (!q_span.empty()) {
+      const DerivativeOrders schedule(orders,
+                                      batch[i].para_dim,
+                                      batch[i].IsRational());
+      Derivative(batch[i], q_span, schedule, out_per_spline[i], per_patch_opts);
+    }
   }
 }
 
