@@ -1,8 +1,8 @@
-import argparse
-import contextlib
-from importlib import import_module
+import argparse as _argparse
+import contextlib as _contextlib
+from importlib import import_module as _import_module
 
-import splinepy
+import splinepy as _splinepy
 from splinepy._version import __version__
 
 
@@ -15,6 +15,15 @@ def convert(args):
     Args:
         args (namespace): Args namespace from argparse containing the options for
         convert.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed command-line options.
+
+    Returns
+    -------
+    None
     """
     fname = args.input_file
     from splinepy import io
@@ -34,6 +43,15 @@ def show(args):
 
     Args:
         args (namespace): Args namespace from argparse containing the options for show.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed command-line options.
+
+    Returns
+    -------
+    None
     """
     fname = args.input_file
     from splinepy import io
@@ -57,7 +75,7 @@ def show(args):
         loaded_object.show_options["control_mesh"] = args.no_control_mesh
         if args.resolution:
             loaded_object.show_options["resolutions"] = int(args.resolution)
-    show_vedo = splinepy.show(loaded, interactive=interactive, close=close)
+    show_vedo = _splinepy.show(loaded, interactive=interactive, close=close)
     if args.output_file:
         show_vedo.screenshot(args.output_file)
 
@@ -68,6 +86,14 @@ def entry():
     Currently only supports version and show commands.
 
     Try out `splinpy -h` for more information.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
     """
     print()
     print(
@@ -105,7 +131,7 @@ def entry():
         "          \\__|                                  \\__|       \\______/"
     )
     print()
-    parser = argparse.ArgumentParser()
+    parser = _argparse.ArgumentParser()
     subparsers = parser.add_subparsers(help="sub-command help", dest="command")
     parser.add_argument(
         "-v",
@@ -183,15 +209,14 @@ def entry():
             "gustaf",
             "vedo",
             "scipy",
-            "napf",
             "meshio",
             "k3d",
         ]
         print(f"splinepy version: {__version__}")
         for lib in dependent_versions:
             version = "Not Installed"
-            with contextlib.suppress(ImportError):
-                module = import_module(lib)
+            with _contextlib.suppress(ImportError):
+                module = _import_module(lib)
                 version = module.__version__
             print(f"{lib} version: {version}")
         return

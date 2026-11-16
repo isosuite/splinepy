@@ -13,12 +13,10 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.12"]
-        os: [ubuntu-latest, macos-15-intel, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
     - uses: actions/checkout@v4
-      with:
-        submodules: recursive
     - name: Set up  ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
@@ -27,12 +25,12 @@ jobs:
     - name: build
       if: matrix.os != 'windows-latest'
       run: |
-        pip install ".[test]" -v --config-settings=cmake.args="-DSPLINEPY_MORE=OFF;-DSPLINEPY_ENABLE_WARNINGS=ON" --config-settings=cmake.build-type="Debug"
+        pip install ".[test]" -v --config-settings=cmake.build-type="Debug"
 
     - name: build for windows
       if: matrix.os == 'windows-latest'
       run: |
-        pip install ".[test]" -v --config-settings=cmake.args="-DSPLINEPY_MORE=OFF"
+        pip install ".[test]" -v
 
     - name: test
       run: |

@@ -31,7 +31,7 @@ extensions = [
     "sphinx.ext.mathjax",
     "sphinx.ext.napoleon",
     "sphinx.ext.viewcode",
-    "sphinx_mdinclude",
+    "myst_parser",
 ]
 
 
@@ -71,3 +71,7 @@ autodoc_default_options = {
 autosummary_context = {
     "skipmethods": ["__init__"],
 }
+
+# Shape variables are literal names in NumPy-style type annotations.
+napoleon_preprocess_types = True
+napoleon_type_aliases = {"dim": "``dim``", "para_dim": "``para_dim``"}

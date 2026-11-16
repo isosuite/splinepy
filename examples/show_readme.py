@@ -1,6 +1,7 @@
+import contextlib
+
 import gustaf as gus
 import numpy as np
-import vedo
 
 import splinepy
 
@@ -265,10 +266,15 @@ v_abs = max(vmin, vmax)
 vmin = v_abs * np.sign(vmin)
 vmax = v_abs * np.sign(vmax)
 
-vedo_mat = vedo.pyplot.matrix(
-    laplacian_matrix, cmap="seismic", vmin=vmin, vmax=vmax
-)
-splinepy.show(vedo_mat, background=bg)
+try:
+    import vedo
+
+    vedo_mat = vedo.pyplot.matrix(
+        laplacian_matrix, cmap="seismic", vmin=vmin, vmax=vmax
+    )
+    splinepy.show(vedo_mat, background=bg)
+except ImportError:
+    pass
 
 
 ### 5.
@@ -327,5 +333,6 @@ splinepy.io.mfem.export("quarter_circle.mesh", nurbs)
 # load
 quarter_circle = splinepy.io.mfem.load("quarter_circle.mesh")
 
-# svg export
-splinepy.io.svg.export("nurbs.svg", nurbs, background=bg)
+# svg export (requires optional vedo)
+with contextlib.suppress(ImportError):
+    splinepy.io.svg.export("nurbs.svg", nurbs, background=bg)

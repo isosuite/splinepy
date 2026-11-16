@@ -1,5 +1,5 @@
 [build-system]
-requires = ["scikit-build-core"]
+requires = ["scikit-build-core", "nanobind>=2.4.0"]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -23,7 +23,7 @@ classifiers=[
     "Natural Language :: English",
     "Topic :: Scientific/Engineering",
 ]
-dependencies = ["numpy", "gustaf>=0.0.25"]
+dependencies = ["numpy"]
 requires-python = '>=3.10'
 dynamic = ["version"]
 
@@ -32,8 +32,11 @@ file = "README.md"
 content-type = "text/markdown"
 
 [project.optional-dependencies]
-all = ["gustaf[all]>=0.0.25"]
-test = ["funi>=0.1.0", "pytest"]
+all = ["gustaf[all]>=0.0.25", "anywidget", "playwright"]
+gustaf = ["gustaf[all]>=0.0.25"]
+viewer = ["anywidget"]
+viewer-export = ["playwright"]
+test = ["funi>=0.2.1", "pytest", "gustaf>=0.0.25"]
 
 [project.scripts]
 splinepy = "splinepy.cli:entry"
@@ -46,7 +49,9 @@ wheel.packages = [
     "splinepy.helpme",
     "splinepy.microstructure",
     "splinepy.microstructure.tiles",
+    "splinepy.viewer",
 ]
+wheel.exclude = ["splinepy/viewer/js/node_modules", "splinepy/viewer/js/package-lock.json"]
 
 build-dir = "build"
 
@@ -63,10 +68,12 @@ test-command = "pytest {project}/tests"
 before-all = "python {project}/docs/source/handle_markdown.py -b"
 
 [tool.cibuildwheel.macos]
-archs = ["x86_64", "arm64"]
+archs = ["arm64"]
 build = ["cp*"]
 
 [tool.cibuildwheel.linux]
+# Use a compatible NumPy wheel in the manylinux test environment.
+environment = { PIP_ONLY_BINARY = "numpy" }
 archs = ["x86_64"]
 build = ["cp*-many*"]
 
@@ -106,12 +113,15 @@ lint.ignore = [
 "setup.py" = ["T201"]
 "examples/*.py" = ["T201"]
 "tests/common.py" = ["T201"]
+"tests/generate_golden_data.py" = ["T201"]
+"benchmarks/*.py" = ["T201"]
 "splinepy/cli.py" = ["T201"]
 "splinepy/io/**" = ["A001"]
+"splinepy/viewer/html.py" = ["E501"]  # Embedded HTML and JavaScript.
 
 [tool.codespell]
 ignore-words-list = "connec,tye,ned"
-skip="./docs/source/_generated/**,./docs/build/*,./build/*,./third_party/*,./tests/data/*.svg,*.html,*.js"
+skip="./docs/source/_generated/**,./docs/build/*,./build/*,./tests/data/*.svg,*.html,*.js"
 
 
 [tool.blackdoc]

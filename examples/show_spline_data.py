@@ -1,4 +1,3 @@
-import gustaf as gus
 import numpy as np
 
 import splinepy
@@ -52,21 +51,21 @@ if __name__ == "__main__":
     b = bspline2p3d()
     b.spline_data["me"] = b
     b.show_options["data"] = "me"
-    gus.show(["1. Show norm of coordinates.", b])
+    splinepy.show(["1. Show norm of coordinates.", b])
 
     # 1.1 default scalarbar
     b = bspline2p3d()
     b.spline_data["me"] = b
     b.show_options["data"] = "me"
     b.show_options["scalarbar"] = True
-    gus.show(["1.1. Show 1. plus scalarbar", b])
+    splinepy.show(["1.1. Show 1. plus scalarbar", b])
 
     # 2. see coordinate's norm and as arrow
     b = bspline2p3d()
     b.spline_data["me"] = b
     b.show_options["data"] = "me"
     b.show_options["arrow_data"] = "me"
-    gus.show(
+    splinepy.show(
         ["2. Show coordinate norm as scalar field and coordinate as arrows", b]
     )
 
@@ -76,7 +75,7 @@ if __name__ == "__main__":
     b.show_options["data"] = "me"
     b.show_options["arrow_data"] = "me"
     b.show_options["arrow_data_on"] = np_rng.random((100, 2))  # para_coords
-    gus.show(
+    splinepy.show(
         ["3. Show coordinates norm and as arrows on 100 random points.", b]
     )
 
@@ -87,7 +86,7 @@ if __name__ == "__main__":
     b.show_options["arrow_data"] = "me"
     b.show_options["arrow_data_on"] = np_rng.random((100, 2))  # para_coords
     b.show_options["scalarbar"] = True
-    gus.show(
+    splinepy.show(
         ["4. Show 3. and 3. in parametric space view with scalarbar.", b],
         b.create.parametric_view(),
     )
@@ -106,7 +105,7 @@ if __name__ == "__main__":
     b = bspline2p3d()
     b.spline_data["der01"] = plot_func_data
     b.show_options["arrow_data"] = "der01"
-    gus.show(
+    splinepy.show(
         [
             "5. Show partial derivative of seconda parametric dimension.\n"
             "This uses a callback function and SplineDataAdaptor.\n"
@@ -122,7 +121,7 @@ if __name__ == "__main__":
     b.show_options["arrow_data"] = "der01"
     b.show_options["arrow_data_on"] = np_rng.random((100, 2))  # para_coords
     b.show_options["arrow_data_color"] = "gold"
-    gus.show(
+    splinepy.show(
         [
             "5.1. Same data as 5. However, on 100 random places with gold "
             "arrows",
@@ -137,7 +136,7 @@ if __name__ == "__main__":
     b = bspline2p3d()
     b.spline_data["fixed"] = fixed_data
     b.show_options["arrow_data"] = "fixed"
-    gus.show(
+    splinepy.show(
         [
             "6. Show arbitrary array data on predefined locations using "
             "SplineDataAdaptor.",
@@ -184,7 +183,7 @@ if __name__ == "__main__":
     p_view.show_options["arrow_data_color"] = "gold"
     p_view.show_options["data"] = "deformed"
     # plot side by side
-    gus.show(
+    splinepy.show(
         [
             "7. Original spline, deformed spline\n"
             "and pointwise correspondence on selected locations.",
@@ -200,7 +199,7 @@ if __name__ == "__main__":
     )
     # say, deformed has changed again - plots should adapt automatically
     deformed.cps[:, [1, 2]] = deformed.cps[:, [2, 1]]
-    gus.show(
+    splinepy.show(
         [
             "7.1. Same setup as 7. with inplace changes in deformed spline.",
             b,
@@ -254,7 +253,7 @@ if __name__ == "__main__":
     disc.spline_data["nice"] = nice_data
     disc.show_options["arrow_data"] = "nice"
     disc.show_options["arrow_data_color"] = "jet"
-    gus.show(
+    splinepy.show(
         [
             "8. Showing arbitrary data with callback.\n"
             "Any array-like multi-dim data can be plotted as long as\n"

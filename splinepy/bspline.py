@@ -14,6 +14,15 @@ from splinepy import splinepy_core as _splinepy_core
 from splinepy import utils as _utils
 
 
+def _insertion_matrix(data):
+    (values, indices), shape = data
+    if has_scipy:
+        return _scipy.sparse.csr_matrix((values, indices), shape=shape)
+    matrix = _np.zeros(shape)
+    matrix[indices[0], indices[1]] = values
+    return matrix
+
+
 class BSplineBase(_spline.Spline):
     r"""BSpline base. Contains extra operations that are only available for
     bspline families, i.e., :class:`.BSpline` and :class:`.NURBS`.
@@ -117,7 +126,6 @@ class BSplineBase(_spline.Spline):
 
         self._logd(f"Inserted {len(knots)} knot(s).")
 
-        self._data = {}
 
         return inserted
 
@@ -159,6 +167,7 @@ class BSplineBase(_spline.Spline):
             )
 
         def determine_new_knots(kv_unique, n_knots):
+            """Generate candidate knots for the requested split."""
             if n_knots == 0:
                 return []
             kv_diffs = _np.diff(kv_unique) / (n_knots + 1)
@@ -233,16 +242,7 @@ class BSplineBase(_spline.Spline):
             # Indices represents the relevant ctps whereas data is a list of
             # all matrix information
             # 1. Create a list of matrices
-            matrices = []
-            for m_data in data:
-                if has_scipy:
-                    matrix = _scipy.sparse.csr_matrix(
-                        m_data[0], shape=m_data[1]
-                    )
-                else:
-                    matrix = _np.zeros(m_data[1])
-                    matrix[m_data[0][1][0], m_data[0][1][1]] = m_data[0][0]
-                matrices.append(matrix)
+            matrices = [_insertion_matrix(entry) for entry in data]
             #  2. Create global matrix
             matrix = matrices[0]
             for n_mat in matrices[1:]:
@@ -259,13 +259,7 @@ class BSplineBase(_spline.Spline):
             _utils.data.enforce_contiguous(knots, dtype="float64"),
             _settings.TOLERANCE,
         )
-        if has_scipy:
-            matrix = _scipy.sparse.csr_matrix(data[0], shape=data[1])
-        else:
-            matrix = _np.zeros(data[1])
-            matrix[data[0][1][0], data[0][1][1]] = data[0][0]
-
-        return matrix
+        return _insertion_matrix(data)
 
     def remove_knots(self, parametric_dimension, knots, tolerance=None):
         """
@@ -312,9 +306,6 @@ class BSplineBase(_spline.Spline):
             tolerance=_spline._default_if_none(tolerance, _settings.TOLERANCE),
         )
 
-        if any(removed):
-            self._data = {}
-
         self._logd(f"Tried to remove {len(knots)} knot(s).")
         self._logd(f"Actually removed {sum(removed)} knot(s).")
         return removed
@@ -331,15 +322,14 @@ class BSplineBase(_spline.Spline):
         -------
         None
         """
-        if not _splinepy_core.has_core(self):
+        if self.degrees is None or self.control_points is None:
             raise ValueError(
                 "spline is not fully initialized."
                 "Please, first initialize spline before normalize_knot_vectors."
             )
 
         for kv in self.knot_vectors:
-            if isinstance(kv, _splinepy_core.KnotVector):
-                kv.scale(0, 1)
+            kv.scale(0, 1)
 
     def extract_bezier_patches(self):
         """
@@ -470,7 +460,49 @@ class BSpline(BSplineBase):
         )
 
     @property
+    def thb(self):
+        """Return a single-level THB spline with the same geometry.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        spline : THBSpline
+        """
+        from splinepy.hierarchy import THBSpline
+
+        return THBSpline.from_bspline(self)
+
+    @property
+    def rationalthb(self):
+        """Return a single-level rational THB spline with the same geometry.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        spline : RationalTHBSpline
+        """
+        from splinepy.hierarchy import RationalTHBSpline
+
+        return RationalTHBSpline.from_bspline(self.nurbs)
+
+    @property
     def bspline(self):
+        """Return a BSpline with the same geometry.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        spline : BSpline
+        """
         return self.copy(saved_data=False)
 
     @property

@@ -331,9 +331,9 @@ def foo(x):
     """
     Parametrization Function (determines thickness)
     """
-    return (x[:, 0] * 0.05 + x[:, 1] * 0.05 + x[:, 2] * 0.1 + 0.1).reshape(
-        -1, 1
-    )
+    return (
+        x[:, 0] * 0.025 + x[:, 1] * 0.025 + x[:, 2] * 0.05 + 0.2
+    ).reshape(-1, 1)
 
 
 # A Parametrized microstructure and its respective inverse structure

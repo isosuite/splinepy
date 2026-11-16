@@ -485,10 +485,6 @@ def test_extract_spline():
     ),
 )
 def test_extract_bases(spline, request):
-    # skip 3d splines for minimal builds
-    if splinepy.splinepy_core.is_minimal() and "3d" in spline:
-        return None
-
     spline = request.getfixturevalue(spline)
 
     # prepare query
@@ -506,3 +502,19 @@ def test_extract_bases(spline, request):
 
     for i, b in enumerate(bases):
         assert np.allclose(b.evaluate(q)[:, -1], mat[:, i])
+
+
+def test_extract_sub_spline_repeated_knots_and_invalid_splits():
+    spline = splinepy.NURBS(
+        degrees=[2],
+        knot_vectors=[[0, 0, 0, 0.5, 0.5, 1, 1, 1]],
+        control_points=[[0], [1], [2], [3], [4]],
+        weights=[1, 2, 1, 2, 1],
+    )
+    restricted = spline.extract.spline(0, (0.5, 1))
+    queries = np.linspace(0.5, 1, 9)[:, None]
+    assert isinstance(restricted, splinepy.NURBS)
+    np.testing.assert_allclose(restricted.evaluate(queries), spline.evaluate(queries))
+    for axis, split in [(1, 0.5), (0, []), (0, (1, 0)), (0, np.nan), (0, 1.1)]:
+        with pytest.raises(ValueError):
+            spline.extract.spline(axis, split)

@@ -70,11 +70,8 @@ class BezierBase(_spline.Spline):
                 f"Multiplication with {type(factor)}-type is not supported."
             )
 
-        # multiply - dimension compatibility is checked in cpp side
-        multiplied = _splinepy_core.multiply(self, factor)
-
-        # return corresponding type
-        return _settings.NAME_TO_TYPE[multiplied.name](spline=multiplied)
+        # Dimension compatibility is checked in C++.
+        return _splinepy_core.multiply(self, factor)
 
     def __add__(self, summand):
         """
@@ -116,11 +113,7 @@ class BezierBase(_spline.Spline):
         # Ensure array-type
         orders = _utils.data.enforce_contiguous(orders, dtype="int32")
         # dimension compatibility checked in cpp
-        derivative_spline = _splinepy_core.derivative_spline(self, orders)
-
-        return _settings.NAME_TO_TYPE[derivative_spline.name](
-            spline=derivative_spline
-        )
+        return _splinepy_core.derivative_spline(self, orders)
 
     def compose(self, inner_function, compute_sensitivities=False):
         r"""
@@ -176,19 +169,88 @@ class BezierBase(_spline.Spline):
         composed = _splinepy_core.compose(self, inner_function)
 
         if compute_sensitivities:
-            composed_sensivities = _splinepy_core.compose_sensitivities(
+            sensitivities = _splinepy_core.compose_sensitivities(
                 self, inner_function
             )
+            return composed, sensitivities
+        return composed
 
-            return (
-                _settings.NAME_TO_TYPE[composed.name](spline=composed),
-                [
-                    _settings.NAME_TO_TYPE[cc.name](spline=cc)
-                    for cc in composed_sensivities
-                ],
-            )
-        else:
-            return _settings.NAME_TO_TYPE[composed.name](spline=composed)
+    @staticmethod
+    def compose_batch(
+        outers, inners, compute_sensitivities=False, nthreads=1
+    ):
+        r"""
+        Composes every outer spline with every inner spline, see
+        :meth:`compose` for a single pair.
+
+        The composed Bernstein basis depends on the outer degrees and the inner
+        spline, but not on the outer control points. It is built once per
+        inner spline and shared by all outers, which makes this much cheaper
+        than calling :meth:`compose` for each pair. A typical use is a refined
+        spline that is split into Bezier elements (``outers``), each filled
+        with the same microstructure patches (``inners``).
+
+        Parameters
+        ----------
+        outers : list
+          Bezier-Type splines with identical degrees, dim and rationality.
+        inners : list
+          Bezier-Type splines. ``inner.dim`` has to match ``outer.para_dim``.
+        compute_sensitivities : bool
+          If set, the sensitivities are returned as well, default False
+        nthreads : int
+          Number of threads, default 1
+
+        Returns
+        -------
+        composed : list
+          ``composed[o][i]`` is the composition of ``outers[o]`` with
+          ``inners[i]``.
+        sensitivities : list (optional)
+          ``sensitivities[o][i]`` is the list of sensitivities of
+          ``composed[o][i]``, see :meth:`compose`.
+        """
+        outers, inners = list(outers), list(inners)
+        nthreads = int(nthreads)
+
+        composed = _splinepy_core.compose_batch(outers, inners, nthreads)
+        if not compute_sensitivities:
+            return composed
+
+        sensitivities = _splinepy_core.compose_sensitivities_batch(
+            outers, inners, nthreads
+        )
+        return composed, sensitivities
+
+    @staticmethod
+    def composition_derivative_batch(
+        outers, inners, inner_derivatives, nthreads=1
+    ):
+        r"""
+        Batched :meth:`composition_derivative`: pairs every outer with every
+        inner, with the derivative ``inner_derivatives[i]`` of ``inners[i]``.
+        Shares the composed basis like :meth:`compose_batch`.
+
+        Parameters
+        ----------
+        outers : list
+          Bezier-Type splines with identical degrees, dim and rationality.
+        inners : list
+          Bezier-Type splines.
+        inner_derivatives : list
+          One derivative spline per inner.
+        nthreads : int
+          Number of threads, default 1
+
+        Returns
+        -------
+        composition_ders : list
+          ``composition_ders[o][i]`` belongs to ``outers[o]`` and
+          ``inners[i]``.
+        """
+        return _splinepy_core.composition_derivative_batch(
+            list(outers), list(inners), list(inner_derivatives), int(nthreads)
+        )
 
     def composition_derivative(self, inner, inner_derivative):
         r"""
@@ -222,12 +284,8 @@ class BezierBase(_spline.Spline):
         composition_der: BezierBase
         """
         # compatibility check is done in cpp
-        composition_der = _splinepy_core.composition_derivative(
+        return _splinepy_core.composition_derivative(
             self, inner, inner_derivative
-        )
-
-        return _settings.NAME_TO_TYPE[composition_der.name](
-            spline=composition_der
         )
 
     def split(self, para_dim, locations):
@@ -361,23 +419,95 @@ class Bezier(BezierBase):
         )
 
     @property
+    def thb(self):
+        """Return a single-level THB spline with the same geometry.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        spline : THBSpline
+        """
+        from splinepy.hierarchy import THBSpline
+
+        return THBSpline.from_bspline(self.bspline)
+
+    @property
+    def rationalthb(self):
+        """Return a single-level rational THB spline with the same geometry.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        spline : RationalTHBSpline
+        """
+        from splinepy.hierarchy import RationalTHBSpline
+
+        return RationalTHBSpline.from_bspline(self.nurbs)
+
+    @property
     def bezier(self):
+        """Return a Bezier with the same geometry.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        spline : Bezier
+        """
         return self.copy(saved_data=False)
 
     @property
     def rationalbezier(self):
+        """Return a RationalBezier with the same geometry.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        spline : RationalBezier
+        """
         return _settings.NAME_TO_TYPE["RationalBezier"](
             **self.todict(), weights=_np.ones((self.cps.shape[0], 1))
         )
 
     @property
     def bspline(self):
+        """Return a BSpline with the same geometry.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        spline : BSpline
+        """
         return _settings.NAME_TO_TYPE["BSpline"](
             spline=_splinepy_core.same_spline_with_knot_vectors(self)
         )
 
     @property
     def nurbs(self):
+        """Return a NURBS with the same geometry.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        spline : NURBS
+        """
         return _settings.NAME_TO_TYPE["NURBS"](
             spline=_splinepy_core.same_spline_with_knot_vectors(
                 self.rationalbezier

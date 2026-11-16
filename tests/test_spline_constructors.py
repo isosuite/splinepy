@@ -246,3 +246,21 @@ def test_RationalBezier(np_rng):
             control_points=np.ones((24, 2)),
             weights=np_rng.random(9),
         )
+
+
+def test_multi_index_tracks_control_mesh_shape():
+    spline = splinepy.Bezier(degrees=[1], control_points=[[0], [1]])
+    original = spline.multi_index
+    spline.control_points = [[1], [2]]
+    assert spline.multi_index is original
+    spline.degrees = [1, 0]
+    assert spline.multi_index is not original
+    np.testing.assert_array_equal(spline.multi_index[:, 0], [0, 1])
+
+
+def test_native_knot_edit_keeps_knot_vector_type():
+    spline = splinepy.Bezier(degrees=[1], control_points=[[0], [1]]).bspline
+    spline.insert_knots(0, [0.5])
+    knots = spline.knot_vectors[0]
+    assert isinstance(knots, splinepy.KnotVector)
+    np.testing.assert_array_equal(knots.unique(), [0, 0.5, 1])

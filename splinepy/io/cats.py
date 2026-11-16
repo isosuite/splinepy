@@ -54,6 +54,7 @@ def load(fname):
     """
 
     def _read_spline(xml_element):
+        """Read one spline from its XML node."""
         spline_dict = {}
         if not xml_element.tag.startswith(CATS_XML_KEY_WORDS["patch"]):
             _debug(

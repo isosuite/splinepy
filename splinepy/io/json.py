@@ -11,6 +11,35 @@ from splinepy import settings as _settings
 from splinepy.utils.log import debug as _debug
 
 
+def _hierarchy_types():
+    from splinepy.hierarchy import (
+        HBSpline,
+        RationalHBSpline,
+        RationalTHBSpline,
+        THBSpline,
+    )
+
+    return {
+        cls.__name__: cls
+        for cls in (HBSpline, RationalHBSpline, THBSpline, RationalTHBSpline)
+    }
+
+
+def _hierarchy_record(spline):
+    data, cache = spline._state
+    degrees, levels, _, _, points, weights, _ = data
+    record = {
+        "degrees": degrees.tolist(),
+        "levels": [[axis.tolist() for axis in level] for level in levels],
+        "leaf_cells": spline._cells(degrees, levels, cache.extraction()).tolist(),
+        "control_points": points.tolist(),
+    }
+    if weights is not None:
+        record["weights"] = weights.tolist()
+        record["weights_ndim"] = weights.ndim
+    return record
+
+
 def load(fname):
     """
     Loads splines from json file. Returns a list of splines
@@ -32,8 +61,10 @@ def load(fname):
 
     spline_list = []
     base64encoding = jsonbz["Base64Encoding"]
+    hierarchy_types = _hierarchy_types()
 
     for jbz in jsonbz["SplineList"]:
+        hierarchy_type = hierarchy_types.get(jbz["SplineType"])
         # Convert Base64 str into np array
         if base64encoding:
             jbz["control_points"] = _np.frombuffer(
@@ -45,15 +76,27 @@ def load(fname):
                     _base64.b64decode(jbz["weights"].encode("ascii")),
                     dtype=_np.float64,
                 ).reshape((-1, 1))
+                if hierarchy_type is not None and jbz.get("weights_ndim") == 1:
+                    jbz["weights"] = jbz["weights"].ravel()
+
+        if hierarchy_type is not None:
+            spline_list.append(
+                hierarchy_type.from_hierarchy(
+                    jbz["degrees"],
+                    jbz["levels"],
+                    jbz["leaf_cells"],
+                    jbz["control_points"],
+                    weights=jbz.get("weights"),
+                )
+            )
+            continue
 
         # Declare Type and get required properties
         req_props = _RequiredProperties.of(jbz["SplineType"])
         data_dict = {}
         for prop in req_props:
             data_dict[prop] = jbz[prop]
-        spline_list.append(
-            _settings.NAME_TO_TYPE[jbz["SplineType"]](**data_dict)
-        )
+        spline_list.append(_settings.NAME_TO_TYPE[jbz["SplineType"]](**data_dict))
 
         # Add show options if any
         show_options = jbz.get("show_options", None)
@@ -66,7 +109,9 @@ def load(fname):
     return spline_list
 
 
-def export(fname, spline_list, list_name=None, base64encoding=False):
+def export(
+    fname, spline_list, list_name=None, base64encoding=False, *, extraction_basis=None
+):
     """
     Exports a list of arbitrary splines in json-format
 
@@ -81,6 +126,9 @@ def export(fname, spline_list, list_name=None, base64encoding=False):
     base64encoding: bool
       Default is False. If True, encodes float type spline properties before
       saving.
+    extraction_basis : {"bspline", "bernstein"} or None
+      Include optional leaf extraction blocks in each hierarchical spline
+      record. Loading reconstructs the hierarchy from its geometry and topology.
 
     Returns
     -------
@@ -108,13 +156,22 @@ def export(fname, spline_list, list_name=None, base64encoding=False):
     # Append all splines to a dictionary
     from splinepy.spline import Spline as _Spline
 
+    hierarchy_types = tuple(_hierarchy_types().values())
     spline_dictonary_list = []
     for i_spline in spline_list:
-        if not issubclass(type(i_spline), _Spline):
+        is_hierarchy = type(i_spline) in hierarchy_types
+        if is_hierarchy:
+            i_spline_dict = _hierarchy_record(i_spline)
+            if extraction_basis is not None:
+                extraction = i_spline.extract.basis_data(extraction_basis)
+                i_spline_dict["extraction"] = {
+                    key: value.tolist() if isinstance(value, _np.ndarray) else value
+                    for key, value in extraction.items()
+                }
+        elif isinstance(i_spline, _Spline):
+            i_spline_dict = i_spline.todict(tolist=True)
+        else:
             raise ValueError("Unsupported type in list")
-
-        # Create Dictionary
-        i_spline_dict = i_spline.todict(tolist=True)
         i_spline_dict["SplineType"] = type(i_spline).__qualname__
         # Append para_dim and dim
         i_spline_dict["dim"] = i_spline.dim
@@ -122,14 +179,15 @@ def export(fname, spline_list, list_name=None, base64encoding=False):
 
         if base64encoding:
             i_spline_dict["control_points"] = _base64.b64encode(
-                _np.array(i_spline_dict["control_points"])
+                _np.array(i_spline_dict["control_points"], dtype=_np.float64)
             ).decode("utf-8")
-            if "weights" in i_spline.required_properties:
+            if "weights" in i_spline_dict:
                 i_spline_dict["weights"] = _base64.b64encode(
-                    _np.array(i_spline_dict["weights"])
+                    _np.array(i_spline_dict["weights"], dtype=_np.float64)
                 ).decode("utf-8")
 
-        i_spline_dict["show_options"] = dict(i_spline.show_options)
+        if not is_hierarchy:
+            i_spline_dict["show_options"] = dict(i_spline.show_options)
 
         spline_dictonary_list.append(i_spline_dict)
 

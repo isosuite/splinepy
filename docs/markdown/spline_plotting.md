@@ -1,10 +1,7 @@
 # Visualization
-One of the highlights of splinepy is that we can visualize splines.
-Most of the classes have their own `show()` function to visualize current state of each object.
-Visualizations utilize mesh types and data structures of [gustaf](https://isosuite.github.io/gustaf/).
-Then, actual rendering happens with [vedo](https://vedo.embl.es) - a powerful scientific analysis and visualization library - check them out for details!
 
-The following will give a brief introduction to spline visualization.
+Call `spline.show()` to open the built-in browser viewer. Use
+`splinepy.show(a, b)` to display multiple objects.
 
 ## Creating a basic NURBS
 ![NURBS](../source/_static/readme_nurbs.png)
@@ -37,7 +34,6 @@ nurbs = splinepy.NURBS(
     ],
 )
 
-# vizusalize
 nurbs.show()
 ```
 
@@ -91,18 +87,25 @@ nurbs.show_options.pop("data")
 nurbs.show()  # Nr. 3
 ```
 
-## Examples
-Take a look at the <a href='https://github.com/isosuite/splinepy/tree/main/examples'>examples folder</a> for more!
-
-
 ## Notebook plotting
 
-You can also plot your splines inside a notebook. For this you need to change the vedo backend to 'k3d'. To do this you need to add the following lines to the top of the notebook.
+Install `splinepy[viewer]`, then display the returned widget in a cell.
 
-```
-import vedo
-
-vedo.settings.default_backend = "k3d"
+```python
+nurbs.show(widget=True)
 ```
 
-After this most functionality of the normal plotting should be available to you. Please write an issue if you find something that you can plot in a script but not in a notebook. There is one known issue regarding number of Line objects that we can plot (limited to 200 from `vedo`). We are working on a solution, but meanwhile, plotting curves is limited to resolutions of 201; for 2D/3D splines you can turn off `knots` in `show_options`. An example is provided in the folder `examples/ipynb`.
+## Saving and exporting
+
+```python
+view = nurbs.show(open=False)
+view.save("spline.html")
+```
+
+For PNG screenshots, install `splinepy[viewer-export]`, run
+`playwright install chromium`, then call `view.screenshot("spline.png")`.
+
+## Legacy Vedo backend
+
+Install `splinepy[gustaf]` and call `nurbs.show(backend="vedo")` to use
+the Vedo renderer.

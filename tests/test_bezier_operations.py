@@ -221,3 +221,126 @@ def test_close_form_derivative(np_rng):
         rationals.derivative(queries, orders),
         close_form.evaluate(queries),
     )
+
+
+def test_compose_batch_matches_compose():
+    """compose_batch shares the composed basis, results must equal compose."""
+    rng = np.random.default_rng(0)
+
+    def bezier(degrees, dim, rational):
+        n = int(np.prod(np.asarray(degrees) + 1))
+        cps = rng.uniform(size=(n, dim))
+        if rational:
+            return splinepy.RationalBezier(
+                degrees=degrees,
+                control_points=cps,
+                weights=rng.uniform(0.5, 1.5, size=n),
+            )
+        return splinepy.Bezier(degrees=degrees, control_points=cps)
+
+    for outer_rational in (False, True):
+        for inner_rational in (False, True):
+            outers = [bezier([2, 3], 3, outer_rational) for _ in range(3)]
+            inners = [bezier([2, 1], 2, inner_rational) for _ in range(4)]
+
+            for nthreads in (1, 4):
+                batch = splinepy.Bezier.compose_batch(
+                    outers, inners, nthreads=nthreads
+                )
+                assert len(batch) == 3 and all(len(row) == 4 for row in batch)
+                for o, outer in enumerate(outers):
+                    for i, inner in enumerate(inners):
+                        expected = outer.compose(inner)
+                        assert np.allclose(batch[o][i].cps, expected.cps)
+                        assert np.array_equal(
+                            batch[o][i].degrees, expected.degrees
+                        )
+                        if outer_rational or inner_rational:
+                            assert np.allclose(
+                                batch[o][i].weights, expected.weights
+                            )
+
+
+def test_compose_batch_sensitivities_and_derivative_match_single():
+    rng = np.random.default_rng(5)
+
+    def bezier(degrees, dim, rational):
+        n = int(np.prod(np.asarray(degrees) + 1))
+        cps = rng.uniform(size=(n, dim))
+        if rational:
+            return splinepy.RationalBezier(
+                degrees=degrees,
+                control_points=cps,
+                weights=rng.uniform(0.5, 1.5, size=n),
+            )
+        return splinepy.Bezier(degrees=degrees, control_points=cps)
+
+    for outer_rational in (False, True):
+        for inner_rational in (False, True):
+            outers = [bezier([2, 2], 2, outer_rational) for _ in range(3)]
+            inners = [bezier([1, 2], 2, inner_rational) for _ in range(2)]
+            inner_ders = [inner.derivative_spline([1, 0]) for inner in inners]
+
+            for nthreads in (1, 3):
+                composed, sens = splinepy.Bezier.compose_batch(
+                    outers, inners, compute_sensitivities=True, nthreads=nthreads
+                )
+                ders = splinepy.Bezier.composition_derivative_batch(
+                    outers, inners, inner_ders, nthreads=nthreads
+                )
+                for o, outer in enumerate(outers):
+                    for i, inner in enumerate(inners):
+                        exp_c, exp_s = outer.compose(
+                            inner, compute_sensitivities=True
+                        )
+                        assert np.allclose(composed[o][i].cps, exp_c.cps)
+                        assert len(sens[o][i]) == len(exp_s)
+                        for got, exp in zip(sens[o][i], exp_s, strict=True):
+                            assert np.allclose(got.cps, exp.cps)
+                        exp_d = outer.composition_derivative(
+                            inner, inner_ders[i]
+                        )
+                        assert np.allclose(ders[o][i].cps, exp_d.cps)
+
+
+def test_native_spline_result_keeps_transferred_buffers_alive():
+    from splinepy import Bezier, RationalBezier
+
+    outer = Bezier([1], [[0], [1]])
+    inner = RationalBezier([1], [[0], [1]], [1, 2])
+    result = outer.compose(inner).nurbs
+    points, weights, knots = result.cps, result.weights, result.knot_vectors[0]
+    del result
+
+    for array in (points, weights, knots):
+        owner = array
+        while isinstance(owner, np.ndarray) and owner.base is not None:
+            owner = owner.base
+        assert isinstance(owner, memoryview)
+        assert array.flags.writeable
+
+    points[1, 0] = 2
+    np.testing.assert_array_equal(points[:, 0], [0, 2])
+    np.testing.assert_array_equal(weights[:, 0], [1, 2])
+    np.testing.assert_array_equal(knots, [0, 0, 1, 1])
+
+
+def test_spline_shares_compatible_inputs_and_copy_is_independent():
+    from splinepy import NURBS
+
+    degrees = np.array([1], dtype=np.int32)
+    knots = np.array([0.0, 0.0, 1.0, 1.0])
+    points = np.array([[0.0], [1.0]])
+    weights = np.array([1.0, 2.0])
+    spline = NURBS(degrees, [knots], points, weights)
+    clone = spline.copy()
+    assert np.shares_memory(spline.degrees, degrees)
+    assert degrees.flags.writeable
+    assert np.shares_memory(spline.knot_vectors[0], knots)
+    assert np.shares_memory(spline.cps, points)
+    assert np.shares_memory(spline.weights, weights)
+    points[1, 0] = 2
+    np.testing.assert_allclose(spline.evaluate([[1.0]]), [[2.0]])
+    np.testing.assert_allclose(clone.evaluate([[1.0]]), [[1.0]])
+    assert not np.shares_memory(clone.knot_vectors[0], knots)
+    assert not np.shares_memory(spline.todict()["knot_vectors"][0], knots)

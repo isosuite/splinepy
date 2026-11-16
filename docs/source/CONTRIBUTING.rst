@@ -1,4 +1,5 @@
 ------------
 Contributing
 ------------
-.. mdinclude:: ../md/CONTRIBUTING.md
+.. include:: ../md/CONTRIBUTING.md
+   :parser: myst_parser.sphinx_

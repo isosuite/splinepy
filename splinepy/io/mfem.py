@@ -3,9 +3,8 @@
 Currently hardcoded for 2D-single-patch-splines.
 """
 
-from ast import literal_eval
+from ast import literal_eval as _literal_eval
 
-import gustaf as _gus
 import numpy as _np
 
 from splinepy.io.ioutils import dict_to_spline as _dict_to_spline
@@ -91,7 +90,7 @@ def load(fname):
     knot_vectors_sec = nurbs_dict["knotvectors"][1:]
     knot_vectors = []
     for kvs in knot_vectors_sec:
-        knot_vectors.append(literal_eval("[" + kvs.replace(" ", ",") + "]"))
+        knot_vectors.append(_literal_eval("[" + kvs.replace(" ", ",") + "]"))
 
     # parse degrees and get number of control points for consistency checks
     degrees = []
@@ -104,11 +103,11 @@ def load(fname):
 
     # ws
     weights = nurbs_dict["weights"]
-    weights = [literal_eval(w) for w in weights]  # hopefully not too slow
+    weights = [_literal_eval(w) for w in weights]  # hopefully not too slow
     # cps
     control_points = nurbs_dict["Ordering"]
     control_points = [
-        literal_eval(f"[{cp.replace(' ', ',')}]") for cp in control_points
+        _literal_eval(f"[{cp.replace(' ', ',')}]") for cp in control_points
     ]
 
     # double check
@@ -169,7 +168,7 @@ def read_solution(
         collect = False
         while line is not None:
             if collect:  # check this first. should be true most time
-                solution.append(literal_eval(f"[{line.replace(' ', ',')}]"))
+                solution.append(_literal_eval(f"[{line.replace(' ', ',')}]"))
             elif hotkey in line:
                 collect = True
 
@@ -316,6 +315,8 @@ def export_cartesian(
     -------
     None
     """
+    import gustaf as _gus
+
     from splinepy import Multipatch as _Multipatch
 
     # Check first spline
@@ -345,6 +346,7 @@ def export_cartesian(
         n_vertex_per_boundary = 2
 
         def _corner_vertex_ids(spline):
+            """Find the vertex IDs at the patch corners."""
             cmr = spline.control_mesh_resolutions
             return _np.array(
                 [
@@ -368,6 +370,7 @@ def export_cartesian(
         n_vertex_per_boundary = 4
 
         def _corner_vertex_ids(spline):
+            """Find the vertex IDs at the patch corners."""
             cmr = spline.control_mesh_resolutions
             return _np.array(
                 [
@@ -640,6 +643,7 @@ def export(fname, nurbs, precision=10):
 
     # This is reusable
     def kv_sec(spline):
+        """Read the knot vectors from the mesh section."""
         kvs = _form_lines(
             "knotvectors",
             str(len(spline.knot_vectors)),
@@ -651,7 +655,7 @@ def export(fname, nurbs, precision=10):
                 + " "
                 + str(cnr[i])
                 + " "
-                + str(list(spline.knot_vectors[i]))[1:-1].replace(",", "")
+                + str(spline.knot_vectors[i].tolist())[1:-1].replace(",", "")
             )
 
         kvs = kvs + kvs2

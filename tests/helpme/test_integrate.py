@@ -26,7 +26,7 @@ def test_volume_integration_1D(np_rng):
     # Test knot insertion
     bspline = bezier.bspline
     bspline.insert_knots(0, np_rng.random(10))
-    assert np.allclose(bezier.integrate.volume(), 2.0)
+    assert np.allclose(bspline.integrate.volume(), 2.0)
 
 
 def test_volume_integration_embedded(np_rng):
@@ -55,7 +55,7 @@ def test_volume_integration_embedded(np_rng):
     # Test knot insertion
     bspline = bezier.bspline
     bspline.insert_knots(0, np_rng.random(10))
-    assert np.allclose(bezier.integrate.volume(), expected_result)
+    assert np.allclose(bspline.integrate.volume(), expected_result)
 
 
 def test_volume_integration_2D(np_rng):
@@ -83,7 +83,7 @@ def test_volume_integration_2D(np_rng):
     # Test knot insertion
     bspline = bezier.bspline
     bspline.insert_knots(0, np_rng.random(10))
-    assert np.allclose(bezier.integrate.volume(), 2.0)
+    assert np.allclose(bspline.integrate.volume(), 2.0)
 
 
 def test_volume_integration_3D(np_rng):
@@ -116,12 +116,12 @@ def test_volume_integration_3D(np_rng):
     # Test knot insertion
     bspline = bezier.bspline
     bspline.insert_knots(0, np_rng.random(10))
-    assert np.allclose(bezier.integrate.volume(), 3.0)
+    assert np.allclose(bspline.integrate.volume(), 3.0)
 
     # Move control points along axis does not change volume
     mi = bspline.multi_index
-    bspline.cps[mi[3, :, :]][:, 1] += 10
-    assert np.allclose(bezier.integrate.volume(), 3.0)
+    bspline.cps[mi[3, :, :], 1] += 10
+    assert np.allclose(bspline.integrate.volume(), 3.0)
 
 
 def test_complex_geometry(np_rng):
@@ -147,8 +147,8 @@ def test_complex_geometry(np_rng):
     # Move around internal control points
 
     mi = bezier.multi_index
-    bezier.cps[mi[1:3, 1:3, 1:3]][:] += 0.05 * np_rng.random(
-        bezier.cps[mi[1:3, 1:3, 1:3]][:].shape
+    bezier.cps[mi[1:3, 1:3, 1:3]] += 0.05 * np_rng.random(
+        bezier.cps[mi[1:3, 1:3, 1:3]].shape
     )
     assert np.allclose(bezier.integrate.volume(), bezier_c.integrate.volume())
 
@@ -286,3 +286,47 @@ def test_physical_function_integration(np_rng):
     )
 
     assert np.allclose(integral, integral_analytical)
+
+
+
+def test_function_integrals_on_nonuniform_spans():
+    spline = splinepy.BSpline([1], [[2, 2, 3, 5, 5]], [[0, 0], [1, 2], [3, 6]])
+    scale = np.sqrt(5)
+    assert np.isclose(spline.integrate.volume(), 3 * scale)
+    assert np.isclose(
+        spline.integrate.parametric_function(lambda q: q[:, 0]), 10.5 * scale
+    )
+    assert np.isclose(
+        spline.integrate.physical_function(lambda x: x[:, 1]), 9 * scale
+    )
+
+
+def test_volume_preserves_orientation():
+    spline = splinepy.Bezier([1], [[2], [0]])
+    assert np.isclose(spline.integrate.volume(), -2)
+
+
+def test_field_assembly_scales_nonuniform_elements():
+    from splinepy.helpme.integrate import FieldIntegrator
+
+    spline = splinepy.BSpline([1], [[0, 0, 0.25, 1, 1]], [[0], [0.25], [1]])
+    integrator = FieldIntegrator(spline)
+
+    def contributions(mapper, quad_points, quad_weights, jacobian_det):  # noqa: ARG001
+        basis = spline.basis(quad_points)
+        measure = quad_weights * jacobian_det
+        return (basis.T @ (basis * measure[:, None])).ravel(), basis.T @ measure
+
+    matrix = np.zeros((3, 3))
+    rhs = np.zeros(3)
+    integrator.assemble_matrix(lambda **kw: contributions(**kw)[0], matrix)
+    integrator.assemble_vector(lambda **kw: contributions(**kw)[1], vectorout=rhs)
+    np.testing.assert_allclose(rhs, [0.125, 0.5, 0.375])
+    np.testing.assert_allclose(matrix.sum(axis=1), rhs)
+    combined_matrix = np.zeros_like(matrix)
+    combined_rhs = np.zeros_like(rhs)
+    integrator.assemble_matrix_and_vector(
+        contributions, matrixout=combined_matrix, vectorout=combined_rhs
+    )
+    np.testing.assert_allclose(combined_matrix, matrix)
+    np.testing.assert_allclose(combined_rhs, rhs)

@@ -28,18 +28,8 @@ if __name__ == "__main__":
         ]
         for cls in derived:
             f.write(f"## {cls.__qualname__}\n\n")
-            for option in cls._valid_options.values():
-                t_str = str(option.allowed_types)
-                t_str = (
-                    t_str.replace("<class", "")
-                    .replace("'", "")
-                    .replace(">", "")
-                )
-                f.write(
-                    f"<details><summary><strong>{option.key}"
-                    "</strong></summary><p>\n"
-                )
-                f.write(f"\n{option.description}  \n")
-                f.write(f"- _allowed types_: {t_str}  \n")
-                f.write(f"- _default_: {option.default}  \n")
+            for key, allowed_types in cls._valid_options.items():
+                types = ", ".join(cls_type.__name__ for cls_type in allowed_types)
+                f.write(f"<details><summary><strong>{key}</strong></summary><p>\n")
+                f.write(f"\n- _allowed types_: {types}  \n")
                 f.write("</p></details> \n\n")

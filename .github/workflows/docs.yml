@@ -1,7 +1,9 @@
 name: docs
 
-on:
-  push
+on: [push, pull_request]
+
+permissions:
+  contents: read
 
 jobs:
   minimal_explicit_build_and_docs:
@@ -10,12 +12,11 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-      with:
-        submodules: recursive
 
     - name: install dependencies
       run: |
-        sudo apt-get install graphviz doxygen
+        sudo apt-get update
+        sudo apt-get install -y graphviz doxygen
 
     - name: doxygen
       run: |
@@ -29,25 +30,38 @@ jobs:
         python-version: "3.10"
 
     - name: build splinepy linux
-      run: pip install ".[test]" -v --config-settings=cmake.args=-DSPLINEPY_MORE=OFF
-
-    - name: test
-      run: |
-        pytest
-
+      run: pip install ".[gustaf,viewer]" -v
 
     - name: sphinx
       run: |
         pip install -r ./docs/requirements.txt
         python docs/source/handle_markdown.py
         python docs/markdown/extra_docs.py
-        sphinx-build -W -b html docs/source docs/build
+        sphinx-build -W --keep-going -b html docs/source docs/build
 
-    - name: deploy docs only if it is pushed to main
-      uses: peaceiris/actions-gh-pages@v4
-      if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    - name: Upload built docs
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: actions/upload-artifact@v4
       with:
-        #publish_branch: gh-pages
+        name: html-docs
+        path: docs/build
+        if-no-files-found: error
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: minimal_explicit_build_and_docs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        name: html-docs
+        path: docs/build
+
+    - name: Deploy docs
+      uses: peaceiris/actions-gh-pages@v4
+      with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         publish_dir: ./docs/build
         force_orphan: true

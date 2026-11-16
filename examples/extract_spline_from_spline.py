@@ -1,5 +1,3 @@
-import gustaf as gus
-
 import splinepy
 
 if __name__ == "__main__":
@@ -20,7 +18,7 @@ if __name__ == "__main__":
     # extract line by specifying ranges
     line = s_nurbs.extract.spline({0: [0.4, 0.8], 1: 0.7})
 
-    gus.show(
+    splinepy.show(
         ["Source spline", s_nurbs],
         ["extract.spline({0: [0.4, 0.8], 1: 0.7})", line, s_nurbs],
         ["Extracted spline", line],

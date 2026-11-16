@@ -23,3 +23,12 @@ docs/source/_generated
 
 #
 examples/not_upload/
+
+# Virtual environments
+.venv*
+
+# Test data binary cache
+tests/data/golden/
+
+# editor swap files
+*.swp

@@ -3,7 +3,9 @@
 Freeform Deformation!
 """
 
-import gustaf as _gus
+from copy import deepcopy as _deepcopy
+
+import numpy as _np
 
 from splinepy import settings as _settings
 from splinepy._base import SplinepyBase as _SplinepyBase
@@ -11,39 +13,78 @@ from splinepy.helpme.create import from_bounds as _from_bounds
 from splinepy.spline import Spline as _Spline
 
 
-def _rescaled_vertices(vertices, scale, offset):
-    return (vertices * (1 / scale)) + offset
+def _vertices(mesh):
+    """Get the vertex coordinates from an FFD input.
+
+    Parameters
+    ----------
+    mesh : array-like, dict or gustaf.Vertices
+        Vertex coordinates or a mesh containing them.
+
+    Returns
+    -------
+    vertices : array-like
+        Vertex coordinates, without copying or conversion.
+    """
+    if isinstance(mesh, dict):
+        return mesh["vertices"]
+    return getattr(mesh, "vertices", mesh)
 
 
-def _spline_para_dim_and_mesh_dim_matches(spline, mesh):
-    return spline.para_dim == mesh.vertices.shape[1]
+def _as_gustaf(mesh):
+    """Convert native geometry for the Gustaf visualization path.
+
+    Parameters
+    ----------
+    mesh : numpy.ndarray, dict or gustaf.Vertices
+        Vertex coordinates, a mesh dictionary, or a Gustaf mesh.
+
+    Returns
+    -------
+    mesh : gustaf.Vertices
+        A Gustaf mesh of the corresponding type. Existing Gustaf meshes
+        are returned directly.
+    """
+    import gustaf as _gus
+
+    if isinstance(mesh, _np.ndarray):
+        return _gus.Vertices(mesh)
+    if not isinstance(mesh, dict):
+        return mesh
+    mesh_type = mesh["element_type"]
+    if mesh_type == "vertex":
+        result = _gus.Vertices(mesh["vertices"])
+    else:
+        cls = {
+            "line": _gus.Edges,
+            "triangle": _gus.Faces,
+            "quad": _gus.Faces,
+            "tet": _gus.Volumes,
+            "hexa": _gus.Volumes,
+        }[mesh_type]
+        result = cls(mesh["vertices"], mesh["connectivity"])
+    for key, values in mesh.get("vertex_data", {}).items():
+        result.vertex_data[key] = values
+    return result
 
 
 class FFD(_SplinepyBase):
     """
-    Free-form deformation is a method used to deform an object by a
-    deformation function. In our case the object is given via a mesh, the
-    currently supported mesh-types are gustaf.Vertices and its subclasses,
-    and the deformations function by a spline, supported splines are
-    splinepy.Spline and its subclasses.
-    The splines parametric dimension will be scaled in to a unit-hypercube
-    as well as the original meshes vertices.
-
-    The FFD class provides functions to modify the spline by completely
-    overwriting the spline whole spline or parts of it. To obtain the
-    deformed mesh mapped into the latest spline, retrieve the mesh
-    attribute.
+    Deform vertices by mapping their bounding box into a spline's
+    parametric space. Edit or replace the spline, then read :attr:`mesh`
+    to obtain the deformed geometry.
 
     Parameters
     ----------
-    mesh: gustaf.Vertices
-      Mesh used in the FFD. Defaults to None.
+    mesh: array-like, dict or gustaf.Vertices
+      An (n, dim) vertex array, a mesh dict as created by
+      :func:`splinepy.viewer.mesh.make_mesh`, or a Gustaf mesh.
+      Defaults to None.
     spline: splinepy.Spline
       Spline used in the FFD. Defaults to None.
     padding: float
-      Padding factor to scale mesh into spline's parametric space.
-      Ideally, this should be 0, but to avoid floating point issues during
-      evaluation, we apply default settings.TOLERANCE
+      Amount added on each side of the vertex bounds before normalization.
+      Defaults to settings.TOLERANCE.
 
     Returns
     -------
@@ -56,12 +97,26 @@ class FFD(_SplinepyBase):
         spline=None,
         padding=None,
     ):
+        """Initialize free-form deformation.
+
+        Parameters
+        ----------
+        mesh : array-like, dict or gustaf.Vertices, optional
+            Geometry to deform.
+        spline : splinepy.Spline, optional
+            Deformation spline. When omitted, a mesh defines a default spline.
+        padding : float, optional
+            Amount added on each side of the vertex bounds. Defaults to
+            settings.TOLERANCE.
+
+        Returns
+        -------
+        None
+        """
         # init variables
         self._mesh = None
         self._spline = None
         self._q_vertices = None
-        self._q_scale = None
-        self._q_offset = None
 
         # use setters for attr
         self.padding = _settings.TOLERANCE if padding is None else padding
@@ -72,110 +127,102 @@ class FFD(_SplinepyBase):
 
     @property
     def mesh(self):
-        """Returns copy of current mesh. Before copying, it applies
-        deformation.
+        """Return deformed geometry in the input format.
+
+        Parameters
+        ----------
+        None
 
         Returns
         -------
-        current_mesh: gustaf.Vertices or derived
-            Current Mesh with the deformation according to the current spline.
+        mesh : numpy.ndarray, dict or gustaf.Vertices
+            Deformed vertices in the input format. Mesh dictionaries and
+            Gustaf meshes retain their connectivity.
         """
-        # is there mesh?
         if self._mesh is None:
             raise ValueError("Please set mesh first.")
+        if self._spline is None:
+            raise ValueError("Please set spline first.")
 
-        # evaluate new vertices
-        current_mesh = type(self._mesh)(
-            vertices=self._spline.evaluate(self._q_vertices)
-        )
+        vertices = self._spline.evaluate(self._q_vertices)
+        if isinstance(self._mesh, _np.ndarray):
+            return vertices
+        if isinstance(self._mesh, dict):
+            result = _deepcopy(self._mesh)
+            result["vertices"] = vertices
+            return result
 
-        # apply connectivity if applicable
+        result = type(self._mesh)(vertices=vertices)
         if hasattr(self._mesh, "elements"):
-            current_mesh.elements = self._mesh.elements.copy()
-
-        return current_mesh
+            result.elements = self._mesh.elements.copy()
+        return result
 
     @mesh.setter
     def mesh(self, mesh):
-        """Sets mesh. If it is first time, the copy of it will be saved as
-        original mesh. If spline is already defined and in transformed status,
-        it applies transformation directly.
+        """Snapshot the mesh and fit its vertices to the spline's domain.
 
         Parameters
-        -----------
-        mesh: gustaf.Vertices
-            Mesh used for the FFD
+        ----------
+        mesh : array-like, dict, gustaf.Vertices or None
+            Geometry to deform. Use None to clear the mesh.
 
         Returns
-        --------
+        -------
         None
         """
         if mesh is None:
             self._mesh = None
             self._q_vertices = None
-            self._q_offset = None
-            self._q_scale = None
-            return None
+            return
 
-        # type check
-        if not isinstance(mesh, _gus.Vertices):
-            raise TypeError("mesh should be an instance of gus.Vertices")
-
-        # warn and erase existing spline if dimension doesn't match
+        vertices = _np.asarray(_vertices(mesh), dtype=float)
         if (
-            self._spline is not None
-            and not _spline_para_dim_and_mesh_dim_matches(self._spline, mesh)
+            vertices.ndim != 2
+            or not all(vertices.shape)
+            or not _np.isfinite(vertices).all()
         ):
-            self._logw(
-                "Mismatch between mesh vertices' dim and set spline's",
-                "para_dim.",
-                "Deleting existing spline",
-            )
+            raise ValueError("Mesh vertices must be a nonempty, finite (n, dim) array.")
 
+        if isinstance(mesh, dict):
+            from splinepy.viewer.mesh import make_mesh
+
+            mesh = _deepcopy(
+                make_mesh(
+                    mesh["element_type"],
+                    vertices,
+                    mesh.get("connectivity"),
+                    mesh.get("vertex_data"),
+                )
+            )
+        elif hasattr(mesh, "vertices"):
+            from gustaf import Vertices
+
+            if not isinstance(mesh, Vertices):
+                raise TypeError("Pass a vertex array, mesh dict, or Gustaf mesh.")
+            mesh = mesh.copy()
+        else:
+            mesh = vertices.copy()
+
+        dim = vertices.shape[1]
+        if self._spline is not None and self._spline.para_dim != dim:
+            self._logw(
+                "Mismatch between mesh vertices' dim and set spline's "
+                "para_dim. Replacing existing spline."
+            )
             self._spline = None
 
-        # create a spline if there isn't one
+        bounds = _np.stack((vertices.min(axis=0), vertices.max(axis=0)))
         if self._spline is None:
-            # Define a default spline if mesh is given but no spline
-            par_dim = mesh.vertices.shape[1]
-            # try to expand bounds same ratio as
-            bounds = mesh.bounds().copy()
-            self.spline = _from_bounds([[0] * par_dim, [1] * par_dim], bounds)
-            self._logd("created default spline")
+            self._spline = _from_bounds([[0] * dim, [1] * dim], bounds)
 
-        self._logd("Setting mesh.")
-        self._logd("Mesh Info:")
-        self._logd(f"  Vertices: {mesh.vertices.shape}.")
-        self._logd(f"  Bounds: {mesh.bounds()}.")
-
-        # keep original copy
-        self._mesh = mesh.copy()
-
-        self._logd("Fitting mesh into spline's parametric space.")
-
-        self._q_vertices = self._mesh.vertices.copy()
-
-        # get mesh bound to scale
-        scaling_bounds = self._mesh.bounds().copy()
-
-        # apply padding
-        scaling_bounds[0] -= self.padding
-        scaling_bounds[1] += self.padding
-
-        # save mesh offset and scale
-        self._q_offset = scaling_bounds[0]
-        self._q_scale = 1 / (scaling_bounds[1] - scaling_bounds[0])
-
-        # scale and offset vertices coordinates
-        self._q_vertices -= self._q_offset
-        self._q_vertices *= self._q_scale
-
-        self._logd("Successfully scaled mesh vertices!")
+        self._mesh = mesh
+        self._q_vertices = (vertices - bounds[0] + self.padding) / (
+            bounds[1] - bounds[0] + 2 * self.padding
+        )
 
     @property
     def spline(self):
-        """Returns a copy of the spline. Please use the setter to explicitly
-        make changes to the spline.
+        """Get the current deformation spline.
 
         Parameters
         -----------
@@ -183,7 +230,8 @@ class FFD(_SplinepyBase):
 
         Returns
         --------
-        self._spline: Spline
+        spline : splinepy.Spline or None
+            Stored spline. Editing it in place changes the deformation.
         """
         return self._spline
 
@@ -194,8 +242,8 @@ class FFD(_SplinepyBase):
 
         Parameters
         -----------
-        spline: Spline
-            New Spline for the next deformation
+        spline : splinepy.Spline or None
+            Spline to copy and use for deformation. Use None to clear it.
 
         Returns
         --------
@@ -212,7 +260,7 @@ class FFD(_SplinepyBase):
 
         if (
             self._mesh is not None
-            and not _spline_para_dim_and_mesh_dim_matches(spline, self._mesh)
+            and spline.para_dim != _vertices(self._mesh).shape[1]
         ):
             raise ValueError(
                 "Spline's para_dim should match mesh vertices' dim."
@@ -228,8 +276,7 @@ class FFD(_SplinepyBase):
     @property
     def padding(self):
         """
-        Padding ratio for fitting mesh inside spline's parametric dimension.
-        It should be a positive number.
+        Get the padding applied to the vertex bounds.
 
         Parameters
         ----------
@@ -237,14 +284,24 @@ class FFD(_SplinepyBase):
 
         Returns
         -------
-        padding: float
+        padding : float
+            Amount added on each side of the vertex bounds.
         """
         return self._padding
 
     @padding.setter
     def padding(self, padding):
-        """
-        Padding Setter.
+        """Set the padding and recompute normalized vertex coordinates.
+
+        Parameters
+        ----------
+        padding : float
+            Amount added on each side of the vertex bounds. Must be at least
+            settings.TOLERANCE.
+
+        Returns
+        -------
+        None
         """
         if padding < 0:
             raise ValueError("Padding should be a positive number.")
@@ -252,7 +309,7 @@ class FFD(_SplinepyBase):
         if padding < _settings.TOLERANCE:
             raise ValueError(
                 "Padding is too small - "
-                "should be bigger than the tolerance ({settings.TOLERANCE})."
+                f"should be at least the tolerance ({_settings.TOLERANCE})."
             )
 
         self._padding = padding
@@ -262,13 +319,17 @@ class FFD(_SplinepyBase):
             self.mesh = self._mesh
 
     def show(self, **kwargs):
-        """Visualize. Shows the deformed mesh and the current spline. Currently
-        visualization is limited to vedo.
+        """Show the original mesh, spline, and deformed mesh.
+
+        Uses the configured visualization backend unless overridden with
+        ``backend``.
 
         Parameters
         ----------
-        title: str
-            Title of the vedo window. Defaults to "gustaf - FFD".
+        backend : str, optional
+            Visualization backend. Defaults to settings.SHOW_BACKEND.
+        title : str, optional
+            Viewer title. Defaults to "FFD".
         return_showable: bool
             If true returns a dict of the showable items. Defaults to False.
         return_gustaf: bool
@@ -276,18 +337,19 @@ class FFD(_SplinepyBase):
             {Vertices, Edges, Faces}, instead of opening a window.
             Defaults to False.
         kwargs: Any
-            Arbitrary keyword arguments. These are passed onto the vedo
-            functions. Please be aware, that no checking of these are performed
-            in this function.
+            Arbitrary keyword arguments. Passed to the selected visualization backend.
 
         Returns
         -------
-        Any:
-            Returns, if applicable, the vedo plotter. 'close=False' as argument
-            to get the plotter.
+        viewer : Viewer, vedo.Plotter, dict or None
+            Viewer for the default backend, plotter when vedo runs with
+            close=False, or a dict when return_gustaf or return_showable is set.
+            The vedo backend may otherwise return None.
         """
-        if self._spline is None and self._mesh is None:
-            raise ValueError("Please set a mesh before calling show()")
+        if self._spline is None or self._mesh is None:
+            raise ValueError(
+                "Please set both a mesh and a spline before visualizing FFD."
+            )
         return_showable = kwargs.pop("return_showable", False)
         return_gustaf = kwargs.pop("return_gustaf", False)
         title = kwargs.pop("title", "FFD")
@@ -299,19 +361,31 @@ class FFD(_SplinepyBase):
                 "You've set both True."
             )
 
-        things_to_show = self.showable(**kwargs)
+        if return_gustaf:
+            return self.showable(return_gustaf=True)
+        if return_showable:
+            kwargs.pop("backend", None)
+            return self.showable(**kwargs)
 
-        if return_gustaf or return_showable:
-            return things_to_show
+        from splinepy.helpme import visualize as _visualize
 
-        return _gus.show(
-            ["Original Mesh", things_to_show["original_mesh"]],
+        backend = kwargs.get("backend") or _settings.SHOW_BACKEND
+        if backend == "vedo":
+            items = self.showable(return_gustaf=True)
+            original, spline, deformed = (
+                items["original_mesh"], items["spline"], items["mesh"]
+            )
+        else:
+            original, spline, deformed = self._mesh, self._spline, self.mesh
+
+        return _visualize.show(
+            ["Original Mesh", original],
             [
                 "Spline and Mesh",
-                *things_to_show["spline"].values(),
-                things_to_show["mesh"],
+                spline,
+                deformed,
             ],
-            ["Deformed Mesh", things_to_show["mesh"]],
+            ["Deformed Mesh", deformed],
             title=title,
             **kwargs,
         )
@@ -320,18 +394,35 @@ class FFD(_SplinepyBase):
         """Returns a dictionary of showable items to describe the FFD at the
         current state.
 
-        See show() for more information. This function redirects to it
-        directly with the return_showable keyword set to True.
-        """
-        if self._spline is None and self._mesh is None:
-            raise ValueError("Please set a mesh before calling show()")
+        Uses the optional Gustaf/vedo visualization path.
 
-        return_gustaf = kwargs.get("return_gustaf", False)
+        Parameters
+        ----------
+        return_gustaf : bool, optional
+            Return the geometry before conversion to backend objects.
+            Defaults to False.
+        **kwargs
+            Options forwarded to each item's showable method.
+
+        Returns
+        -------
+        items : dict
+            Original mesh, deformation spline, and deformed mesh under the
+            keys original_mesh, spline, and mesh.
+        """
+        if self._spline is None or self._mesh is None:
+            raise ValueError(
+                "Please set both a mesh and a spline before visualizing FFD."
+            )
+
+        import gustaf as _gus
+
+        return_gustaf = kwargs.pop("return_gustaf", False)
 
         things_to_show = {}
 
         # let's show faces at most, since volumes can take awhile
-        mesh = self._mesh
+        mesh = _as_gustaf(self._mesh)
         if mesh.kind == "volume":
             mesh = _gus.Faces(
                 mesh.const_vertices,
@@ -346,7 +437,7 @@ class FFD(_SplinepyBase):
         things_to_show["spline"] = self._spline
 
         # deformed mesh
-        deformed = self.mesh
+        deformed = _as_gustaf(self.mesh)
         things_to_show["mesh"] = deformed
 
         if return_gustaf:

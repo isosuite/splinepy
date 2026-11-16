@@ -18,8 +18,7 @@ SORT_MEMBERS_CTORS_1ST = YES
 WARNINGS               = YES
 WARN_NO_PARAMDOC       = YES
 WARN_LOGFILE           = doxygen_warnings.txt
-INPUT                  = ../include/splinepy \
-                         ../src \
+INPUT                  = ../src \
                          ./markdown/cpp_readme.md
 RECURSIVE              = YES
 EXCLUDE_PATTERNS       = */tests/* \
@@ -29,7 +28,6 @@ EXCLUDE_PATTERNS       = */tests/* \
                          */docs/* \
                          */bin/* \
                          */examples/* \
-                         */third_party/* \
                          *.dox
 EXAMPLE_RECURSIVE      = YES
 USE_MDFILE_AS_MAINPAGE = ./markdown/cpp_readme.md

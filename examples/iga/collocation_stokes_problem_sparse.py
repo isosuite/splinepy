@@ -4,9 +4,16 @@ This file implements a stokes test case based on the example stated in
 chapter 6.8.1 example with analytical solution.
 """
 
-import matplotlib.pyplot as plt
 import numpy as np
-from scipy.sparse import bmat, linalg
+
+try:
+    import matplotlib.pyplot as plt
+    from scipy.sparse import bmat, linalg
+except ImportError:
+    print("matplotlib and scipy are required for this example. Skipping.")
+    import sys
+
+    sys.exit(0)
 
 import splinepy as sp
 

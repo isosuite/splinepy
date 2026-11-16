@@ -38,6 +38,7 @@ def load(fname, expand_tabs=True, strip_comments=False):
 
     # Delete lines not containing brackets in the beginning
     def extract_relevant_text(lines):
+        """Extract the spline entries from an IRIT block."""
         if strip_comments:
             return " ".join(
                 [

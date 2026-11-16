@@ -24,12 +24,18 @@ def valid_queries(spline, queries):
     """
     bounds = spline.parametric_bounds
     # Check dimensions
+    queries = _np.asarray(queries)
+    if queries.ndim != 2:
+        raise ValueError("Queries must be a two-dimensional array.")
     if bounds.shape[1] != queries.shape[1]:
         raise ValueError(
             f"Dimension mismatch between parametric dimension of "
             f"spline ({spline.para_dim}), and query-request "
             f"({queries.shape[1]})."
         )
+
+    if not len(queries):
+        return True
 
     # Check minimum value
     min_query = _np.min(queries, axis=0)
@@ -63,12 +69,16 @@ def clamped_knot_vectors(spline, warning=True):
     If spline doesn't have enough information, this will return None.
 
     Parameters
-    ---------
-    spline: Spline
+    ----------
+    spline : Spline
+        Spline whose knot vectors are checked.
+    warning : bool, optional
+        Log a warning if a knot vector is not clamped.
 
     Returns
     -------
-    is_clamped: bool
+    is_clamped : bool or None
+        Whether all knot vectors are clamped, or None if data is missing.
     """
     if not spline.has_knot_vectors:
         return True

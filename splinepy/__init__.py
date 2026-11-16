@@ -1,5 +1,3 @@
-from gustaf import show  # shortcut for frequently used module / func
-
 from splinepy import (
     bezier,
     bspline,
@@ -18,6 +16,9 @@ from splinepy._version import __version__
 from splinepy.bezier import Bezier
 from splinepy.bspline import BSpline
 from splinepy.helpme.ffd import FFD
+from splinepy.helpme.visualize import show  # shortcut for visualization
+from splinepy.hierarchy import HBSpline, RationalHBSpline, RationalTHBSpline, THBSpline
+from splinepy.knot_vector import KnotVector
 from splinepy.microstructure.microstructure import Microstructure
 from splinepy.multipatch import Multipatch
 from splinepy.nurbs import NURBS
@@ -53,6 +54,7 @@ def to_derived(spline):
 
 
 __all__ = [
+    "KnotVector",
     "__version__",
     "bezier",
     "bspline",
@@ -70,6 +72,10 @@ __all__ = [
     "BSpline",
     "Multipatch",
     "NURBS",
+    "HBSpline",
+    "RationalHBSpline",
+    "THBSpline",
+    "RationalTHBSpline",
     "RationalBezier",
     "Spline",
     "SplineDataAdaptor",
