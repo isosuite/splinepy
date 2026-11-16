@@ -22,4 +22,9 @@ SplineBatchData InsertKnots(SplineBatchView batch,
                             Span<const double> knots_to_insert,
                             const Options& options = {});
 
+/// Insert equally spaced knots into every nonzero span on every axis.
+SplineBatchData UniformRefine(SplineBatchView batch,
+                              int32_t knots_per_span,
+                              const Options& options = {});
+
 } // namespace splinepy::core

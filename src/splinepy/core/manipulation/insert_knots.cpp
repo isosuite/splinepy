@@ -185,6 +185,26 @@ SplineData InsertKnotsWithArena(MemoryArena& arena,
   return result;
 }
 
+template<typename Kernel>
+SplineBatchData
+RefineBatch(SplineBatchView batch, const Options& options, Kernel kernel) {
+  SplineBatchData result(batch.size());
+  const int nthreads = std::max(options.nthreads, 1);
+  Workspace local_workspace(16 * 1024, nthreads);
+  Workspace* workspace =
+      options.workspace != nullptr ? options.workspace : &local_workspace;
+  workspace->GetThreadArena(nthreads - 1);
+
+  ParallelForWithThreadId(
+      static_cast<int64_t>(0),
+      static_cast<int64_t>(batch.size()),
+      nthreads,
+      [&](int64_t i, int thread_id) {
+        result[i] = kernel(workspace->GetThreadArena(thread_id), batch[i]);
+      });
+  return result;
+}
+
 } // namespace
 
 SplineData InsertKnots(const SplineView& spline,
@@ -203,27 +223,65 @@ SplineBatchData InsertKnots(SplineBatchView batch,
                             int32_t axis,
                             Span<const double> knots_to_insert,
                             const Options& options) {
-  SplineBatchData result(batch.size());
+  return RefineBatch(batch, options, [&](auto& arena, const auto& spline) {
+    return InsertKnotsWithArena(arena, spline, axis, knots_to_insert, options);
+  });
+}
 
-  // One arena per worker; created up front so workers never grow the pool.
-  const int nthreads = std::max(options.nthreads, 1);
-  Workspace local_workspace(16 * 1024, nthreads);
-  Workspace* ws =
-      options.workspace != nullptr ? options.workspace : &local_workspace;
-  ws->GetThreadArena(nthreads - 1);
+SplineBatchData UniformRefine(SplineBatchView batch,
+                              int32_t knots_per_span,
+                              const Options& options) {
+  if (knots_per_span < 0) {
+    throw std::invalid_argument("Knots per span must be non-negative.");
+  }
+  Options insertion_options = options;
+  insertion_options.validate = false;
 
-  ParallelForWithThreadId(static_cast<int64_t>(0),
-                          static_cast<int64_t>(batch.size()),
-                          nthreads,
-                          [&](int64_t i, int thread_id) {
-                            result[i] = InsertKnotsWithArena(
-                                ws->GetThreadArena(thread_id),
-                                batch[i],
-                                axis,
-                                knots_to_insert,
-                                options);
-                          });
-  return result;
+  return RefineBatch(batch, options, [&](auto& arena, const auto& spline) {
+    if (options.validate) {
+      ThrowIfInvalid(spline, options);
+    }
+    if (knots_per_span == 0) {
+      return SplineData::FromView(spline);
+    }
+    if (!spline.HasKnotVectors()) {
+      throw std::invalid_argument(
+          "Uniform refinement requires patches with knot vectors.");
+    }
+
+    SplineData result;
+    std::vector<double> knots;
+    for (int32_t axis = 0; axis < spline.para_dim; ++axis) {
+      knots.clear();
+      const auto current = spline.knot_vectors[axis];
+      const auto degree = static_cast<std::size_t>(spline.degrees[axis]);
+      for (auto span = degree; span + 1 < current.size() - degree; ++span) {
+        const double lower = current[span];
+        const double upper = current[span + 1];
+        if (lower == upper) {
+          continue;
+        }
+        double previous = lower;
+        for (int32_t i = 0; i < knots_per_span; ++i) {
+          const double fraction = (i + 1.) / (knots_per_span + 1.);
+          const double knot = (1. - fraction) * lower + fraction * upper;
+          if (!(previous < knot && knot < upper)) {
+            throw std::invalid_argument(
+                "Knot span is too narrow for the requested subdivision.");
+          }
+          knots.push_back(knot);
+          previous = knot;
+        }
+      }
+      const auto input = axis == 0 ? spline : result.ToView();
+      result = InsertKnotsWithArena(arena,
+                                    input,
+                                    axis,
+                                    {knots.data(), knots.size()},
+                                    insertion_options);
+    }
+    return result;
+  });
 }
 
 } // namespace splinepy::core

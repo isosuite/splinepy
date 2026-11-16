@@ -25,7 +25,8 @@ Buffer<double> Evaluate(const SplineView& spline,
 /// queries_per_spline: Span of query Spans, each having size (n_queries_i *
 /// spline_i.para_dim). If queries_per_spline has size 1 and batch has size > 1,
 /// the single query set is broadcast. out_per_spline: Span of output Spans,
-/// each having size (n_queries_i * spline_i.dim).
+/// each having size (n_queries_i * spline_i.dim). Output spans must not
+/// overlap.
 void Evaluate(SplineBatchView batch,
               Span<const Span<const double>> queries_per_spline,
               Span<Span<double>> out_per_spline,

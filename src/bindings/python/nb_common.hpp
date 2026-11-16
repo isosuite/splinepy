@@ -139,8 +139,10 @@ template<typename T>
 class OutArray {
 public:
   OutArray(const nb::object& out, std::initializer_list<size_t> shape)
-      : shape_(shape) {
-    size_ = ArraySize(shape_);
+      : OutArray(out, {shape.begin(), shape.size()}) {}
+
+  OutArray(const nb::object& out, splinepy::core::Span<const size_t> shape)
+      : size_(ArraySize(shape)) {
 
     if (!out.is_none()) {
       nb::ndarray<T, nb::c_contig, nb::device::cpu> array;
@@ -148,14 +150,14 @@ public:
         throw std::invalid_argument("out must be a writable, C-contiguous "
                                     "numpy array of the dtype of the result.");
       }
-      bool matches = array.ndim() == shape_.size();
-      for (size_t i = 0; matches && i < shape_.size(); ++i) {
-        matches = array.shape(i) == shape_[i];
+      bool matches = array.ndim() == shape.size();
+      for (size_t i = 0; matches && i < shape.size(); ++i) {
+        matches = array.shape(i) == shape[i];
       }
       if (!matches) {
         std::string expected;
-        for (size_t i = 0; i < shape_.size(); ++i) {
-          expected += (i ? ", " : "") + std::to_string(shape_[i]);
+        for (size_t i = 0; i < shape.size(); ++i) {
+          expected += (i ? ", " : "") + std::to_string(shape[i]);
         }
         throw std::invalid_argument("out has the wrong shape, expected ("
                                     + expected + ").");
@@ -165,7 +167,7 @@ public:
       return;
     }
 
-    auto result = AllocateNumPyArray<T>(shape_);
+    auto result = AllocateNumPyArray<T>(shape);
     ptr_ = result.data();
     result_ = nb::cast(result);
   }
@@ -175,7 +177,6 @@ public:
   nb::object result() const { return result_; }
 
 private:
-  std::vector<size_t> shape_;
   size_t size_{1};
   T* ptr_{nullptr};
   nb::object result_;

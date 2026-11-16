@@ -1,5 +1,8 @@
 #pragma once
 
+#include <array>
+#include <vector>
+
 #include "splinepy/core/common.hpp"
 #include "splinepy/core/memory/buffer.hpp"
 #include "splinepy/core/memory/span.hpp"
@@ -29,5 +32,14 @@ Buffer<int32_t> InterfaceOrientations(const SplineBatchView& patches,
                                       Span<const int32_t> interfaces,
                                       double tolerance = 1e-4,
                                       const Options& options = {});
+
+using SeamPoint = std::array<int64_t, 2>;
+
+/// Groups of coincident control points on conforming oriented interfaces.
+std::vector<std::vector<SeamPoint>>
+SeamControlPoints(SplineBatchView patches,
+                  Span<const int32_t> interfaces,
+                  Span<const int32_t> orientations,
+                  double tolerance);
 
 } // namespace splinepy::core
