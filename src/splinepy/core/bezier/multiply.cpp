@@ -4,10 +4,10 @@
 #include <cassert>
 #include <cmath>
 #include <stdexcept>
-#include <vector>
 
 #include "splinepy/core/math/binomial.hpp"
 #include "splinepy/core/memory/workspace.hpp"
+#include "splinepy/core/model/grid.hpp"
 #include "splinepy/core/validate/validator.hpp"
 
 namespace splinepy::core {
@@ -18,16 +18,17 @@ namespace detail {
 /// F(i, j) = prod_d C(m_d, i_d) C(n_d, j_d) / C(m_d + n_d, i_d + j_d).
 /// The first parametric dimension is contiguous in memory and runs in the
 /// innermost loop, everything else is enumerated by the two outer loops.
-Buffer<double> MultiplyPolynomialCps(MemoryArena& arena,
-                                     int32_t para_dim,
-                                     Span<const int32_t> deg_a,
-                                     Span<const int32_t> deg_b,
-                                     const double* cps_a,
-                                     int32_t dim_a,
-                                     const double* cps_b,
-                                     int32_t dim_b,
-                                     int32_t res_dim,
-                                     bool is_dot_product) {
+void MultiplyPolynomialCps(MemoryArena& arena,
+                           int32_t para_dim,
+                           Span<const int32_t> deg_a,
+                           Span<const int32_t> deg_b,
+                           const double* cps_a,
+                           int32_t dim_a,
+                           const double* cps_b,
+                           int32_t dim_b,
+                           int32_t res_dim,
+                           bool is_dot_product,
+                           double* out) {
   auto scope = arena.CreateScope();
   const std::size_t P = static_cast<std::size_t>(para_dim);
   const std::size_t n_outer_dims = P - 1;
@@ -38,14 +39,10 @@ Buffer<double> MultiplyPolynomialCps(MemoryArena& arena,
     table_size += static_cast<std::size_t>(deg_a[d] + 1) * (deg_b[d] + 1);
   }
   Span<double> tables = arena.AllocateSpan<double>(table_size);
-  Span<int64_t> strides = arena.AllocateSpan<int64_t>(3 * P); // a, b, result
-  Span<int64_t> a_strides = strides.subspan(0, P);
-  Span<int64_t> b_strides = strides.subspan(P, P);
-  Span<int64_t> r_strides = strides.subspan(2 * P, P);
-  std::size_t table_offset = 0;
-  Span<Span<double>> table_of = arena.AllocateSpan<Span<double>>(P);
+  AxisArray<Span<double>> table_of;
+  table_of.resize(P);
   auto table = [&](std::size_t d) -> Span<double>& { return table_of[d]; };
-  int64_t a_total = 1, b_total = 1;
+  std::size_t table_offset = 0;
   for (std::size_t d = 0; d < P; ++d) {
     const int32_t m = deg_a[d];
     const int32_t n = deg_b[d];
@@ -59,20 +56,18 @@ Buffer<double> MultiplyPolynomialCps(MemoryArena& arena,
             (denom != 0.0) ? (Binomial(m, i) * Binomial(n, j) / denom) : 0.0;
       }
     }
-    a_strides[d] = a_total;
-    b_strides[d] = b_total;
-    r_strides[d] =
-        (d == 0) ? 1 : r_strides[d - 1] * (deg_a[d - 1] + deg_b[d - 1] + 1);
-    a_total *= m + 1;
-    b_total *= n + 1;
   }
-  const int64_t total_out_cps =
-      r_strides[P - 1] * (deg_a[P - 1] + deg_b[P - 1] + 1);
-  Buffer<double> out_cps(total_out_cps * res_dim, 0.0);
+  const Grid a_grid = SupportGrid(deg_a);
+  const Grid b_grid = SupportGrid(deg_b);
+  const Grid r_grid =
+      Grid::Of(para_dim, [&](int32_t d) { return deg_a[d] + deg_b[d] + 1; });
+  const auto& r_strides = r_grid.stride;
+  const int64_t total_out_cps = r_grid.size;
+  std::fill_n(out, total_out_cps * res_dim, 0.0);
 
   // all index combinations of the dimensions 1 ... P - 1, for a and b
-  const int64_t n_a_outer = a_total / (deg_a[0] + 1);
-  const int64_t n_b_outer = b_total / (deg_b[0] + 1);
+  const int64_t n_a_outer = a_grid.Lines(0);
+  const int64_t n_b_outer = b_grid.Lines(0);
   Span<int32_t> a_digits =
       arena.AllocateSpan<int32_t>(n_a_outer * n_outer_dims);
   Span<int32_t> b_digits =
@@ -96,13 +91,12 @@ Buffer<double> MultiplyPolynomialCps(MemoryArena& arena,
       offset[k] = off;
     }
   };
-  enumerate(deg_a, a_strides, n_a_outer, a_digits, a_offset);
-  enumerate(deg_b, b_strides, n_b_outer, b_digits, b_offset);
+  enumerate(deg_a, a_grid.stride, n_a_outer, a_digits, a_offset);
+  enumerate(deg_b, b_grid.stride, n_b_outer, b_digits, b_offset);
 
   const int32_t m0 = deg_a[0];
   const int32_t n0 = deg_b[0];
   const double* f0 = table(0).data();
-  double* out = out_cps.data();
   const bool scalar = !is_dot_product && dim_a == 1 && dim_b == 1;
 
   for (int64_t ia = 0; ia < n_a_outer; ++ia) {
@@ -166,8 +160,6 @@ Buffer<double> MultiplyPolynomialCps(MemoryArena& arena,
       }
     }
   }
-
-  return out_cps;
 }
 
 } // namespace detail
@@ -178,12 +170,14 @@ Multiply(const SplineView& a, const SplineView& b, const Options& options) {
     ThrowIfInvalid(a);
     ThrowIfInvalid(b);
     if (a.para_dim != b.para_dim) {
-      throw std::invalid_argument(
-          "Multiply: splines must have identical parametric dimension.");
+      throw SplinepyException(
+          "Multiply: splines must have identical parametric dimension.",
+          Status::kDimensionMismatch);
     }
     if (a.dim != 1 && b.dim != 1 && a.dim != b.dim) {
-      throw std::invalid_argument(
-          "Multiply: splines must be either scalar*vector or dot product.");
+      throw SplinepyException(
+          "Multiply: splines must be either scalar*vector or dot product.",
+          Status::kInvalidArgument);
     }
   }
 
@@ -209,73 +203,77 @@ Multiply(const SplineView& a, const SplineView& b, const Options& options) {
 
   const bool is_rational = a.IsRational() || b.IsRational();
 
-  // Prepare input control points
-  Buffer<double> a_weighted(a.num_control_points * a.dim);
-  Buffer<double> a_weights(a.num_control_points);
-  for (int64_t i = 0; i < a.num_control_points; ++i) {
-    const double w = a.Weight(i);
-    a_weights[i] = w;
-    for (int32_t c = 0; c < a.dim; ++c) {
-      a_weighted[i * a.dim + c] = a.Point(i, c) * (is_rational ? w : 1.0);
-    }
-  }
-
-  Buffer<double> b_weighted(b.num_control_points * b.dim);
-  Buffer<double> b_weights(b.num_control_points);
-  for (int64_t i = 0; i < b.num_control_points; ++i) {
-    const double w = b.Weight(i);
-    b_weights[i] = w;
-    for (int32_t c = 0; c < b.dim; ++c) {
-      b_weighted[i * b.dim + c] = b.Point(i, c) * (is_rational ? w : 1.0);
-    }
-  }
-
   // Scratch of the calling thread (see WorkspaceRef): concurrent callers must
   // not share one options.workspace.
   WorkspaceRef ws_ref(options, 16 * 1024, 1);
   MemoryArena& arena = ws_ref->GetThreadArena(0);
+  auto scope = arena.CreateScope();
 
-  Buffer<double> num_cps = detail::MultiplyPolynomialCps(arena,
-                                                         para_dim,
-                                                         a.degrees,
-                                                         b.degrees,
-                                                         a_weighted.data(),
-                                                         a.dim,
-                                                         b_weighted.data(),
-                                                         b.dim,
-                                                         res_dim,
-                                                         is_dot_product);
+  // homogeneous control points and weights; contiguous polynomial input is
+  // read in place
+  const auto homogeneous =
+      [&](const SplineView& s, const double*& cps, const double*& weights) {
+        weights = nullptr;
+        if (!is_rational && s.IsCpContiguous()) {
+          cps = s.control_points_data;
+          return;
+        }
+        const auto n = static_cast<std::size_t>(s.num_control_points);
+        auto points = arena.AllocateSpan<double>(n * s.dim);
+        auto w = arena.AllocateSpan<double>(is_rational ? n : 0);
+        for (std::size_t i = 0; i < n; ++i) {
+          const double weight = is_rational ? s.Weight(i) : 1.0;
+          if (is_rational) {
+            w[i] = weight;
+          }
+          for (int32_t c = 0; c < s.dim; ++c) {
+            points[i * s.dim + c] = s.Point(i, c) * weight;
+          }
+        }
+        cps = points.data();
+        weights = w.data();
+      };
+  const double *a_cps, *a_weights, *b_cps, *b_weights;
+  homogeneous(a, a_cps, a_weights);
+  homogeneous(b, b_cps, b_weights);
 
+  int64_t n_out = 1;
+  for (int32_t d = 0; d < para_dim; ++d) {
+    n_out *= a.degrees[d] + b.degrees[d] + 1;
+  }
+  result.control_points = Buffer<double>::Uninitialized(n_out * res_dim);
+  detail::MultiplyPolynomialCps(arena,
+                                para_dim,
+                                a.degrees,
+                                b.degrees,
+                                a_cps,
+                                a.dim,
+                                b_cps,
+                                b.dim,
+                                res_dim,
+                                is_dot_product,
+                                result.control_points.data());
   if (is_rational) {
-    Buffer<double> den_cps = detail::MultiplyPolynomialCps(arena,
-                                                           para_dim,
-                                                           a.degrees,
-                                                           b.degrees,
-                                                           a_weights.data(),
-                                                           1,
-                                                           b_weights.data(),
-                                                           1,
-                                                           1,
-                                                           false);
-
-    const int64_t total_out_cps = den_cps.size();
-    result.control_points.resize(total_out_cps * res_dim);
-    result.weights.resize(total_out_cps);
-
-    for (int64_t i = 0; i < total_out_cps; ++i) {
-      const double w = den_cps[i];
+    result.weights = Buffer<double>::Uninitialized(n_out);
+    detail::MultiplyPolynomialCps(arena,
+                                  para_dim,
+                                  a.degrees,
+                                  b.degrees,
+                                  a_weights,
+                                  1,
+                                  b_weights,
+                                  1,
+                                  1,
+                                  false,
+                                  result.weights.data());
+    for (int64_t i = 0; i < n_out; ++i) {
+      const double w = result.weights[i];
       const double inv_w = (w != 0.0) ? (1.0 / w) : 0.0;
-      result.weights[i] = w;
       for (int32_t c = 0; c < res_dim; ++c) {
-        result.control_points[i * res_dim + c] =
-            num_cps[i * res_dim + c] * inv_w;
+        result.control_points[i * res_dim + c] *= inv_w;
       }
     }
-  } else {
-    result.control_points = std::move(num_cps);
-    result.weights.clear();
   }
-
   return result;
 }
 

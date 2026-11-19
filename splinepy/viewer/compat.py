@@ -20,14 +20,15 @@ ALIASES = {
     "arrow_data_color": "arrow_color",
     "arrow_data_to_origin": "arrow_to_origin",
     "knot_c": "knot_color",
-    "knot_lw": None,
-    "knot_alpha": None,
+    "knot_lw": "knot_line_width",
+    "knot_alpha": "knot_opacity",
     "lw": "line_width",
     "control_point_c": "control_point_color",
     "control_point_r": "control_point_size",
     "control_mesh_c": "control_mesh_color",
-    "control_mesh_lw": None,
-    "control_point_alpha": None,
+    "control_mesh_lw": "control_mesh_line_width",
+    "control_mesh_alpha": "control_mesh_opacity",
+    "control_point_alpha": "control_point_opacity",
     "resolution": "resolutions",
     "res": "resolutions",
     "r": "control_point_size",
@@ -43,6 +44,59 @@ IGNORED = {
     "close", "N", "sz", "size", "camera_options",
 }  # fmt: skip
 # These Gustaf and vedo options do not affect the viewer.
+
+
+# vedo / matplotlib one-letter color names
+_LETTERS = {
+    "k": "black", "w": "white", "r": "red", "g": "green", "b": "blue",
+    "c": "cyan", "m": "magenta", "y": "yellow",
+}  # fmt: skip
+
+# Color stops of the colormaps, evenly spaced. viewer.js has the same table.
+COLORMAP_STOPS = {
+    "viridis": ("#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"),
+    "plasma": ("#0d0887", "#7e03a8", "#cc4778", "#f89540", "#f0f921"),
+    "coolwarm": ("#3b4cc0", "#8db0fe", "#dddddd", "#f4987a", "#b40426"),
+    "jet": ("#000080", "#0000ff", "#00ffff", "#ffff00", "#ff0000", "#800000"),
+    "gray": ("#000000", "#ffffff"),
+}
+
+
+def colormap(values, name="viridis", vmin=None, vmax=None, n_colors=None):
+    """Maps values to RGB colors, like the viewer does.
+
+    Parameters
+    ----------
+    values : array-like
+        Scalar values.
+    name : str, optional
+        One of :data:`COLORMAP_STOPS`. Unknown names use viridis.
+    vmin, vmax : float, optional
+        Value range mapped to the ends of the colormap. Default: data range.
+    n_colors : int, optional
+        Number of discrete colors. Default: continuous.
+
+    Returns
+    -------
+    rgb : (n, 3) numpy.ndarray
+        Colors with components in [0, 1].
+    """
+    if name not in COLORMAP_STOPS:
+        _log.warning(f"colormap '{name}' unknown, using viridis.")
+        name = "viridis"
+    values = _np.asarray(values, dtype=float).ravel()
+    lo = values.min() if vmin is None else vmin
+    hi = values.max() if vmax is None else vmax
+    t = _np.clip((values - lo) / (hi - lo if hi > lo else 1.0), 0, 1)
+    if n_colors:
+        t = _np.minimum(_np.floor(t * n_colors), n_colors - 1) / max(n_colors - 1, 1)
+    stops = _np.array(
+        [[int(h[i : i + 2], 16) / 255 for i in (1, 3, 5)] for h in COLORMAP_STOPS[name]]
+    )
+    x = t * (len(stops) - 1)
+    i = _np.minimum(x.astype(int), len(stops) - 2)
+    w = (x - i)[:, None]
+    return stops[i] * (1 - w) + stops[i + 1] * w
 
 
 def to_css(c):
@@ -61,13 +115,34 @@ def to_css(c):
     if isinstance(c, (int, _np.integer)) and not isinstance(c, bool):
         return _INDEXED_COLORS[abs(int(c)) % len(_INDEXED_COLORS)]
     if isinstance(c, str):
-        return c
+        return _LETTERS.get(c, c)
     if isinstance(c, (tuple, list, _np.ndarray)) and len(c) in (3, 4):
         rgb = _np.asarray(c[:3], dtype=float)
         if rgb.max() <= 1:
             rgb = rgb * 255
         return "#" + "".join(f"{int(round(v)):02x}" for v in rgb)
     return None
+
+
+def follow_control_points(options):
+    """Hides control mesh and ids with the control points, unless given.
+
+    Like the vedo backend. Changes and returns ``options``.
+
+    Parameters
+    ----------
+    options : dict
+        Show options, after all of them are combined.
+
+    Returns
+    -------
+    options : dict
+        The same dict.
+    """
+    if not options.get("control_points", True):
+        options.setdefault("control_mesh", False)
+        options.setdefault("control_point_ids", False)
+    return options
 
 
 def translate(kwargs):

@@ -14,10 +14,11 @@ class KnotVector(_np.ndarray):
     """
     One dimensional, non-decreasing array of float64 knots.
 
-    It is a regular :class:`numpy.ndarray` with some knot vector specific
-    helpers. Inplace changes are written to the array itself, so a knot vector
-    returned by a spline modifies the spline. Mutation through item assignment
-    is checked to keep the knots non-decreasing.
+    It is a :class:`numpy.ndarray` with some knot vector specific helpers.
+    The array is read-only: knots change only through item assignment and
+    the methods here, which write in place (so a knot vector returned by a
+    spline modifies the spline) and keep the knots non-decreasing. To edit
+    knots freely, use :meth:`Spline.edit_knot_vectors`.
 
     Parameters
     ----------
@@ -33,19 +34,34 @@ class KnotVector(_np.ndarray):
             arr = arr.copy()
         kv = arr.view(cls)
         kv._check()
+        kv.flags.writeable = False
         return kv
+
+    def _writable(self):
+        """A writable plain view of the knots, for the methods here."""
+        if isinstance(self.base, KnotVector):
+            raise ValueError(
+                "A part of a knot vector cannot be edited; edit the whole "
+                "knot vector, e.g. kv[1:3] = values."
+            )
+        self.flags.writeable = True
+        try:
+            return self.view(_np.ndarray)
+        finally:
+            self.flags.writeable = False
 
     def _check(self):
         if len(self) > 1 and _np.any(_np.diff(_np.asarray(self)) < -_TOLERANCE):
             raise ValueError("Knot vector must be non-decreasing.")
 
     def __setitem__(self, key, value):
-        backup = _np.asarray(self).copy()
-        super().__setitem__(key, value)
+        a = self._writable()
+        backup = a.copy()
+        a[key] = value
         try:
             self._check()
         except ValueError:
-            _np.asarray(self)[:] = backup
+            a[:] = backup
             raise
 
     def numpy(self):
@@ -113,7 +129,7 @@ class KnotVector(_np.ndarray):
         -------
         None
         """
-        a = _np.asarray(self)
+        a = self._writable()
         if len(a) == 0 or minimum >= maximum:
             return None
         current_range = a[-1] - a[0]

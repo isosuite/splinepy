@@ -15,9 +15,9 @@ using std::fabs, std::sqrt, std::copysign;
 
 /* Table of constant values */
 
-const static int c__0 = 0;
-const static int c__1 = 1;
-const static int c__2 = 2;
+static const int c__0 = 0;
+static const int c__1 = 1;
+static const int c__2 = 2;
 
 /* Subroutine */ int slsqp(int* m,
                            int* meq,

@@ -107,8 +107,8 @@ class Multipatch(_SplinepyBase):
     """An ordered collection of spline patches with connectivity and fields.
 
     Assign to :attr:`patches` to replace the patch collection. Always edit
-    attached control points through :meth:`edit_patch_control_points`,
-    :meth:`edit_patches_control_points`, or :meth:`update_patch_control_points`.
+    attached control points through :meth:`edit_patches_control_points` or
+    :meth:`update_patch_control_points`.
     These methods keep cached queries current and propagate changes to shared
     control points across conforming interfaces. Direct edits to an attached
     spline can leave cached results stale or shared control points out of sync.
@@ -757,23 +757,6 @@ class Multipatch(_SplinepyBase):
         edits = {i: _np.array(self._patches[i].control_points) for i in ids}
         yield tuple(edits.values())
         self._update_patch_cps(edits)
-
-    @_contextmanager
-    def edit_patch_control_points(self, patch_id):
-        """Yield a working copy and propagate seam edits on clean exit.
-
-        Parameters
-        ----------
-        patch_id : int
-            Index of the patch to edit.
-
-        Returns
-        -------
-        editor : context manager
-            Context manager yielding a writable control point array.
-        """
-        with self.edit_patches_control_points([patch_id]) as (points,):
-            yield points
 
     def control_point_offsets(self):
         """

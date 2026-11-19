@@ -2,6 +2,7 @@
 
 #include "splinepy/core/hierarchy/key.hpp"
 #include "splinepy/core/memory/buffer.hpp"
+#include "splinepy/core/model/spline_view.hpp"
 #include "splinepy/core/options.hpp"
 
 namespace splinepy::core {
@@ -16,6 +17,17 @@ struct HierarchyView {
   KeyFormat key_format{KeyFormat::kKey64};
   bool truncate{true};
 };
+
+/// A hierarchical (HB or THB) spline: the tensor part holds the level-zero
+/// degrees and knots plus the geometry of the active functions, the
+/// hierarchy part the levels, leaves and active functions over it. Tensor
+/// kernels take only the tensor part, so they never see a hierarchy.
+struct HierarchicalSplineView {
+  SplineView tensor;
+  HierarchyView hierarchy;
+};
+
+using HierarchicalBatchView = Span<const HierarchicalSplineView>;
 
 struct HierarchyData {
   Buffer<Buffer<Buffer<double>>> level_knots;

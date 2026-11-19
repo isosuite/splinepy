@@ -108,7 +108,7 @@ TEST(Proximity, IndividualSolversOnEmbeddedCurveWithOptionalOutputs) {
                             Solver::kSlsqp,
                             Solver::kLevenbergMarquart}) {
     Proximity proximity(view);
-    proximity.SetSolverChain({solver});
+    proximity.SetSolverChain({&solver, 1});
     ASSERT_TRUE(proximity.PlantBvh(resolution));
     double parameter{}, distance{}, convergence{};
     proximity.VerboseQuery(query,

@@ -1,7 +1,5 @@
 #pragma once
 
-#include <vector>
-
 #include "splinepy/core/memory/buffer.hpp"
 #include "splinepy/core/model/spline_data.hpp"
 #include "splinepy/core/model/spline_view.hpp"
@@ -46,7 +44,7 @@ struct MultipatchData {
   Buffer<int64_t> control_point_offsets;
 
   // Cached views of patches for view() construction
-  mutable std::vector<SplineView> patch_views_cache_;
+  mutable Buffer<SplineView> patch_views_cache_;
 
   MultipatchView View() const {
     MultipatchView v;

@@ -30,10 +30,13 @@ public:
       : data_(data),
         size_(size) {}
 
+  /// View of a contiguous container. Only lvalue containers are accepted: a
+  /// span of a temporary would dangle as soon as the expression ends.
   template<
       typename Container,
       typename = std::enable_if_t<
-          !std::is_same_v<std::decay_t<Container>, Span>
+          std::is_lvalue_reference_v<Container>
+          && !std::is_same_v<std::decay_t<Container>, Span>
           && std::is_convertible_v<decltype(std::declval<Container>().data()),
                                    pointer>>>
   constexpr Span(Container&& c) noexcept

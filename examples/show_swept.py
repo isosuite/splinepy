@@ -128,6 +128,17 @@ if __name__ == "__main__":
         rotation_adaption=45 * np.pi / 180,
     )
 
+    # create swept solid (rectangular nr. 3)
+    # twist: the cross-section turns by 180 degrees from start to end
+    swept_solid_plate_3 = splinepy.helpme.create.swept(
+        trajectory=trajectory,
+        cross_section=cross_section_plate,
+        cross_section_normal=None,
+        anchor="auto",
+        set_on_trajectory=False,
+        twist=np.pi,
+    )
+
     # create swept surfaces to compare anchor placement strategies
     swept_surface_rectangle_parametric = splinepy.helpme.create.swept(
         trajectory=trajectory,
@@ -206,6 +217,7 @@ if __name__ == "__main__":
         ["New Cross Section", cross_section_plate],
         ["Swept Solid without Rotation", swept_solid_plate_1],
         ["Swept Solid with 45° Rotation", swept_solid_plate_2],
+        ["Swept Solid with 180° Twist", swept_solid_plate_3],
         resolution=51,
         control_mesh=False,
         control_point_ids=False,

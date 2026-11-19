@@ -1,3 +1,4 @@
+import pytest
 """
 Test composition sensitivity, i.e., the derivative concerning the
 deformation function's control points.
@@ -317,7 +318,8 @@ def test_native_spline_result_keeps_transferred_buffers_alive():
         while isinstance(owner, np.ndarray) and owner.base is not None:
             owner = owner.base
         assert isinstance(owner, memoryview)
-        assert array.flags.writeable
+        # knots are layout: read-only, edited through KnotVector methods
+        assert array.flags.writeable == (array is not knots)
 
     points[1, 0] = 2
     np.testing.assert_array_equal(points[:, 0], [0, 2])
@@ -336,7 +338,8 @@ def test_spline_shares_compatible_inputs_and_copy_is_independent():
     clone = spline.copy()
     assert np.shares_memory(spline.degrees, degrees)
     assert degrees.flags.writeable
-    assert np.shares_memory(spline.knot_vectors[0], knots)
+    # knots are layout: always copied, never shared with an input
+    assert not np.shares_memory(spline.knot_vectors[0], knots)
     assert np.shares_memory(spline.cps, points)
     assert np.shares_memory(spline.weights, weights)
     points[1, 0] = 2
@@ -344,3 +347,55 @@ def test_spline_shares_compatible_inputs_and_copy_is_independent():
     np.testing.assert_allclose(clone.evaluate([[1.0]]), [[1.0]])
     assert not np.shares_memory(clone.knot_vectors[0], knots)
     assert not np.shares_memory(spline.todict()["knot_vectors"][0], knots)
+
+
+def test_knot_vectors_are_frozen_but_editable():
+    from splinepy import BSpline
+
+    spline = BSpline([1], [[0, 0, 0.5, 1, 1]], [[0], [1], [2]])
+    kv = spline.knot_vectors[0]
+    with pytest.raises(ValueError):
+        np.asarray(kv)[2] = 0.7  # read-only
+    with pytest.raises(ValueError):
+        kv[1:4][1] = 0.7  # parts cannot be edited
+    with pytest.raises(ValueError):
+        kv[2] = 2.0  # must stay non-decreasing
+    kv[2] = 0.25
+    kv.scale(0, 2)
+    np.testing.assert_allclose(spline.knot_vectors[0], [0, 0, 0.5, 2, 2])
+    assert not kv.flags.writeable
+
+    layout = spline._layout
+    with spline.edit_knot_vectors() as kvs:
+        kvs[0][2] = 1.0
+    np.testing.assert_allclose(spline.knot_vectors[0], [0, 0, 1, 2, 2])
+    assert spline._layout != layout
+    assert not spline.knot_vectors[0].flags.writeable
+
+    with pytest.raises(ValueError):
+        with spline.edit_knot_vectors() as kvs:
+            kvs[0][2] = 3.0  # decreasing: rejected, spline unchanged
+    np.testing.assert_allclose(spline.knot_vectors[0], [0, 0, 1, 2, 2])
+
+
+def test_result_arrays_are_created_lazily_as_views():
+    from splinepy import BSpline, Bezier
+
+    outer = Bezier([1, 1], np.random.default_rng(0).random((4, 3)))
+    inner = Bezier([1, 1], [[0.1, 0.1], [0.9, 0.1], [0.1, 0.9], [0.9, 0.9]])
+    result = outer.compose(inner)
+    queries = [[0.3, 0.4], [0.7, 0.2]]
+    before = result.evaluate(queries)  # works before any array exists
+    assert result.para_dim == 2 and result.dim == 3 and not result.is_rational
+
+    points = result.control_points
+    assert result.control_points is points  # created once
+    points[0] += 1.0  # edits the spline's own data
+    assert not np.allclose(result.evaluate(queries), before)
+    del result
+    assert np.isfinite(points).all()  # the arrays keep the data alive
+
+    refined = BSpline([1], [[0, 0, 1, 1]], [[0.0], [1.0]])
+    refined.insert_knots(0, [0.5])
+    assert not refined.knot_vectors[0].flags.writeable
+    np.testing.assert_allclose(refined.knot_vectors[0], [0, 0, 0.5, 1, 1])

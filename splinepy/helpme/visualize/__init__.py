@@ -121,4 +121,15 @@ def show(*objs, backend=None, **kwargs):
 
     import gustaf as _gus
 
-    return _gus.show(*objs, **kwargs)
+    return _gus.show(*(_as_gustaf(o) for o in objs), **kwargs)
+
+
+def _as_gustaf(obj):
+    """Mesh dicts, also inside show groups, as gustaf objects."""
+    from splinepy import mesh as _mesh
+
+    if isinstance(obj, dict) and "element_type" in obj:
+        return _mesh.to_gustaf(obj)
+    if isinstance(obj, (list, tuple)):
+        return type(obj)(_as_gustaf(o) for o in obj)
+    return obj

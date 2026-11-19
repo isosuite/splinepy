@@ -10,12 +10,29 @@ install splinepy in editable mode.
 git clone git@github.com:<path-to-your-fork>
 cd splinepy
 git switch -c my-feature
-uv sync --locked --extra test
+uv sync --extra test
 uv run --no-sync pytest
 ```
 
 For a C++ Debug build, add `--config-setting cmake.build-type=Debug` to
 `uv sync`.
+
+## Viewer (JavaScript)
+The viewer's front end lives in `splinepy/viewer/js` and is bundled into
+`splinepy/viewer/static/viewer.bundle.js`. The bundle is committed, so
+installing splinepy never needs Node. You only need Node (with npm) when you
+change `viewer.js` or its dependencies. Rebuild from the lockfile, then commit
+the bundle together with the source; CI checks that they match.
+
+```bash
+cd splinepy/viewer/js
+npm ci
+npm run build
+```
+
+To change a dependency, edit `package.json`, run `npm install` and commit
+`package-lock.json` as well. Pre-commit skips the bundle, so it stays exactly
+as built.
 
 ## Python style / implementation preferences
 - use [`PEP 8`](https://peps.python.org/pep-0008/) style guide
@@ -42,7 +59,7 @@ uv run --no-sync --with pre-commit pre-commit run -a
 Install Doxygen and Graphviz, then run these commands from the repository root.
 
 ```bash
-uv sync --locked --extra gustaf --extra viewer
+uv sync --extra gustaf --extra viewer
 (cd docs && mkdir -p build && doxygen Doxyfile)
 uv run --no-sync python docs/source/handle_markdown.py
 uv run --no-sync python docs/markdown/extra_docs.py

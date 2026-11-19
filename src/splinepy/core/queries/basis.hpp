@@ -49,6 +49,16 @@ Buffer<double> BasisDerivative(const SplineView& spline,
                                Span<const int32_t> orders,
                                const Options& options = {});
 
+/// Computes active basis derivatives for several multi-index orders at once.
+/// orders holds n_orders * para_dim values, one order after another, and
+/// out_basis_ders is laid out as [query][order][support]. Queries are split
+/// across threads; every order of a query is evaluated by the same worker.
+void BasisDerivatives(const SplineView& spline,
+                      Span<const double> queries,
+                      Span<const int32_t> orders,
+                      Span<double> out_basis_ders,
+                      const Options& options = {});
+
 /// Computes both active basis derivatives and support indices simultaneously.
 void BasisDerivativeAndSupport(const SplineView& spline,
                                Span<const double> queries,

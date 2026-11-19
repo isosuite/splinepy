@@ -1,4 +1,3 @@
-import contextlib
 import os
 import re
 
@@ -376,67 +375,34 @@ def are_items_same():
 
 @pytest.fixture
 def are_stripped_lines_same():
+    number = re.compile(r"-?\d+(?:\.\d*)?(?:[eE][-+]?\d+)?")
+
+    def _words(line):
+        """splits an xml-ish line into words. numbers, also inside attributes
+        such as points="1.0,2.0", are rounded so that the last digits do not
+        matter"""
+        return [
+            number.sub(lambda m: repr(round(float(m.group()), 9)), word)
+            for word in filter(None, re.split(r" |\>|\<|\t|,", line))
+        ]
+
     def _are_stripped_lines_same(a, b, ignore_order=False):
-        """returns True if items in a and b same, preceding and tailing whitespaces
-        are ignored and strings are joined"""
+        """returns True if lines in a and b are the same, ignoring leading and
+        trailing whitespaces. With ignore_order, each line only needs to have
+        the same words (e.g. reordered attributes); numbers compare by value."""
         all_same = True
         for i, (line_a, line_b) in enumerate(zip(a, b, strict=True)):
-            # check stripped string
             stripped_a, stripped_b = line_a.strip(), line_b.strip()
-
-            # print general info
-            if stripped_a != stripped_b:
-                error_log(f"stripped line at index-{i} are not the same")
-                error_log(f"  from first: {line_a}")
-                error_log(f"  from second: {line_b}")
-
-            # give one more chance if ignore_order
-            if stripped_a != stripped_b and ignore_order:
-                error_log("  checking again, while ignoring word order:")
-
-                # This is meant for attributes
-                delimiters = r" |\>|\<|\t|,"
-                splitted_a = list(
-                    filter(None, re.split(delimiters, stripped_a))
-                )
-                splitted_b = list(
-                    filter(None, re.split(delimiters, stripped_b))
-                )
-                # first, len check
-                len_a, len_b = len(splitted_a), len(splitted_b)
-                if len(splitted_a) != len(splitted_b):
-                    error_log(
-                        f"    different word counts: a-{len_a}, b-{len_b}"
-                    )
-                    all_same = False
-                else:
-                    # word order
-                    a_to_b = []
-                    nums_b = None
-                    for word_a in splitted_a:
-                        try:
-                            a_to_b.append(splitted_b.index(word_a))
-                        except BaseException:
-                            try:
-                                num_a = float(word_a)
-                            except ValueError:
-                                pass
-                            else:
-                                if nums_b is None:
-                                    nums_b = []
-                                    for idx, num_b in enumerate(splitted_b):
-                                        with contextlib.suppress(ValueError):
-                                            nums_b.append((idx, float(num_b)))
-                                for idx, num_b in nums_b:
-                                    if np.isclose(num_a, num_b):
-                                        a_to_b.append(idx)
-                                        break
-                                else:
-                                    error_log(
-                                        f"    second does not contain ({word_a})"
-                                    )
-                                    all_same = False
-
+            if stripped_a == stripped_b:
+                continue
+            if ignore_order and sorted(_words(stripped_a)) == sorted(
+                _words(stripped_b)
+            ):
+                continue
+            error_log(f"stripped line at index-{i} are not the same")
+            error_log(f"  from first: {line_a}")
+            error_log(f"  from second: {line_b}")
+            all_same = False
         return all_same
 
     return _are_stripped_lines_same

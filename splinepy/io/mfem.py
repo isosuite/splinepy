@@ -315,7 +315,7 @@ def export_cartesian(
     -------
     None
     """
-    import gustaf as _gus
+    import funi as _funi
 
     from splinepy import Multipatch as _Multipatch
 
@@ -406,12 +406,10 @@ def export_cartesian(
         ]
     )
 
-    # Retrieve information using bezman
+    # Retrieve patch connectivity
     connectivity = spline_list.interfaces
 
-    _, _, inverse_numeration, _ = _gus.utils.arr.close_rows(
-        corner_vertices, tolerance, return_intersection=False
-    )
+    _, _, inverse_numeration = _funi.unique_rows(corner_vertices, tolerance)
     vertex_ids = inverse_numeration.reshape(-1, n_vertex_per_element)
     # Get boundaries from interfaces
     boundary_elements, boundary_faces = _np.where(connectivity < 0)

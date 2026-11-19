@@ -1,6 +1,7 @@
 #include "splinepy/core/spatial/element_bvh.hpp"
 
 #include "splinepy/core/manipulation/extract.hpp"
+#include "splinepy/core/memory/dynamic_buffer.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -19,8 +20,7 @@ constexpr double kSpanTolerance = 1e-12;
 ElementBvh::ElementBvh(const SplineView& spline)
     : para_dim_(spline.para_dim),
       dim_(spline.dim) {
-  if (para_dim_ <= 0 || dim_ <= 0 || spline.hierarchy
-      || !spline.control_points_data) {
+  if (para_dim_ <= 0 || dim_ <= 0 || !spline.control_points_data) {
     return;
   }
 
@@ -33,39 +33,33 @@ ElementBvh::ElementBvh(const SplineView& spline)
     }
   }
 
-  // spans (elements) per parametric dimension:
-  // index of the first supporting control point, and param bounds
-  std::vector<std::vector<int64_t>> span_first(para_dim_);
-  std::vector<std::vector<double>> span_lo(para_dim_), span_hi(para_dim_);
-  std::vector<int64_t> n_cps(para_dim_);
-  elements_per_axis_.assign(para_dim_, 0);
+  // parametric bounds of the non-empty spans (elements) per axis
+  DynamicBuffer<double> span_lo[kMaxParaDim], span_hi[kMaxParaDim];
+  elements_per_axis_ = Buffer<int32_t>(para_dim_);
   num_elements_ = 1;
   for (int32_t d{}; d < para_dim_; ++d) {
-    const int32_t p = spline.degrees[d];
-    n_cps[d] = spline.NumControlPointsPerAxis(d);
     if (spline.HasKnotVectors()) {
       const auto kv = spline.knot_vectors[d];
-      for (int64_t k{p}; k < n_cps[d]; ++k) {
+      for (int64_t k = spline.degrees[d]; k < spline.NumControlPointsPerAxis(d);
+           ++k) {
         if (kv[k + 1] - kv[k] > kSpanTolerance) {
-          span_first[d].push_back(k - p);
           span_lo[d].push_back(kv[k]);
           span_hi[d].push_back(kv[k + 1]);
         }
       }
     } else {
-      span_first[d].push_back(0);
       span_lo[d].push_back(0.0);
       span_hi[d].push_back(1.0);
     }
-    elements_per_axis_[d] = static_cast<int32_t>(span_first[d].size());
+    elements_per_axis_[d] = static_cast<int32_t>(span_lo[d].size());
     num_elements_ *= elements_per_axis_[d];
   }
   if (num_elements_ <= 0) {
     return;
   }
 
-  param_lower_.resize(num_elements_ * para_dim_);
-  param_upper_.resize(num_elements_ * para_dim_);
+  param_lower_ = Buffer<double>(num_elements_ * para_dim_);
+  param_upper_ = Buffer<double>(num_elements_ * para_dim_);
   for (int64_t e{}; e < num_elements_; ++e) {
     // element id -> span ids (first dim fastest)
     int64_t rest = e;
@@ -88,9 +82,10 @@ ElementBvh::ElementBvh(const SplineView& spline)
     return;
   }
 
-  box_lower_.assign(num_elements_ * dim_, std::numeric_limits<double>::max());
-  box_upper_.assign(num_elements_ * dim_,
-                    std::numeric_limits<double>::lowest());
+  box_lower_ =
+      Buffer<double>(num_elements_ * dim_, std::numeric_limits<double>::max());
+  box_upper_ = Buffer<double>(num_elements_ * dim_,
+                              std::numeric_limits<double>::lowest());
   for (int64_t e{}; e < num_elements_; ++e) {
     const auto& cps = patches[e].control_points;
     const int64_t n = static_cast<int64_t>(cps.size()) / dim_;
@@ -127,10 +122,12 @@ ElementBvh::ElementBvh(int32_t para_dim,
   }
 
   num_elements_ = elements;
-  param_lower_.resize(elements * pd);
-  param_upper_.resize(elements * pd);
-  box_lower_.assign(elements * xd, std::numeric_limits<double>::max());
-  box_upper_.assign(elements * xd, std::numeric_limits<double>::lowest());
+  param_lower_ = Buffer<double>(elements * pd);
+  param_upper_ = Buffer<double>(elements * pd);
+  box_lower_ =
+      Buffer<double>(elements * xd, std::numeric_limits<double>::max());
+  box_upper_ =
+      Buffer<double>(elements * xd, std::numeric_limits<double>::lowest());
   for (std::size_t e = 0; e < elements; ++e) {
     for (std::size_t axis = 0; axis < pd; ++axis) {
       const double lo = bounds[2 * e * pd + axis];
@@ -159,18 +156,24 @@ ElementBvh::ElementBvh(int32_t para_dim,
 }
 
 void ElementBvh::BuildTree() {
-  element_order_.resize(num_elements_);
+  element_order_ = Buffer<int64_t>(num_elements_);
   std::iota(element_order_.begin(), element_order_.end(), int64_t{0});
-  nodes_.reserve(2 * num_elements_);
+  // a binary tree over n leaf ranges of at least one element has fewer
+  // than 2 n nodes; trimmed after the build
+  const int64_t max_nodes = 2 * num_elements_;
+  nodes_ = Buffer<Node>(max_nodes);
+  node_lower_ = Buffer<double>::Uninitialized(max_nodes * dim_);
+  node_upper_ = Buffer<double>::Uninitialized(max_nodes * dim_);
+  num_nodes_ = 0;
   BuildNode(0, num_elements_);
+  nodes_.resize(num_nodes_);
+  node_lower_.resize(num_nodes_ * dim_);
+  node_upper_.resize(num_nodes_ * dim_);
   valid_ = true;
 }
 
 int64_t ElementBvh::BuildNode(const int64_t begin, const int64_t end) {
-  const int64_t id = static_cast<int64_t>(nodes_.size());
-  nodes_.emplace_back();
-  node_lower_.resize(nodes_.size() * dim_);
-  node_upper_.resize(nodes_.size() * dim_);
+  const int64_t id = num_nodes_++;
 
   // node box = union of element boxes
   double* lower = &node_lower_[id * dim_];
@@ -221,7 +224,6 @@ int64_t ElementBvh::BuildNode(const int64_t begin, const int64_t end) {
                                   + .5 * box_upper_[b * dim_ + axis];
                    });
 
-  // note: BuildNode may reallocate nodes_, so don't keep references
   const int64_t left = BuildNode(begin, mid);
   const int64_t right = BuildNode(mid, end);
   nodes_[id].left = left;

@@ -19,11 +19,12 @@ namespace splinepy::py {
 
 namespace nb = nanobind;
 
-// Writes spline data to a python Spline's `_data`. The spline's arrays are
-// replaced, other saved data is left untouched.
+// Moves spline data into a python spline's native slots, replacing its
+// arrays.
 void SetSplineData(nb::handle spline, splinepy::core::SplineData&& data);
 
-// Creates a python spline (derived type, matching the data) from spline data.
+// Creates a python spline of the registered class for the kind of data,
+// without running Python code.
 nb::object SplineFromData(splinepy::core::SplineData&& data);
 
 // Owns the geometry and the initial guess structure for all query batches.

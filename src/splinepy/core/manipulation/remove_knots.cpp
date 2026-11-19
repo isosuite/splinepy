@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <stdexcept>
-#include <vector>
 
 #include "splinepy/core/manipulation/detail/manipulation_helpers.hpp"
 #include "splinepy/core/validate/validator.hpp"
@@ -16,8 +15,8 @@ KnotRemovalResult RemoveKnots(const SplineView& spline,
   if (options.validate) {
     ThrowIfInvalid(spline);
     if (axis < 0 || axis >= spline.para_dim) {
-      throw std::invalid_argument(
-          "RemoveKnots: axis out of range [0, para_dim).");
+      throw SplinepyException("RemoveKnots: axis out of range [0, para_dim).",
+                              Status::kOutOfBounds);
     }
   }
 
@@ -53,7 +52,7 @@ KnotRemovalResult RemoveKnots(const SplineView& spline,
   }
 
   // Initialize knot vectors
-  std::vector<std::vector<double>> current_kvs(spline.para_dim);
+  Buffer<double> current_kvs[kMaxParaDim];
   for (int32_t d = 0; d < spline.para_dim; ++d) {
     current_kvs[d].assign(spline.knot_vectors[d].begin(),
                           spline.knot_vectors[d].end());
@@ -83,7 +82,8 @@ KnotRemovalResult RemoveKnots(const SplineView& spline,
   const double tol = (options.tolerance > 0.0) ? options.tolerance : 1e-8;
 
   // Process knot removal requests
-  std::vector<Span<const double>> kv_views(spline.para_dim);
+  AxisArray<Span<const double>> kv_views;
+  kv_views.resize(spline.para_dim);
   for (std::size_t k_idx = 0; k_idx < knots_to_remove.size(); ++k_idx) {
     const double u_rem = knots_to_remove[k_idx];
     for (int32_t d = 0; d < spline.para_dim; ++d) {
@@ -91,7 +91,7 @@ KnotRemovalResult RemoveKnots(const SplineView& spline,
           Span<const double>(current_kvs[d].data(), current_kvs[d].size());
     }
 
-    std::vector<double> out_axis_knots;
+    Buffer<double> out_axis_knots;
     Buffer<double> out_cps;
 
     const bool success = detail::TryRemoveKnotAlongAxisND(arena,

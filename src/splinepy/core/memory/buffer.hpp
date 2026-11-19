@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <cstdlib>
 #include <initializer_list>
+#include <iterator>
+#include <limits>
 #include <new>
 #include <type_traits>
 #include <utility>
@@ -20,18 +22,23 @@ namespace splinepy::core {
 
 namespace detail {
 
+/// Allocates bytes aligned to alignment, which must be a power of two; it is
+/// raised to at least sizeof(void*). Returns nullptr for zero bytes and
+/// throws std::bad_alloc on failure.
 inline void* AlignedAlloc(std::size_t bytes, std::size_t alignment) {
   if (bytes == 0) {
     return nullptr;
   }
-  // Ensure alignment is at least sizeof(void*) and a power of 2
+  if (alignment == 0 || (alignment & (alignment - 1)) != 0) {
+    throw SplinepyException("Buffer alignment must be a power of two",
+                            Status::kInvalidArgument);
+  }
   alignment = std::max(alignment, sizeof(void*));
 #if defined(_MSC_VER)
   void* ptr = _aligned_malloc(bytes, alignment);
 #else
   void* ptr = nullptr;
-  int res = posix_memalign(&ptr, alignment, bytes);
-  if (res != 0) {
+  if (posix_memalign(&ptr, alignment, bytes) != 0) {
     ptr = nullptr;
   }
 #endif
@@ -52,6 +59,15 @@ inline void AlignedFree(void* ptr) noexcept {
 #endif
 }
 
+/// Bytes for count elements of T, throwing std::bad_alloc on overflow.
+template<typename T>
+std::size_t ByteCount(std::size_t count) {
+  if (count > std::numeric_limits<std::size_t>::max() / sizeof(T)) {
+    throw std::bad_alloc();
+  }
+  return count * sizeof(T);
+}
+
 } // namespace detail
 
 /// Owning contiguous memory buffer with guaranteed alignment.
@@ -65,19 +81,11 @@ public:
   using reference = T&;
   using const_reference = const T&;
 
-  Buffer() noexcept : data_(nullptr), size_(0), alignment_(kDefaultAlignment) {}
+  Buffer() noexcept = default;
 
   explicit Buffer(size_type size, size_type alignment = kDefaultAlignment)
-      : data_(nullptr),
-        size_(size),
-        alignment_(alignment) {
-    if (size_ > 0) {
-      data_ = static_cast<pointer>(
-          detail::AlignedAlloc(size_ * sizeof(T), alignment_));
-      for (size_type i = 0; i < size_; ++i) {
-        new (data_ + i) T();
-      }
-    }
+      : alignment_(alignment) {
+    Adopt(Build(size, alignment_, [](pointer p) { new (p) T(); }), size);
   }
 
   /// Buffer of trivially constructible T whose elements are left uninitialized,
@@ -89,30 +97,23 @@ public:
         "Uninitialized buffers need trivially constructible elements");
     Buffer buffer;
     buffer.alignment_ = alignment;
-    if (size > 0) {
-      buffer.data_ = static_cast<pointer>(
-          detail::AlignedAlloc(size * sizeof(T), alignment));
-      buffer.size_ = size;
-    }
+    buffer.Adopt(
+        static_cast<pointer>(
+            detail::AlignedAlloc(detail::ByteCount<T>(size), alignment)),
+        size);
     return buffer;
   }
 
   Buffer(size_type size, const T& val, size_type alignment = kDefaultAlignment)
-      : data_(nullptr),
-        size_(size),
-        alignment_(alignment) {
-    if (size_ > 0) {
-      data_ = static_cast<pointer>(
-          detail::AlignedAlloc(size_ * sizeof(T), alignment_));
-      for (size_type i = 0; i < size_; ++i) {
-        new (data_ + i) T(val);
-      }
-    }
+      : alignment_(alignment) {
+    Adopt(Build(size, alignment_, [&](pointer p) { new (p) T(val); }), size);
   }
 
   Buffer(std::initializer_list<T> init, size_type alignment = kDefaultAlignment)
-      : Buffer(init.size(), alignment) {
-    std::copy(init.begin(), init.end(), data_);
+      : alignment_(alignment) {
+    auto it = init.begin();
+    Adopt(Build(init.size(), alignment_, [&](pointer p) { new (p) T(*it++); }),
+          init.size());
   }
 
   ~Buffer() { clear(); }
@@ -138,11 +139,13 @@ public:
     return *this;
   }
 
-  // Copy semantics
-  Buffer(const Buffer& other) : Buffer(other.size_, T{}, other.alignment_) {
-    if (size_ > 0) {
-      std::copy_n(other.data_, size_, data_);
-    }
+  // Copy semantics: elements are copy constructed once.
+  Buffer(const Buffer& other) : alignment_(other.alignment_) {
+    const_pointer source = other.data_;
+    Adopt(Build(other.size_,
+                alignment_,
+                [&](pointer p) { new (p) T(*source++); }),
+          other.size_);
   }
 
   Buffer& operator=(const Buffer& other) {
@@ -155,17 +158,16 @@ public:
 
   void clear() noexcept {
     if (data_) {
-      if constexpr (!std::is_trivially_destructible_v<T>) {
-        for (size_type i = 0; i < size_; ++i) {
-          data_[i].~T();
-        }
-      }
+      Destroy(data_, size_);
       detail::AlignedFree(data_);
       data_ = nullptr;
       size_ = 0;
     }
   }
 
+  /// Resizes to new_size, keeping the first min(size(), new_size) elements and
+  /// filling new ones with val. Leaves the buffer unchanged if an element
+  /// constructor throws.
   void resize(size_type new_size, const T& val = T()) {
     if (new_size == size_) {
       return;
@@ -174,29 +176,32 @@ public:
       clear();
       return;
     }
-    pointer new_data = static_cast<pointer>(
-        detail::AlignedAlloc(new_size * sizeof(T), alignment_));
-    const size_type copy_count = std::min(size_, new_size);
-    for (size_type i = 0; i < copy_count; ++i) {
-      new (new_data + i) T(std::move(data_[i]));
-    }
-    for (size_type i = copy_count; i < new_size; ++i) {
-      new (new_data + i) T(val);
-    }
+    const size_type keep = std::min(size_, new_size);
+    size_type i = 0;
+    pointer new_data = Build(new_size, alignment_, [&](pointer p) {
+      if (i < keep) {
+        new (p) T(std::move_if_noexcept(data_[i]));
+      } else {
+        new (p) T(val);
+      }
+      ++i;
+    });
     clear();
-    data_ = new_data;
-    size_ = new_size;
+    Adopt(new_data, new_size);
   }
 
   template<typename InputIt>
   void assign(InputIt first, InputIt last) {
-    const size_type n = std::distance(first, last);
-    resize(n);
-    std::copy(first, last, data_);
+    const auto n = static_cast<size_type>(std::distance(first, last));
+    Buffer tmp;
+    tmp.alignment_ = alignment_;
+    tmp.Adopt(Build(n, alignment_, [&](pointer p) { new (p) T(*first++); }), n);
+    *this = std::move(tmp);
   }
 
-  /// Relinquishes ownership of the raw data pointer.
-  /// Used for zero-copy ownership transfer to host (e.g. pybind11 capsule).
+  /// Relinquishes ownership of the raw data pointer, for zero-copy ownership
+  /// transfer to a host (e.g. a nanobind capsule). The caller destroys the
+  /// elements if needed and frees the memory with detail::AlignedFree.
   pointer release() noexcept {
     pointer ptr = data_;
     data_ = nullptr;
@@ -252,6 +257,43 @@ public:
   const_pointer cend() const noexcept { return data_ + size_; }
 
 private:
+  template<typename>
+  friend class DynamicBuffer;
+
+  static void Destroy(pointer p, size_type n) noexcept {
+    if constexpr (!std::is_trivially_destructible_v<T>) {
+      for (size_type i = 0; i < n; ++i) {
+        p[i].~T();
+      }
+    }
+  }
+
+  /// Allocates n elements and constructs each with construct(pointer). If a
+  /// constructor throws, the elements built so far are destroyed and the
+  /// memory is freed before the exception propagates.
+  template<typename Construct>
+  static pointer
+  Build(size_type n, size_type alignment, Construct&& construct) {
+    auto* p = static_cast<pointer>(
+        detail::AlignedAlloc(detail::ByteCount<T>(n), alignment));
+    size_type built = 0;
+    try {
+      for (; built < n; ++built) {
+        construct(p + built);
+      }
+    } catch (...) {
+      Destroy(p, built);
+      detail::AlignedFree(p);
+      throw;
+    }
+    return p;
+  }
+
+  void Adopt(pointer p, size_type n) noexcept {
+    data_ = p;
+    size_ = p ? n : 0;
+  }
+
   pointer data_{nullptr};
   size_type size_{0};
   size_type alignment_{kDefaultAlignment};

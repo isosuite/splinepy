@@ -4,8 +4,9 @@ import inspect as _inspect
 
 import numpy as _np
 
-from splinepy.viewer import mesh
+from splinepy import mesh
 from splinepy.viewer.camera import turntable
+from splinepy.viewer.compat import follow_control_points as _follow_control_points
 from splinepy.viewer.compat import translate as _translate
 from splinepy.viewer.html import Viewer, to_html
 from splinepy.viewer.scene import (
@@ -67,7 +68,7 @@ def _build(obj, kwargs):
             opts = _translate(opts)
         except Exception:
             pass
-    combined = {**opts, **kwargs}
+    combined = _follow_control_points({**opts, **kwargs})
     builder = scene_from_splines if _is_spline(obj) else scene_from_mesh
     accepted = _inspect.signature(builder).parameters
     return builder(obj, **{k: v for k, v in combined.items() if k in accepted})

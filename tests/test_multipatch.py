@@ -228,22 +228,36 @@ def test_add_fields():
     # 2D field
     two_dim_field = [b1, b2]
     geometry = splinepy.Multipatch([b.create.embedded(3) for b in [b1, b2]])
-    # Field dimension is 2 so should raise
-    with pytest.raises(RuntimeError) as _:
+    # Field dimension is 2 so should raise, and nothing is added
+    with pytest.raises(RuntimeError, match="Field dimension mismatch"):
         geometry.add_fields([two_dim_field], field_dim=1)
+    assert len(geometry.fields) == 0
+    # a field with fewer patches than the geometry is rejected
+    with pytest.raises(RuntimeError, match="Size mismatch"):
+        geometry.add_fields([[b1]], field_dim=2)
+    assert len(geometry.fields) == 0
+
     # Success
     geometry.add_fields([two_dim_field], field_dim=2)
     geometry.add_fields([geometry.patches], field_dim=3)
+    assert [f.dim for f in geometry.fields] == [2, 3]
+    queries = [[0.3, 0.6], [0.9, 0.1]]
+    for field, splines in zip(
+        geometry.fields, [two_dim_field, geometry.patches], strict=True
+    ):
+        assert len(field.patches) == len(splines)
+        for patch, spline in zip(field.patches, splines, strict=True):
+            assert np.allclose(patch.evaluate(queries), spline.evaluate(queries))
 
 
-def test_edit_patch_control_points_propagates_reversed_seam():
+def test_edit_patches_control_points_propagates_reversed_seam():
     left = splinepy.Bezier([1, 1], [[0, 0], [1, 0], [0, 1], [1, 1]])
     right = splinepy.Bezier([1, 1], [[1, 1], [2, 1], [1, 0], [2, 0]])
     mp = splinepy.Multipatch([left, right])
     interfaces = mp.interfaces
     boundaries = mp.sub_multipatch
 
-    with mp.edit_patch_control_points(0) as points:
+    with mp.edit_patches_control_points([0]) as (points,):
         points[1] += [0.25, 0.125]
 
     np.testing.assert_array_equal(right.cps[2], left.cps[1])
@@ -259,9 +273,10 @@ def test_edit_patch_control_points_propagates_reversed_seam():
         b[2] -= 1
     np.testing.assert_array_equal(mp.control_points, before)
 
-    with pytest.raises(RuntimeError, match="cancel"), mp.edit_patch_control_points(
-        0
-    ) as points:
+    with (
+        pytest.raises(RuntimeError, match="cancel"),
+        mp.edit_patches_control_points([0]) as (points,),
+    ):
         points[1] += 1
         raise RuntimeError("cancel")
     np.testing.assert_array_equal(mp.control_points, before)

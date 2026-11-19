@@ -90,6 +90,9 @@ def test_knot_insertion_at_existing_jump_is_noop():
     q = queries(spline)
     before = spline.evaluate(q)
     inserted = spline.copy()
-    inserted.insert_knots(0, [0.45, 0.7])
+    # the jump already has multiplicity degree + 1: inserting there is refused,
+    # the knots next to it still go in
+    assert list(inserted.insert_knots(0, [0.45, 0.6, 0.7])) == [True, False, True]
     assert np.allclose(inserted.evaluate(q), before, atol=1e-12)
     assert np.sum(np.isclose(inserted.knot_vectors[0], 0.6)) == 3
+    assert len(inserted.knot_vectors[0]) == len(spline.knot_vectors[0]) + 2

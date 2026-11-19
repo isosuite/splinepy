@@ -1,7 +1,5 @@
 #pragma once
 
-#include <vector>
-
 #include "splinepy/core/common.hpp"
 #include "splinepy/core/memory/buffer.hpp"
 #include "splinepy/core/memory/span.hpp"
@@ -41,9 +39,9 @@ private:
 
   std::size_t para_dim_;
   bool rational_;
-  std::vector<int32_t> axis_orders_;
-  std::vector<int32_t> terms_;
-  std::vector<std::size_t> output_indices_;
+  AxisArray<int32_t> axis_orders_;
+  Buffer<int32_t> terms_;
+  Buffer<std::size_t> output_indices_;
 };
 
 /// Output layout is (query, requested order, physical component).

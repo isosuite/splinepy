@@ -462,20 +462,21 @@ def test_higher_order_derivatives(np_rng):
     )
 
 
+@pytest.mark.parametrize("query", ["evaluate", "jacobian"])
 @pytest.mark.parametrize("splinetype", all_2p2d_splines)
-def test_assertions_evaluation(request, splinetype):
-    """Test if the right assertions are thrown"""
+def test_query_assertions(request, splinetype, query):
+    """Out of bounds and wrongly shaped queries raise meaningful errors"""
     spline = request.getfixturevalue(splinetype)
-    # Test for evaluation
-    # Check minimum with kwargs
+    function = getattr(spline, query)
 
+    # Check minimum with kwargs
     with pytest.raises(
         ValueError,
         match=r"Query request out of bounds in parametric dimension 0. "
         r"Detected query \[-0.1  0. \] at positions 0, which is out of"
         r" bounds with minimum values \[0. 0.\].",
     ):
-        spline.evaluate(queries=[[-0.1, 0.0], [0.4, 0.6]])
+        function(queries=[[-0.1, 0.0], [0.4, 0.6]])
 
     # Check maximum with args
     with pytest.raises(
@@ -484,7 +485,7 @@ def test_assertions_evaluation(request, splinetype):
         r"Detected query \[1.1 0. \] at positions 0, which is out of "
         r"bounds with maximum values \[1. 1.\].",
     ):
-        spline.evaluate([[1.1, 0.0], [0.4, 0.6]])
+        function([[1.1, 0.0], [0.4, 0.6]])
 
     # Check dimensions
     with pytest.raises(
@@ -492,84 +493,45 @@ def test_assertions_evaluation(request, splinetype):
         match=r"Dimension mismatch between parametric dimension of spline "
         r"\(2\), and query-request \(3\)",
     ):
-        spline.evaluate([[1.0, 1.0, 1.0]])
-
-
-@pytest.mark.parametrize("splinetype", all_2p2d_splines)
-def test_assertions_jacobian(request, splinetype):
-    """Test if the right assertions are thrown"""
-    # Test for evaluation
-    spline = request.getfixturevalue(splinetype)
-    # Check minimum with kwargs
-    with pytest.raises(
-        ValueError,
-        match=r"Query request out of bounds in parametric dimension 0. "
-        r"Detected query \[-0.1  0. \] at positions 0, which is out of"
-        r" bounds with minimum values \[0. 0.\].",
-    ):
-        spline.jacobian(queries=[[-0.1, 0.0], [0.4, 0.6]])
-
-    # Check maximum with args
-    with pytest.raises(
-        ValueError,
-        match=r"Query request out of bounds in parametric dimension 0. "
-        r"Detected query \[1.1 0. \] at positions 0, which is out of "
-        r"bounds with maximum values \[1. 1.\].",
-    ):
-        spline.jacobian([[1.1, 0.0], [0.4, 0.6]])
-
-    # Check dimensions
-    with pytest.raises(
-        ValueError,
-        match=r"Dimension mismatch between parametric dimension of spline "
-        r"\(2\), and query-request \(3\)",
-    ):
-        spline.jacobian([[1.0, 1.0, 1.0]])
+        function([[1.0, 1.0, 1.0]])
 
 
 @pytest.mark.parametrize("splinetype", all_2p2d_splines)
 def test_basis_function_matrix(request, splinetype, np_rng):
     """Test the correct evaluation of basis function matrices"""
     make_matrix = splinepy.utils.data.make_matrix
-    # Use
     q2D = np_rng.random((10, 2))
+    spline = request.getfixturevalue(splinetype)
 
-    if splinetype == "nurbs_2p2d":
-        return
+    # Trivial evaluation
+    matrix = make_matrix(
+        *spline.basis_and_support(q2D), spline.cps.shape[0]
+    )
+    assert np.allclose(
+        matrix @ spline.cps,
+        spline.evaluate(q2D),
+    )
 
-    # Test for both bezier and BSpline family and rationals
-    else:
-        spline = request.getfixturevalue(splinetype)
-        # Compute derivative matrix
-        # Trivial evaluation
-        matrix = make_matrix(
-            *spline.basis_and_support(q2D), spline.cps.shape[0]
-        )
-        assert np.allclose(
-            matrix @ spline.cps,
-            spline.evaluate(q2D),
-        )
+    # Test first order derivative
+    matrix = make_matrix(
+        *spline.basis_derivative_and_support(q2D, orders=[1, 0]),
+        spline.cps.shape[0],
+    )
+    assert np.allclose(
+        matrix @ spline.cps,
+        spline.derivative(q2D, orders=[1, 0]),
+    )
 
-        # Test first order derivative
-        matrix = make_matrix(
-            *spline.basis_derivative_and_support(q2D, orders=[1, 0]),
-            spline.cps.shape[0],
-        )
-        assert np.allclose(
-            matrix @ spline.cps,
-            spline.derivative(q2D, orders=[1, 0]),
-        )
-
-        # Test seoncd order derivative as numpy (enforce)
-        matrix = make_matrix(
-            *spline.basis_derivative_and_support(q2D, orders=[1, 2]),
-            spline.cps.shape[0],
-            as_array=True,
-        )
-        assert np.allclose(
-            matrix @ spline.cps,
-            spline.derivative(q2D, orders=[1, 2]),
-        )
+    # Test second order derivative as numpy (enforce)
+    matrix = make_matrix(
+        *spline.basis_derivative_and_support(q2D, orders=[1, 2]),
+        spline.cps.shape[0],
+        as_array=True,
+    )
+    assert np.allclose(
+        matrix @ spline.cps,
+        spline.derivative(q2D, orders=[1, 2]),
+    )
 
 
 @pytest.mark.parametrize("splinetype", all_splines)

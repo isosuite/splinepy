@@ -3,10 +3,11 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
-#include <vector>
 
 #include "splinepy/core/manipulation/detail/manipulation_helpers.hpp"
 #include "splinepy/core/manipulation/insert_knots.hpp"
+#include "splinepy/core/memory/dynamic_buffer.hpp"
+#include "splinepy/core/model/grid.hpp"
 #include "splinepy/core/validate/validator.hpp"
 
 namespace splinepy::core {
@@ -17,8 +18,9 @@ SplineData ExtractBoundary(const SplineView& spline,
   if (options.validate) {
     ThrowIfInvalid(spline);
     if (boundary_id < 0 || boundary_id >= 2 * spline.para_dim) {
-      throw std::invalid_argument(
-          "ExtractBoundary: boundary_id must be in range [0, 2 * para_dim).");
+      throw SplinepyException(
+          "ExtractBoundary: boundary_id must be in range [0, 2 * para_dim).",
+          Status::kInvalidArgument);
     }
   }
 
@@ -58,49 +60,16 @@ SplineData ExtractBoundary(const SplineView& spline,
     }
   }
 
-  // Control points layout
-  std::vector<int64_t> in_n(spline.para_dim);
-  std::vector<int64_t> in_strides(spline.para_dim);
-  in_strides[0] = 1;
-  for (int32_t d = 0; d < spline.para_dim; ++d) {
-    in_n[d] = spline.NumControlPointsPerAxis(d);
-    if (d > 0)
-      in_strides[d] = in_strides[d - 1] * in_n[d - 1];
-  }
-
-  std::vector<int64_t> out_n(out_para_dim);
-  std::vector<int64_t> out_strides(out_para_dim);
-  out_strides[0] = 1;
-  for (int32_t d = 0, out_d = 0; d < spline.para_dim; ++d) {
-    if (d == axis)
-      continue;
-    out_n[out_d] = in_n[d];
-    if (out_d > 0)
-      out_strides[out_d] = out_strides[out_d - 1] * out_n[out_d - 1];
-    out_d++;
-  }
-
-  const int64_t total_out_cps =
-      out_strides[out_para_dim - 1] * out_n[out_para_dim - 1];
+  // the boundary is one line start per point of the other axes
+  const Grid grid = ControlGrid(spline);
+  const int64_t total_out_cps = grid.Lines(axis);
+  const int64_t offset = fixed_idx * grid.stride[axis];
   result.control_points.resize(total_out_cps * spline.dim);
   if (spline.IsRational()) {
     result.weights.resize(total_out_cps);
   }
-
-  // Slice control points and weights
   for (int64_t out_idx = 0; out_idx < total_out_cps; ++out_idx) {
-    int64_t rem = out_idx;
-    int64_t in_cp_idx = fixed_idx * in_strides[axis];
-
-    for (int32_t d = 0, out_d = 0; d < spline.para_dim; ++d) {
-      if (d == axis)
-        continue;
-      const int64_t idx_d = rem % out_n[out_d];
-      rem /= out_n[out_d];
-      in_cp_idx += idx_d * in_strides[d];
-      out_d++;
-    }
-
+    const int64_t in_cp_idx = offset + grid.LineStart(axis, out_idx);
     for (int32_t c = 0; c < spline.dim; ++c) {
       result.control_points[out_idx * spline.dim + c] =
           spline.Point(in_cp_idx, c);
@@ -121,8 +90,8 @@ SplineBatchData ExtractBezierPatches(const SplineView& spline,
 
   // If already Bezier, return single patch copy
   if (!spline.HasKnotVectors()) {
-    SplineBatchData patches;
-    patches.push_back(InsertKnots(spline, 0, {}, options));
+    SplineBatchData patches(1);
+    patches[0] = InsertKnots(spline, 0, {}, options);
     return patches;
   }
 
@@ -133,152 +102,70 @@ SplineBatchData ExtractBezierPatches(const SplineView& spline,
 
   for (int32_t d = 0; d < spline.para_dim; ++d) {
     const int32_t p = decomposed.degrees[d];
-    const auto& kv = decomposed.knot_vectors[d];
-    const double u_min = kv.front();
-    const double u_max = kv.back();
-
-    std::vector<double> unique_internal;
-    std::vector<int32_t> mults;
-
-    for (std::size_t i = 0; i < kv.size(); ++i) {
-      const double u = kv[i];
-      if (u > u_min + kEps && u < u_max - kEps) {
-        if (unique_internal.empty()
-            || std::abs(u - unique_internal.back()) > kEps) {
-          unique_internal.push_back(u);
-          mults.push_back(1);
-        } else {
-          mults.back()++;
-        }
-      }
-    }
-
-    std::vector<double> knots_to_insert;
-    for (std::size_t k = 0; k < unique_internal.size(); ++k) {
-      const int32_t needed = p - mults[k];
-      for (int32_t j = 0; j < needed; ++j) {
-        knots_to_insert.push_back(unique_internal[k]);
-      }
-    }
-
+    const auto knots_to_insert =
+        detail::FindInteriorKnots(decomposed.knot_vectors[d].cspan())
+            .MissingToMultiplicity(p);
     if (!knots_to_insert.empty()) {
       decomposed = InsertKnots(decomposed.View(),
                                d,
-                               Span<const double>(knots_to_insert),
+                               knots_to_insert.cspan(),
                                options);
     }
   }
 
-  SplineView decomp_view = decomposed.View();
+  const SplineView decomp_view = decomposed.View();
+  const Grid decomp = ControlGrid(decomp_view);
+  const Grid local = SupportGrid(spline.degrees);
 
-  // 2. Count number of elements along each axis
-  std::vector<int64_t> num_elements(spline.para_dim);
-  std::vector<int64_t> decomp_n(spline.para_dim);
-  std::vector<int64_t> decomp_strides(spline.para_dim);
-  decomp_strides[0] = 1;
-
-  int64_t total_patches = 1;
-  int64_t cps_per_patch = 1;
-
-  for (int32_t d = 0; d < spline.para_dim; ++d) {
-    const auto& kv = decomposed.knot_vectors[d];
-    int64_t unique_count = 0;
-    for (std::size_t i = 0; i < kv.size(); ++i) {
-      if (i == 0 || std::abs(kv[i] - kv[i - 1]) > kEps) {
-        unique_count++;
-      }
-    }
-    num_elements[d] = unique_count - 1;
-    total_patches *= num_elements[d];
-
-    decomp_n[d] = decomp_view.NumControlPointsPerAxis(d);
-    if (d > 0)
-      decomp_strides[d] = decomp_strides[d - 1] * decomp_n[d - 1];
-
-    cps_per_patch *= (static_cast<int64_t>(spline.degrees[d]) + 1);
-  }
-
-  // First control point of every element along each axis. Neighbouring
+  // 2. First control point of every element along each axis. Neighbouring
   // elements share their end point (C^0), unless the knot between them has
   // multiplicity degree + 1 (C^-1): then both keep their own end point.
-  std::vector<std::vector<int64_t>> element_start(spline.para_dim);
+  DynamicBuffer<int64_t> starts[kMaxParaDim];
   for (int32_t d = 0; d < spline.para_dim; ++d) {
     const auto& kv = decomposed.knot_vectors[d];
     const int32_t p = spline.degrees[d];
-    element_start[d].push_back(0);
+    starts[d].push_back(0);
     std::size_t first = 0;
     while (first < kv.size()) {
       std::size_t end = first;
       while (end < kv.size() && std::abs(kv[end] - kv[first]) <= kEps) {
         ++end;
       }
-      const int64_t mult = static_cast<int64_t>(end - first);
-      const bool internal = first > 0 && end < kv.size();
-      if (internal) {
-        element_start[d].push_back(element_start[d].back() + p
-                                   + (mult > p ? 1 : 0));
+      if (first > 0 && end < kv.size()) {
+        const bool c_minus_1 = static_cast<int64_t>(end - first) > p;
+        starts[d].push_back(starts[d].back() + p + (c_minus_1 ? 1 : 0));
       }
       first = end;
     }
   }
-
-  // Local strides within a patch
-  std::vector<int64_t> patch_cps_n(spline.para_dim);
-  std::vector<int64_t> patch_cps_strides(spline.para_dim);
-  patch_cps_strides[0] = 1;
-  for (int32_t d = 0; d < spline.para_dim; ++d) {
-    patch_cps_n[d] = static_cast<int64_t>(spline.degrees[d]) + 1;
-    if (d > 0) {
-      patch_cps_strides[d] = patch_cps_strides[d - 1] * patch_cps_n[d - 1];
-    }
-  }
+  const Grid elements =
+      Grid::Of(spline.para_dim, [&](int32_t d) { return starts[d].size(); });
 
   // 3. Extract each patch
-  SplineBatchData patches(total_patches);
-
-  for (int64_t patch_idx = 0; patch_idx < total_patches; ++patch_idx) {
-    SplineData patch;
+  SplineBatchData patches(elements.size);
+  for (int64_t e = 0; e < elements.size; ++e) {
+    int64_t first = 0;
+    for (int64_t d = 0, rem = e; d < spline.para_dim; ++d) {
+      first += starts[d][rem % elements.n[d]] * decomp.stride[d];
+      rem /= elements.n[d];
+    }
+    SplineData& patch = patches[e];
     patch.para_dim = spline.para_dim;
     patch.dim = spline.dim;
-    patch.degrees.resize(spline.para_dim);
-    std::copy_n(spline.degrees.data(), spline.para_dim, patch.degrees.data());
-    patch.knot_vectors.clear(); // Pure Bezier patch
-
-    patch.control_points.resize(cps_per_patch * spline.dim);
+    patch.degrees.assign(spline.degrees.begin(), spline.degrees.end());
+    patch.control_points.resize(local.size * spline.dim);
     if (spline.IsRational()) {
-      patch.weights.resize(cps_per_patch);
+      patch.weights.resize(local.size);
     }
-
-    // Element multi-index (e_0, ..., e_{para_dim - 1})
-    int64_t rem = patch_idx;
-    std::vector<int64_t> elem_idx(spline.para_dim);
-    for (int32_t d = 0; d < spline.para_dim; ++d) {
-      elem_idx[d] = rem % num_elements[d];
-      rem /= num_elements[d];
-    }
-
-    // Copy patch control points
-    for (int64_t local_idx = 0; local_idx < cps_per_patch; ++local_idx) {
-      int64_t local_rem = local_idx;
-      int64_t global_cp_idx = 0;
-
-      for (int32_t d = 0; d < spline.para_dim; ++d) {
-        const int64_t j_d = local_rem % patch_cps_n[d];
-        local_rem /= patch_cps_n[d];
-        const int64_t i_d = element_start[d][elem_idx[d]] + j_d;
-        global_cp_idx += i_d * decomp_strides[d];
-      }
-
+    for (int64_t j = 0; j < local.size; ++j) {
+      const int64_t index = first + local.Map(j, decomp.stride);
       for (int32_t c = 0; c < spline.dim; ++c) {
-        patch.control_points[local_idx * spline.dim + c] =
-            decomp_view.Point(global_cp_idx, c);
+        patch.control_points[j * spline.dim + c] = decomp_view.Point(index, c);
       }
       if (spline.IsRational()) {
-        patch.weights[local_idx] = decomp_view.Weight(global_cp_idx);
+        patch.weights[j] = decomp_view.Weight(index);
       }
     }
-
-    patches[patch_idx] = std::move(patch);
   }
 
   return patches;
@@ -290,8 +177,9 @@ SplineData ExtractDim(const SplineView& spline,
   if (options.validate) {
     ThrowIfInvalid(spline);
     if (dim_index < 0 || dim_index >= spline.dim) {
-      throw std::invalid_argument(
-          "ExtractDim: dim_index must be in range [0, dim).");
+      throw SplinepyException(
+          "ExtractDim: dim_index must be in range [0, dim).",
+          Status::kInvalidArgument);
     }
   }
 

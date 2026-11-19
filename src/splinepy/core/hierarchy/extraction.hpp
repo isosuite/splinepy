@@ -23,7 +23,7 @@ struct ThbCacheData {
   int32_t max_axis_bits{0};
 };
 
-Buffer<ThbCacheData> BuildThbCaches(SplineBatchView splines,
+Buffer<ThbCacheData> BuildThbCaches(HierarchicalBatchView splines,
                                     const Options& options = {});
 
 /// The local controls are a separate cache so geometry edits can reuse
@@ -34,7 +34,7 @@ struct ThbGeometryData {
   Buffer<double> weights;
 };
 
-ThbGeometryData BuildThbGeometry(const SplineView& spline,
+ThbGeometryData BuildThbGeometry(const HierarchicalSplineView& spline,
                                  const ThbCacheData& cache);
 
 struct ThbBasisData {
@@ -45,7 +45,7 @@ struct ThbBasisData {
 
 /// Evaluates flattened derivative multi-indices shared by all splines.
 /// Output layout is (query, order, physical component).
-void EvaluateThb(SplineBatchView splines,
+void EvaluateThb(HierarchicalBatchView splines,
                  Span<const ThbCacheData> caches,
                  Span<const ThbGeometryData> geometry,
                  Span<const Span<const double>> queries,
@@ -54,7 +54,7 @@ void EvaluateThb(SplineBatchView splines,
                  const Options& options = {});
 
 /// Allocates one query-major output buffer per spline.
-Buffer<Buffer<double>> EvaluateThb(SplineBatchView splines,
+Buffer<Buffer<double>> EvaluateThb(HierarchicalBatchView splines,
                                    Span<const ThbCacheData> caches,
                                    Span<const ThbGeometryData> geometry,
                                    Span<const Span<const double>> queries,
@@ -62,7 +62,7 @@ Buffer<Buffer<double>> EvaluateThb(SplineBatchView splines,
                                    const Options& options = {});
 
 /// Output layout is (query, physical component, parametric axis).
-void JacobianThb(SplineBatchView splines,
+void JacobianThb(HierarchicalBatchView splines,
                  Span<const ThbCacheData> caches,
                  Span<const ThbGeometryData> geometry,
                  Span<const Span<const double>> queries,
@@ -75,7 +75,7 @@ struct ThbBasisLayout {
   std::size_t width{0};
 };
 
-ThbBasisLayout BuildThbBasisLayout(const SplineView& spline,
+ThbBasisLayout BuildThbBasisLayout(const HierarchicalSplineView& spline,
                                    const ThbCacheData& cache,
                                    Span<const double> queries,
                                    const Options& options = {});
@@ -83,7 +83,7 @@ ThbBasisLayout BuildThbBasisLayout(const SplineView& spline,
 /// Writes padded (query, order, support slot) values and (query, support slot)
 /// indices. Pass empty orders and values for support only, or empty support
 /// for values only. Use a layout built for these queries and this cache.
-void BasisThb(const SplineView& spline,
+void BasisThb(const HierarchicalSplineView& spline,
               const ThbCacheData& cache,
               const ThbGeometryData& geometry,
               Span<const double> queries,
@@ -93,7 +93,7 @@ void BasisThb(const SplineView& spline,
               Span<int64_t> support,
               const Options& options = {});
 
-Buffer<ThbBasisData> BasisThb(SplineBatchView splines,
+Buffer<ThbBasisData> BasisThb(HierarchicalBatchView splines,
                               Span<const ThbCacheData> caches,
                               Span<const ThbGeometryData> geometry,
                               Span<const Span<const double>> queries,

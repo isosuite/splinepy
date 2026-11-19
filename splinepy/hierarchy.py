@@ -6,7 +6,7 @@ from operator import index as _index
 import numpy as _np
 
 from splinepy import settings as _settings
-from splinepy import splinepy_core as _splinepy_core
+from splinepy import splinepy_core as _core
 
 
 def _immutable(array):
@@ -27,7 +27,7 @@ def _thread_count(nthreads):
     return _settings.NTHREADS if nthreads is None else nthreads
 
 
-class HBSpline:
+class HBSpline(_core.HierarchyCore):
     """Polynomial hierarchical B-spline with axis-zero-fastest coefficients.
 
     Construct a single-level spline from tensor data or use
@@ -54,46 +54,25 @@ class HBSpline:
             [(0, *index) for index in _product(*(range(n) for n in span_counts))],
             dtype=_np.int32,
         ).reshape(-1, degrees.size + 1)
+        super().__init__()
         self._initialize(degrees, (knots,), cells, control_points, weights)
 
     def _initialize(self, degrees, levels, leaf_cells, control_points, weights):
-        degrees = _immutable(_integers(degrees, "degrees"))
-        levels = tuple(
-            tuple(_immutable(_np.asarray(axis, dtype=_np.float64)) for axis in level)
-            for level in levels
-        )
-        cells = _integers(leaf_cells, "leaf cells")
-        leaves, active = _splinepy_core._hierarchy_layout(degrees, levels, cells)
-        points = _immutable(_np.asarray(control_points, dtype=_np.float64))
         if self._rational != (weights is not None):
             raise ValueError(
                 "weights are required for a rational hierarchy"
                 if self._rational
                 else "use the rational hierarchy class to supply weights"
             )
-        weights = (
-            None
-            if weights is None
-            else _immutable(_np.asarray(weights, dtype=_np.float64))
-        )
-        data = (
-            degrees,
+        # the native hierarchy copies its inputs and owns its caches
+        self._set(
+            _integers(degrees, "degrees"),
             levels,
-            _immutable(leaves),
-            _immutable(active),
-            points,
+            _integers(leaf_cells, "leaf cells"),
+            control_points,
             weights,
             self._truncate,
         )
-        self._state = data, _splinepy_core._HierarchyCache(data)
-
-    @property
-    def _data(self):
-        return self._state[0]
-
-    @property
-    def _cache(self):
-        return self._state[1]
 
     @classmethod
     def from_hierarchy(
@@ -125,6 +104,7 @@ class HBSpline:
             Constructed hierarchy.
         """
         result = cls.__new__(cls)
+        _core.HierarchyCore.__init__(result)
         result._initialize(degrees, levels, leaf_cells, control_points, weights)
         return result
 
@@ -146,7 +126,7 @@ class HBSpline:
         keys : numpy.ndarray
             Read-only packed keys in coefficient order.
         """
-        _, active = _splinepy_core._hierarchy_layout(
+        _, active = _core._hierarchy_layout(
             _integers(degrees, "degrees"),
             tuple(tuple(level) for level in levels),
             _integers(leaf_cells, "leaf cells"),
@@ -180,132 +160,6 @@ class HBSpline:
         )
 
     @property
-    def degrees(self):
-        """Return the degree along each parametric axis.
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        degrees : numpy.ndarray
-        """
-        return self._data[0]
-
-    @property
-    def levels(self):
-        """Read-only knot vectors, indexed by level and axis.
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        levels : tuple
-        """
-        return self._data[1]
-
-    @property
-    def leaves(self):
-        """Sorted packed leaf keys.
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        keys : numpy.ndarray
-        """
-        return self._data[2]
-
-    @property
-    def active_functions(self):
-        """Sorted packed active function keys.
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        keys : numpy.ndarray
-        """
-        return self._data[3]
-
-    @property
-    def control_points(self):
-        """Return the read-only coefficients in active basis order.
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        control_points : numpy.ndarray
-        """
-        return self._data[4]
-
-    @property
-    def weights(self):
-        """Return rational weights in active basis order.
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        weights : numpy.ndarray or None
-        """
-        return self._data[5]
-
-    @property
-    def is_rational(self):
-        """Report whether the hierarchy is rational.
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        rational : bool
-        """
-        return self._rational
-
-    @property
-    def para_dim(self):
-        """Return the number of parametric axes.
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        dimension : int
-        """
-        return self.degrees.size
-
-    @property
-    def dim(self):
-        """Return the physical dimension.
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        dimension : int
-        """
-        return self.control_points.shape[1]
-
-    @property
     def parametric_bounds(self):
         """Return the lower and upper parameter bounds.
 
@@ -329,20 +183,6 @@ class HBSpline:
                 ],
             ]
         )
-
-    @property
-    def extraction(self):
-        """Read-only views of the CSR extraction arrays in leaf order.
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        extraction : dict
-        """
-        return self._cache.extraction()
 
     @property
     def extract(self):
@@ -443,8 +283,9 @@ class HBSpline:
         -------
         cells : numpy.ndarray
         """
-        data, cache = self._state
-        return _immutable(self._cells(data[0], data[1], cache.extraction()))
+        cells = self._cells(self.degrees, self.levels, self.extraction)
+        cells.setflags(write=False)
+        return cells
 
     @staticmethod
     def _admissibility_class(m):
@@ -476,7 +317,7 @@ class HBSpline:
         -------
         admissible : bool
         """
-        return self._cache.is_admissible(self._admissibility_class(m))
+        return self._is_admissible(self._admissibility_class(m))
 
     def admissible_closure(self, marked, m=2, nthreads=None):
         """Return sorted current leaf indices whose splits satisfy class m.
@@ -500,16 +341,14 @@ class HBSpline:
             Sorted current leaf indices, including those added for grading.
         """
         admissible = self._admissibility_class(m)
-        data, cache = self._state
-        marked = self._leaf_indices(marked, data[2].size)
-        return cache.admissible_closure(marked, admissible, _thread_count(nthreads))
+        marked = self._leaf_indices(marked, self.leaves.size)
+        return self._admissible_closure(marked, admissible, _thread_count(nthreads))
 
-    def _marked_leaves(self, state, elements, level, box, where):
+    def _marked_leaves(self, elements, level, box, where):
         if sum(value is not None for value in (elements, box, where)) != 1:
             raise ValueError("specify exactly one of elements, box, or where")
-        data, cache = state
-        degrees, knot_levels, leaves = data[:3]
-        extraction = cache.extraction()
+        degrees, knot_levels, leaves = self.degrees, self.levels, self.leaves
+        extraction = self.extraction
         candidates = _np.arange(leaves.size, dtype=_np.uintp)
         if level is not None:
             level = _index(level)
@@ -600,15 +439,12 @@ class HBSpline:
             The updated hierarchy.
         """
         m = 0 if admissible is None else self._admissibility_class(admissible)
-        state = self._state
-        marked = self._marked_leaves(state, elements, level, box, where)
-        if self._state is not state:
+        layout = self._layout
+        marked = self._marked_leaves(elements, level, box, where)
+        if self._layout != layout:
             raise RuntimeError("hierarchy changed while selecting leaves")
         if marked.size:
-            refined = state[1].refine(marked, m, _thread_count(nthreads))
-            if self._state is not state:
-                raise RuntimeError("hierarchy changed during refinement")
-            self._state = refined
+            self._refine(marked, m, _thread_count(nthreads))
         return self
 
     def proximities(
@@ -651,11 +487,10 @@ class HBSpline:
         result : numpy.ndarray or tuple
             Closest parameters, or the parameters and diagnostics described above.
         """
-        data, cache = self._state
         if initial_guess_sample_resolutions is None:
-            initial_guess_sample_resolutions = data[0].astype(_np.int64) + 3
+            initial_guess_sample_resolutions = self.degrees.astype(_np.int64) + 3
         resolutions = _integers(initial_guess_sample_resolutions, "resolutions")
-        return cache.proximities(
+        return self._proximities(
             _np.asarray(queries, dtype=_np.float64, order="C"),
             resolutions,
             1e-14 if tolerance is None else tolerance,
@@ -719,7 +554,7 @@ class HBSpline:
                 queries = queries.copy()
             if _np.may_share_memory(orders, out):
                 orders = orders.copy()
-        return self._cache.evaluate(queries, orders, _thread_count(nthreads), out)
+        return self._evaluate(queries, orders, _thread_count(nthreads), out)
 
     def jacobian(self, queries, nthreads=None, out=None):
         """Return the Jacobian with shape (n, dim, para_dim).
@@ -740,7 +575,7 @@ class HBSpline:
         queries = _np.asarray(queries, dtype=_np.float64, order="C")
         if isinstance(out, _np.ndarray) and _np.may_share_memory(queries, out):
             queries = queries.copy()
-        return self._cache.jacobian(queries, _thread_count(nthreads), out)
+        return self._jacobian(queries, _thread_count(nthreads), out)
 
     def _basis_query(
         self, queries, orders, nthreads, out_basis, out_support, *, return_support
@@ -761,7 +596,7 @@ class HBSpline:
             and _np.shares_memory(out_basis, out_support)
         ):
             raise ValueError("basis and support output arrays must not overlap")
-        return self._cache.basis(
+        return self._basis(
             queries,
             orders,
             _thread_count(nthreads),
@@ -990,20 +825,16 @@ class THBSpline(HBSpline):
         if max_iterations != -1 and max_iterations < 1:
             raise ValueError("max_iterations must be positive, -1, or None")
         grade = 0 if admissible is None else self._admissibility_class(admissible)
-        state = self._state
-        marked = self._marked_leaves(state, elements, level, box, where)
-        if self._state is not state:
+        layout = self._layout
+        marked = self._marked_leaves(elements, level, box, where)
+        if self._layout != layout:
             raise RuntimeError("hierarchy changed while selecting leaves")
         if not marked.size:
             return self
-        replacement = state[1].coarsen(
+        self._coarsen(
             marked, grade, method == "exact", tolerance, max_iterations,
             _thread_count(nthreads),
         )
-        if self._state is not state:
-            raise RuntimeError("hierarchy changed during coarsening")
-        if replacement is not None:
-            self._state = replacement
         return self
 
 

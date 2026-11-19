@@ -14,14 +14,16 @@ using Traits = KeyTraits<KeyFormat::kKey64>;
 using detail::BuildGrid;
 using detail::CheckedProduct;
 
-void ValidateExport(const SplineView& spline, const ThbCacheData& cache) {
-  if (!spline.hierarchy || spline.hierarchy->key_format != KeyFormat::kKey64
-      || spline.para_dim <= 0 || spline.dim <= 0
-      || spline.degrees.size() != static_cast<std::size_t>(spline.para_dim)
+void ValidateExport(const HierarchicalSplineView& spline,
+                    const ThbCacheData& cache) {
+  if (spline.hierarchy.key_format != KeyFormat::kKey64
+      || spline.tensor.para_dim <= 0 || spline.tensor.dim <= 0
+      || spline.tensor.degrees.size()
+             != static_cast<std::size_t>(spline.tensor.para_dim)
       || cache.local_size == 0
-      || cache.leaf_levels.size() != spline.hierarchy->leaves.size()
+      || cache.leaf_levels.size() != spline.hierarchy.leaves.size()
       || cache.first_knots.size()
-             != CheckedProduct(cache.leaf_levels.size(), spline.para_dim)
+             != CheckedProduct(cache.leaf_levels.size(), spline.tensor.para_dim)
       || cache.offsets.size() != cache.leaf_levels.size() + 1
       || cache.offsets.back() != cache.active_indices.size()
       || cache.values.size()
@@ -30,14 +32,15 @@ void ValidateExport(const SplineView& spline, const ThbCacheData& cache) {
   }
 }
 
-void ValidateGeometry(const SplineView& spline,
+void ValidateGeometry(const HierarchicalSplineView& spline,
                       const ThbCacheData& cache,
                       const ThbGeometryData& geometry) {
   ValidateExport(spline, cache);
   const auto controls =
       CheckedProduct(cache.leaf_levels.size(), cache.local_size);
-  if (geometry.points.size() != CheckedProduct(controls, spline.dim)
-      || geometry.weights.size() != (spline.IsRational() ? controls : 0)) {
+  if (geometry.points.size() != CheckedProduct(controls, spline.tensor.dim)
+      || geometry.weights.size()
+             != (spline.tensor.IsRational() ? controls : 0)) {
     throw SplinepyException("Invalid hierarchy geometry cache for export");
   }
 }
@@ -48,9 +51,11 @@ void ForItems(std::size_t count, const Options& options, Function&& function) {
     return;
   }
   const auto threads =
-      std::min(count, static_cast<std::size_t>(std::max(1, options.nthreads)));
-  WorkspaceRef workspace(options, MemoryArena::kDefaultBlockSize, threads);
-  workspace->GetThreadArena(static_cast<int>(threads - 1));
+      std::min(count,
+               static_cast<std::size_t>(ResolveThreadCount(options.nthreads)));
+  WorkspaceRef workspace(options,
+                         MemoryArena::kDefaultBlockSize,
+                         static_cast<int>(threads));
   ParallelForWithThreadId(std::size_t{0},
                           count,
                           options.nthreads,
@@ -93,13 +98,14 @@ struct LeafMatrices {
 };
 
 LeafMatrices MakeLeafMatrices(MemoryArena& arena,
-                              const SplineView& spline,
+                              const HierarchicalSplineView& spline,
                               const ThbCacheData& cache,
                               std::size_t leaf) {
-  const auto dim = spline.degrees.size();
+  const auto dim = spline.tensor.degrees.size();
   auto offsets = arena.AllocateSpan<std::size_t>(dim + 1, 0);
   for (std::size_t axis = 0; axis < dim; ++axis) {
-    const auto width = static_cast<std::size_t>(spline.degrees[axis]) + 1;
+    const auto width =
+        static_cast<std::size_t>(spline.tensor.degrees[axis]) + 1;
     const auto entries = CheckedProduct(width, width);
     if (entries > SIZE_MAX / sizeof(double) - offsets[axis]) {
       throw SplinepyException("Bernstein extraction exceeds addressable size",
@@ -108,12 +114,12 @@ LeafMatrices MakeLeafMatrices(MemoryArena& arena,
     offsets[axis + 1] = offsets[axis] + entries;
   }
   auto values = arena.AllocateSpan<double>(offsets.back());
-  const auto level = spline.hierarchy->level_knots[cache.leaf_levels[leaf]];
+  const auto level = spline.hierarchy.level_knots[cache.leaf_levels[leaf]];
   for (std::size_t axis = 0; axis < dim; ++axis) {
     const auto first = cache.first_knots[leaf * dim + axis];
     BernsteinMatrix(
-        spline.degrees[axis],
-        level[axis].subspan(first, 2 * (spline.degrees[axis] + 1)),
+        spline.tensor.degrees[axis],
+        level[axis].subspan(first, 2 * (spline.tensor.degrees[axis] + 1)),
         values.subspan(offsets[axis], offsets[axis + 1] - offsets[axis]));
   }
   return {offsets, values};
@@ -149,7 +155,7 @@ Span<double> ToBernstein(Span<const int32_t> degrees,
 
 } // namespace
 
-Buffer<double> BernsteinExtraction(const SplineView& spline,
+Buffer<double> BernsteinExtraction(const HierarchicalSplineView& spline,
                                    const ThbCacheData& cache,
                                    const Options& options) {
   ValidateExport(spline, cache);
@@ -164,8 +170,11 @@ Buffer<double> BernsteinExtraction(const SplineView& spline,
                   ++row) {
                const auto source = cache.values.data() + row * cache.local_size;
                std::copy_n(source, cache.local_size, current.data());
-               const auto values =
-                   ToBernstein(spline.degrees, matrices, 1, current, scratch);
+               const auto values = ToBernstein(spline.tensor.degrees,
+                                               matrices,
+                                               1,
+                                               current,
+                                               scratch);
                std::copy(values.begin(),
                          values.end(),
                          result.data() + row * cache.local_size);
@@ -174,15 +183,15 @@ Buffer<double> BernsteinExtraction(const SplineView& spline,
   return result;
 }
 
-ThbGeometryData BezierLeafGeometry(const SplineView& spline,
+ThbGeometryData BezierLeafGeometry(const HierarchicalSplineView& spline,
                                    const ThbCacheData& cache,
                                    const ThbGeometryData& geometry,
                                    const Options& options) {
   ValidateGeometry(spline, cache, geometry);
   ThbGeometryData result{Buffer<double>(geometry.points.size()),
                          Buffer<double>(geometry.weights.size())};
-  const auto physical = static_cast<std::size_t>(spline.dim);
-  const auto components = physical + spline.IsRational();
+  const auto physical = static_cast<std::size_t>(spline.tensor.dim);
+  const auto components = physical + spline.tensor.IsRational();
   const auto size = CheckedProduct(cache.local_size, components);
   ForItems(
       cache.leaf_levels.size(),
@@ -195,22 +204,26 @@ ThbGeometryData BezierLeafGeometry(const SplineView& spline,
         for (std::size_t col = 0; col < cache.local_size; ++col) {
           const auto index = offset + col;
           const auto weight =
-              spline.IsRational() ? geometry.weights[index] : 1.0;
+              spline.tensor.IsRational() ? geometry.weights[index] : 1.0;
           for (std::size_t component = 0; component < physical; ++component) {
             current[col * components + component] =
                 geometry.points[index * physical + component] * weight;
           }
-          if (spline.IsRational()) {
+          if (spline.tensor.IsRational()) {
             current[col * components + physical] = weight;
           }
         }
-        const auto values =
-            ToBernstein(spline.degrees, matrices, components, current, scratch);
+        const auto values = ToBernstein(spline.tensor.degrees,
+                                        matrices,
+                                        components,
+                                        current,
+                                        scratch);
         for (std::size_t col = 0; col < cache.local_size; ++col) {
           const auto index = offset + col;
-          const auto weight =
-              spline.IsRational() ? values[col * components + physical] : 1.0;
-          if (spline.IsRational()) {
+          const auto weight = spline.tensor.IsRational()
+                                  ? values[col * components + physical]
+                                  : 1.0;
+          if (spline.tensor.IsRational()) {
             result.weights[index] = weight;
           }
           for (std::size_t component = 0; component < physical; ++component) {
@@ -222,15 +235,15 @@ ThbGeometryData BezierLeafGeometry(const SplineView& spline,
   return result;
 }
 
-SplineData HierarchyToBSpline(const SplineView& spline,
+SplineData HierarchyToBSpline(const HierarchicalSplineView& spline,
                               const ThbCacheData& cache,
                               const ThbGeometryData& geometry,
                               const Options& options) {
   ValidateGeometry(spline, cache, geometry);
-  const auto& hierarchy = *spline.hierarchy;
-  const auto degrees = spline.degrees;
+  const auto& hierarchy = spline.hierarchy;
+  const auto degrees = spline.tensor.degrees;
   const auto dim = degrees.size();
-  const auto physical = static_cast<std::size_t>(spline.dim);
+  const auto physical = static_cast<std::size_t>(spline.tensor.dim);
   WorkspaceRef workspace(options, MemoryArena::kDefaultBlockSize, 1);
   auto& arena = workspace->GetThreadArena();
   auto scope = arena.CreateScope();
@@ -243,15 +256,15 @@ SplineData HierarchyToBSpline(const SplineView& spline,
   }
 
   SplineData result;
-  result.para_dim = spline.para_dim;
-  result.dim = spline.dim;
+  result.para_dim = spline.tensor.para_dim;
+  result.dim = spline.tensor.dim;
   result.degrees.assign(degrees.begin(), degrees.end());
   result.knot_vectors.resize(dim);
   for (std::size_t axis = 0; axis < dim; ++axis) {
     result.knot_vectors[axis].assign(knots[axis].begin(), knots[axis].end());
   }
   result.control_points.resize(CheckedProduct(count, physical));
-  if (spline.IsRational()) {
+  if (spline.tensor.IsRational()) {
     result.weights.resize(count);
   }
 
@@ -316,7 +329,7 @@ SplineData HierarchyToBSpline(const SplineView& spline,
       std::copy_n(geometry.points.data() + source * physical,
                   physical,
                   result.control_points.data() + index * physical);
-      if (spline.IsRational()) {
+      if (spline.tensor.IsRational()) {
         result.weights[index] = geometry.weights[source];
       }
       return;
@@ -343,7 +356,7 @@ SplineData HierarchyToBSpline(const SplineView& spline,
                                       + col];
       }
       const auto source = offset + local;
-      if (spline.IsRational()) {
+      if (spline.tensor.IsRational()) {
         coefficient *= geometry.weights[source];
       }
       weight += coefficient;
@@ -352,12 +365,13 @@ SplineData HierarchyToBSpline(const SplineView& spline,
             coefficient * geometry.points[source * physical + component];
       }
     }
-    if (spline.IsRational()) {
+    if (spline.tensor.IsRational()) {
       result.weights[index] = weight;
     }
     for (std::size_t component = 0; component < physical; ++component) {
       result.control_points[index * physical + component] =
-          spline.IsRational() ? point[component] / weight : point[component];
+          spline.tensor.IsRational() ? point[component] / weight
+                                     : point[component];
     }
   });
   return result;

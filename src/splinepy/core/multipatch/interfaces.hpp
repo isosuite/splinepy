@@ -3,6 +3,7 @@
 #include "splinepy/core/common.hpp"
 #include "splinepy/core/memory/buffer.hpp"
 #include "splinepy/core/memory/span.hpp"
+#include "splinepy/core/model/axis_array.hpp"
 #include "splinepy/core/model/spline_view.hpp"
 #include "splinepy/core/options.hpp"
 
@@ -11,6 +12,19 @@ namespace splinepy::core {
 /// Computes the parametric bounds of a spline: [min_0, max_0, min_1, max_1,
 /// ...]. Buffer size is 2 * para_dim.
 Buffer<double> ParametricBounds(const SplineView& spline);
+
+/// Parametric center of boundary face `face` (axis face / 2, upper side if
+/// odd), given the bounds of ParametricBounds.
+inline AxisArray<double>
+FaceCenter(Span<const double> bounds, int32_t para_dim, int32_t face) {
+  AxisArray<double> u;
+  u.resize(para_dim);
+  for (int32_t k = 0; k < para_dim; ++k) {
+    u[k] = (k == face / 2) ? bounds[k + (face % 2) * para_dim]
+                           : 0.5 * (bounds[k] + bounds[k + para_dim]);
+  }
+  return u;
+}
 
 /// Computes the physical center coordinates of all 2 * para_dim boundary faces
 /// of each patch. Output buffer has shape (num_patches * 2 * para_dim, dim).

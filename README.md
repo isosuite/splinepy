@@ -22,7 +22,7 @@ as needed:
 
 | Extra | Adds |
 | --- | --- |
-| `splinepy[gustaf]` | Gustaf mesh tools and the legacy Vedo backend |
+| `splinepy[gustaf]` | The legacy Vedo backend and gustaf mesh conversion |
 | `splinepy[viewer]` | AnyWidget for interactive notebook output |
 | `splinepy[viewer-export]` | Playwright for headless screenshots; run `playwright install chromium` after installation |
 | `splinepy[all]` | All three extras |
@@ -201,15 +201,17 @@ swept = splinepy.helpme.create.swept(
 ![show_swept](docs/source/_static/show_swept.png)
 
 #### 4.2 Extract
-Use `splinepy[gustaf]` to sample a spline into Gustaf mesh objects.
+Sample a spline into meshes. A mesh is a plain dict of vertices and
+connectivity (see `splinepy.mesh`); `splinepy.mesh.to_gustaf()` converts it
+for gustaf.
 ```python
-# extract meshes as gustaf objects
+# extract meshes
 control_mesh = nurbs.extract.control_mesh()
 control_points = nurbs.extract.control_points()
 mesh = nurbs.extract.faces([201, 33])  # specify sample resolutions
 
 splinepy.show(
-    ["control mesh", control_mesh.to_edges()],
+    ["control mesh", splinepy.mesh.unique_edges(control_mesh)],
     ["control points", control_points],
     ["spline", mesh],
 )
@@ -243,12 +245,9 @@ splinepy.show(
 ![extract_spline](docs/source/_static/readme_extract_spline.png)
 
 #### 4.3 Free-form deformation
-Together with mesh types of [gustaf](https://isosuite.github.io/gustaf), we can perform [free-form deformation](https://isosuite.github.io/splinepy/_generated/splinepy.helpme.ffd.FFD.html)
+Deform vertex arrays, mesh dicts or [gustaf](https://isosuite.github.io/gustaf) meshes with [free-form deformation](https://isosuite.github.io/splinepy/_generated/splinepy.helpme.ffd.FFD.html). The deformed mesh comes back in the type it was given.
 ```python
-import gustaf as gus
-
-# create gustaf mesh using extract.spline()
-# or use gustaf's io functions (gustaf.io)
+# sample a mesh, or bring one from gustaf (splinepy.mesh.from_gustaf)
 mesh = splinepy.helpme.create.torus(2, 1).extract.faces([100, 100, 100])
 
 # initialize ffd and move control points

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <memory>
-#include <vector>
 
 #include "splinepy/core/common.hpp"
 #include "splinepy/core/model/spline_data.hpp"
@@ -101,10 +100,9 @@ private:
 /// Batched ComposeSensitivities with the same pairing and requirements as
 /// ComposeBatch: result[o * inners.size() + i] holds the sensitivities
 /// (one scalar spline per outer control point) of outers[o] o inners[i].
-std::vector<SplineBatchData>
-ComposeSensitivitiesBatch(SplineBatchView outers,
-                          SplineBatchView inners,
-                          const Options& options = {});
+Buffer<SplineBatchData> ComposeSensitivitiesBatch(SplineBatchView outers,
+                                                  SplineBatchView inners,
+                                                  const Options& options = {});
 
 /// Computes the composition sensitivities of outer(inner(u)) with respect to
 /// the outer spline's control points: d(outer o inner) / d(outer_cp_i).

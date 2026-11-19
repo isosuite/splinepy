@@ -313,12 +313,11 @@ BuildActiveSets(Span<const Span<const int32_t>> degrees,
   }
   Buffer<Buffer<uint64_t>> result(hierarchies.size());
   const auto requested =
-      static_cast<std::size_t>(std::max(1, options.nthreads));
+      static_cast<std::size_t>(ResolveThreadCount(options.nthreads));
   const auto threads = std::min(hierarchies.size(), requested);
-  WorkspaceRef workspace(options, MemoryArena::kDefaultBlockSize, threads);
-  if (threads > 0) {
-    workspace->GetThreadArena(static_cast<int>(threads - 1));
-  }
+  WorkspaceRef workspace(options,
+                         MemoryArena::kDefaultBlockSize,
+                         static_cast<int>(threads));
   ParallelForWithThreadId(
       std::size_t{0},
       hierarchies.size(),
@@ -338,12 +337,12 @@ namespace {
 
 template<class Traits>
 ThbCacheData BuildThbCache(MemoryArena& arena,
-                           const SplineView& spline,
+                           const HierarchicalSplineView& spline,
                            const Options& options,
                            Traits traits) {
   auto scope = arena.CreateScope();
-  const auto& hierarchy = *spline.hierarchy;
-  const auto degrees = spline.degrees;
+  const auto& hierarchy = spline.hierarchy;
+  const auto degrees = spline.tensor.degrees;
   const auto leaves = hierarchy.leaves;
   const auto active = hierarchy.active;
   const auto expected = BuildActiveSet(arena, degrees, hierarchy, traits);
@@ -576,7 +575,7 @@ ThbCacheData BuildThbCache(MemoryArena& arena,
 
   const auto threads =
       std::min(leaves.size(),
-               static_cast<std::size_t>(std::max(1, options.nthreads)));
+               static_cast<std::size_t>(ResolveThreadCount(options.nthreads)));
   auto for_leaves = [&](auto&& function) {
     if (threads == 1) {
       for (std::size_t leaf = 0; leaf < leaves.size(); ++leaf) {
@@ -584,8 +583,9 @@ ThbCacheData BuildThbCache(MemoryArena& arena,
       }
       return;
     }
-    WorkspaceRef workspace(options, MemoryArena::kDefaultBlockSize, threads);
-    workspace->GetThreadArena(static_cast<int>(threads - 1));
+    WorkspaceRef workspace(options,
+                           MemoryArena::kDefaultBlockSize,
+                           static_cast<int>(threads));
     ParallelForWithThreadId(std::size_t{0},
                             leaves.size(),
                             options.nthreads,
@@ -615,25 +615,24 @@ ThbCacheData BuildThbCache(MemoryArena& arena,
 
 } // namespace
 
-Buffer<ThbCacheData> BuildThbCaches(SplineBatchView splines,
+Buffer<ThbCacheData> BuildThbCaches(HierarchicalBatchView splines,
                                     const Options& options) {
   Buffer<ThbCacheData> caches(splines.size());
   const auto threads =
       std::min(splines.size(),
-               static_cast<std::size_t>(std::max(1, options.nthreads)));
-  WorkspaceRef workspace(options, MemoryArena::kDefaultBlockSize, threads);
-  if (threads) {
-    workspace->GetThreadArena(static_cast<int>(threads - 1));
-  }
+               static_cast<std::size_t>(ResolveThreadCount(options.nthreads)));
+  WorkspaceRef workspace(options,
+                         MemoryArena::kDefaultBlockSize,
+                         static_cast<int>(threads));
   ParallelForWithThreadId(
       std::size_t{0},
       splines.size(),
       options.nthreads,
       [&](std::size_t i, int thread) {
         const auto& spline = splines[i];
-        if (!spline.hierarchy || spline.para_dim <= 0
-            || spline.degrees.size()
-                   != static_cast<std::size_t>(spline.para_dim)) {
+        if (spline.tensor.para_dim <= 0
+            || spline.tensor.degrees.size()
+                   != static_cast<std::size_t>(spline.tensor.para_dim)) {
           throw SplinepyException("Expected a hierarchical spline view");
         }
         auto local_options = options;
@@ -641,7 +640,7 @@ Buffer<ThbCacheData> BuildThbCaches(SplineBatchView splines,
           local_options.workspace = nullptr;
           local_options.nthreads = 1;
         }
-        DispatchKeyFormat(spline.hierarchy->key_format, [&](auto traits) {
+        DispatchKeyFormat(spline.hierarchy.key_format, [&](auto traits) {
           caches[i] = BuildThbCache(workspace->GetThreadArena(thread),
                                     spline,
                                     local_options,

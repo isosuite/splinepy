@@ -7,18 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-- Python bindings are built with nanobind instead of pybind11. The C++ spline class hierarchy (`SplinepyBase`, `Bezier`, `BSpline`, ...) and the `SPLINEPY_MORE`, `SPLINEPY_BUILD_EXPLICIT` and `SPLINEPY_COMPILE_BSPLINELIB` build options are removed; kernels live in the standalone `core/` library.
-- `Spline` and `Multipatch` are plain Python classes. Control points, weights, degrees and knot vectors are plain numpy arrays, no synchronization with the backend is needed.
-- `spline.knot_vectors` returns a list of `splinepy.KnotVector`, a numpy array subclass.
-
 ### Added
-- Point inversion (`Spline.proximities`) lives in `core/`: bounded trust-region dogleg, SLSQP and Levenberg-Marquardt solver chain, multi-start from element boxes, restarts at singular points (cone apex, collapsed edges).
+- Standalone C++17 core library (`src/splinepy/core`) with allocation-free query kernels, manipulation, Bezier algebra and multipatch topology, plus a GoogleTest suite run in CI.
+- Hierarchical splines: `HBSpline`, `THBSpline`, `RationalHBSpline`, `RationalTHBSpline` with refinement, coarsening, leaf Bezier extraction and JSON IO ([examples/iga/hierarchical_refinement.py](examples/iga/hierarchical_refinement.py)).
+- three.js viewer (`splinepy.viewer`), the default backend of `splinepy.show()`; select with `settings.SHOW_BACKEND` or `show(backend=...)`.
+- `out=` argument on evaluation queries to write into existing arrays.
+- `Bezier.compose_batch()` and `Bezier.composition_derivative_batch()`.
+- `Spline.prepare_proximity()` for reusable point inversion searches; it accepts `guess="bvh"` or `"grid"`.
+- `Multipatch.edit_patches_control_points()` and `update_patch_control_points()`, which propagate edits to shared seam points.
+- `helpme.fit.tensor()` for tensor grid fitting in any parametric dimension.
+- `helpme.create.swept()`: `twist` option.
+- `splinepy.KnotVector`, a numpy array subclass returned by `spline.knot_vectors`.
+- `splinepy.SplinepyError` for errors from the native core, with a `status` attribute. Subclasses `ValueError` and `RuntimeError`.
+
+### Changed
+- Python bindings use nanobind instead of pybind11. `Spline` and `Multipatch` are plain Python classes holding numpy arrays; no backend synchronization.
+- `Spline.proximities` uses an element BVH (or a grid search, `prepare_proximity(guess="grid")`) for initial guesses and a trust-region dogleg, SLSQP and Levenberg-Marquardt solver chain with restarts at singular points.
+- Degree elevation/reduction and Bezier extraction accept C^-1 knots.
+- IGES IO is implemented in Python.
+- FFD accepts native mesh inputs.
+- `gustaf` is optional (`splinepy[gustaf]`); viewer extras are `splinepy[viewer]` and `splinepy[viewer-export]`.
+- macOS wheels are built for arm64 only.
+
+### Fixed
+- Multithreaded queries indexing; exceptions in worker threads aborted the process instead of being raised.
+- Data race in multipatch G1 boundary detection.
+- Integration on non-uniform knot spans, element scaling in `FieldIntegrator` assembly, and orientation of `helpme.integrate.volume`.
+- `swept()`: misaligned cross sections for normals with a y-component, trajectories whose parametric bounds do not start at 0, closure along closed trajectories, and degenerate frames.
 
 ### Removed
-- `PySpline`, `PyMultipatch`, `PhysicalSpaceArray`, `_new_core`, `_coordinate_pointers` and related private helpers.
-- Vendored `pybind11` and the `napf` submodule. The kd-tree initial guess of `Spline.proximities` is replaced by an element bounding volume hierarchy (default) or a nearest sample grid search (`ProximityHandle.guess = "grid"`).
-- `SPLINEPY_BUILD_SHARED` and `SPLINEPY_ENABLE_WARNINGS` build options, the `splinepy` C++ library target.
+- C++ spline class hierarchy (`SplinepyBase`, `Bezier`, `BSpline`, ...), `PySpline`, `PyMultipatch`, `PhysicalSpaceArray` and the coordinate pointer layer.
+- Bundled `pybind11`, `BSplineLib`, `bezman` and `napf`.
+- Build options `SPLINEPY_MORE`, `SPLINEPY_BUILD_EXPLICIT`, `SPLINEPY_COMPILE_BSPLINELIB`, `SPLINEPY_BUILD_SHARED`, `SPLINEPY_ENABLE_WARNINGS` and the `splinepy` C++ library target.
 
 ## [0.2.1] - 2026-06
 

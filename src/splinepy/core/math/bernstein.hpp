@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <vector>
 
 #include "splinepy/core/math/binomial.hpp"
 #include "splinepy/core/memory/span.hpp"

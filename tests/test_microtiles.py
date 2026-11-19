@@ -205,9 +205,6 @@ def test_tile_closure(tile_class):
     """
     tile_name = tile_class.__name__
 
-    # Skip tile if if does not support closure
-    if tile_class._closure_directions is None:
-        skip(f"Tile {tile_name} does not have a closure implementation. Skip")
     tile_creator = tile_class()
     # Go through all implemented closure directions
     for closure_direction in tile_creator._closure_directions:
@@ -273,9 +270,6 @@ def test_tile_derivatives(
         Stepsizes and weights for finite difference scheme. Defined in conftest.py
     """
     tile_creator = tile_class()
-    # Skip test if tile class has no implemented sensitivities
-    if not tile_creator._sensitivities_implemented:
-        skip(f"Tile {tile_class.__name__} has no sensitivities implemented")
 
     def generate_random_parameters(tile_creator, np_rng):
         """Generate random parameters within bounds"""

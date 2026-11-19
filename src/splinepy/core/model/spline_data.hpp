@@ -1,6 +1,7 @@
 #pragma once
 
-#include <vector>
+#include <algorithm>
+#include <utility>
 
 #include "splinepy/core/memory/buffer.hpp"
 #include "splinepy/core/model/spline_view.hpp"
@@ -13,47 +14,32 @@ struct SplineData {
   int32_t dim{0};
 
   Buffer<int32_t> degrees;
-  std::vector<Buffer<double>> knot_vectors;
+  Buffer<Buffer<double>> knot_vectors;
   Buffer<double> control_points;
   Buffer<double> weights;
 
-  // Cached vector of knot vector views for view() construction
-  mutable std::vector<Span<const double>> kv_spans_cache_;
-
-  SplineData() = default;
-  SplineData(SplineData&&) = default;
-  SplineData& operator=(SplineData&&) = default;
-  SplineData(const SplineData&) = default;
-  SplineData& operator=(const SplineData&) = default;
-
   /// Constructs a non-owning SplineView referencing this object's buffers.
+  /// The view is valid until the buffers are replaced or freed. Building one
+  /// only copies a few per-axis values, so it is safe from any thread while
+  /// nobody modifies the object.
   SplineView View() const {
     SplineView v;
     v.para_dim = para_dim;
     v.dim = dim;
     v.degrees = degrees.cspan();
 
-    if (!knot_vectors.empty()) {
-      kv_spans_cache_.resize(knot_vectors.size());
-      for (std::size_t i = 0; i < knot_vectors.size(); ++i) {
-        kv_spans_cache_[i] = knot_vectors[i].cspan();
-      }
-      v.knot_vectors = Span<const Span<const double>>(kv_spans_cache_.data(),
-                                                      kv_spans_cache_.size());
+    v.knot_vectors.resize(knot_vectors.size());
+    for (std::size_t i = 0; i < knot_vectors.size(); ++i) {
+      v.knot_vectors[i] = knot_vectors[i].cspan();
     }
 
     v.control_points_data = control_points.data();
-    v.num_control_points = (dim > 0) ? (control_points.size() / dim) : 0;
+    v.num_control_points = NumControlPoints();
     v.cp_stride = dim;
     v.dim_stride = 1;
 
-    if (!weights.empty()) {
-      v.weights_data = weights.data();
-      v.weight_stride = 1;
-    } else {
-      v.weights_data = nullptr;
-      v.weight_stride = 1;
-    }
+    v.weights_data = weights.empty() ? nullptr : weights.data();
+    v.weight_stride = 1;
 
     return v;
   }
@@ -66,7 +52,7 @@ struct SplineData {
 
   /// Number of control points.
   int64_t NumControlPoints() const noexcept {
-    return (dim > 0) ? (control_points.size() / dim) : 0;
+    return (dim > 0) ? static_cast<int64_t>(control_points.size()) / dim : 0;
   }
 
   /// Alias for View().
@@ -77,31 +63,30 @@ struct SplineData {
     SplineData d;
     d.para_dim = v.para_dim;
     d.dim = v.dim;
-    d.degrees = Buffer<int32_t>(v.degrees.size());
-    for (std::size_t i = 0; i < v.degrees.size(); ++i) {
-      d.degrees[i] = v.degrees[i];
-    }
+    d.degrees.assign(v.degrees.begin(), v.degrees.end());
 
     if (v.HasKnotVectors()) {
-      d.knot_vectors.resize(v.knot_vectors.size());
+      d.knot_vectors = Buffer<Buffer<double>>(v.knot_vectors.size());
       for (std::size_t i = 0; i < v.knot_vectors.size(); ++i) {
-        d.knot_vectors[i] = Buffer<double>(v.knot_vectors[i].size());
-        for (std::size_t j = 0; j < v.knot_vectors[i].size(); ++j) {
-          d.knot_vectors[i][j] = v.knot_vectors[i][j];
-        }
+        d.knot_vectors[i].assign(v.knot_vectors[i].begin(),
+                                 v.knot_vectors[i].end());
       }
     }
 
     const int64_t n_cps = v.num_control_points;
-    d.control_points = Buffer<double>(n_cps * v.dim);
-    for (int64_t i = 0; i < n_cps; ++i) {
-      for (int32_t j = 0; j < v.dim; ++j) {
-        d.control_points[i * v.dim + j] = v.Point(i, j);
+    d.control_points = Buffer<double>::Uninitialized(n_cps * v.dim);
+    if (v.IsCpContiguous()) {
+      std::copy_n(v.control_points_data, n_cps * v.dim, d.control_points.data());
+    } else {
+      for (int64_t i = 0; i < n_cps; ++i) {
+        for (int32_t j = 0; j < v.dim; ++j) {
+          d.control_points[i * v.dim + j] = v.Point(i, j);
+        }
       }
     }
 
     if (v.IsRational()) {
-      d.weights = Buffer<double>(n_cps);
+      d.weights = Buffer<double>::Uninitialized(n_cps);
       for (int64_t i = 0; i < n_cps; ++i) {
         d.weights[i] = v.Weight(i);
       }
@@ -112,6 +97,6 @@ struct SplineData {
 };
 
 /// Batch of owning splines.
-using SplineBatchData = std::vector<SplineData>;
+using SplineBatchData = Buffer<SplineData>;
 
 } // namespace splinepy::core

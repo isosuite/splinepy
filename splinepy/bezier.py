@@ -2,7 +2,7 @@ import numpy as _np
 
 from splinepy import settings as _settings
 from splinepy import spline as _spline
-from splinepy import splinepy_core as _splinepy_core
+from splinepy import splinepy_core as _core
 from splinepy import utils as _utils
 
 
@@ -71,7 +71,7 @@ class BezierBase(_spline.Spline):
             )
 
         # Dimension compatibility is checked in C++.
-        return _splinepy_core.multiply(self, factor)
+        return _core.multiply(self, factor)
 
     def __add__(self, summand):
         """
@@ -92,7 +92,7 @@ class BezierBase(_spline.Spline):
           New spline that describes sum
         """
         # same type check, same para dim check, same dim check done in cpp
-        added = _splinepy_core.add(self, summand)
+        added = _core.add(self, summand)
 
         return type(self)(spline=added)
 
@@ -113,7 +113,7 @@ class BezierBase(_spline.Spline):
         # Ensure array-type
         orders = _utils.data.enforce_contiguous(orders, dtype="int32")
         # dimension compatibility checked in cpp
-        return _splinepy_core.derivative_spline(self, orders)
+        return _core.derivative_spline(self, orders)
 
     def compose(self, inner_function, compute_sensitivities=False):
         r"""
@@ -166,10 +166,10 @@ class BezierBase(_spline.Spline):
           internal control points
         """
         # dimension compatibility checked in cpp
-        composed = _splinepy_core.compose(self, inner_function)
+        composed = _core.compose(self, inner_function)
 
         if compute_sensitivities:
-            sensitivities = _splinepy_core.compose_sensitivities(
+            sensitivities = _core.compose_sensitivities(
                 self, inner_function
             )
             return composed, sensitivities
@@ -213,11 +213,11 @@ class BezierBase(_spline.Spline):
         outers, inners = list(outers), list(inners)
         nthreads = int(nthreads)
 
-        composed = _splinepy_core.compose_batch(outers, inners, nthreads)
+        composed = _core.compose_batch(outers, inners, nthreads)
         if not compute_sensitivities:
             return composed
 
-        sensitivities = _splinepy_core.compose_sensitivities_batch(
+        sensitivities = _core.compose_sensitivities_batch(
             outers, inners, nthreads
         )
         return composed, sensitivities
@@ -248,7 +248,7 @@ class BezierBase(_spline.Spline):
           ``composition_ders[o][i]`` belongs to ``outers[o]`` and
           ``inners[i]``.
         """
-        return _splinepy_core.composition_derivative_batch(
+        return _core.composition_derivative_batch(
             list(outers), list(inners), list(inner_derivatives), int(nthreads)
         )
 
@@ -284,7 +284,7 @@ class BezierBase(_spline.Spline):
         composition_der: BezierBase
         """
         # compatibility check is done in cpp
-        return _splinepy_core.composition_derivative(
+        return _core.composition_derivative(
             self, inner, inner_derivative
         )
 
@@ -305,7 +305,7 @@ class BezierBase(_spline.Spline):
         """
         if max(locations) > 1 or min(locations) < 0:
             raise ValueError("Invalid split location. Should be in (0, 1).")
-        split = _splinepy_core.split(self, para_dim, locations)
+        split = _core.split(self, para_dim, locations)
 
         return [type(self)(spline=s) for s in split]
 
@@ -324,7 +324,7 @@ class BezierBase(_spline.Spline):
         if dim >= self.dim:
             raise ValueError(f"Can't extract ({dim}) dim from {self.whatami}.")
 
-        return type(self)(spline=_splinepy_core.extract_dim(self, dim))
+        return type(self)(spline=_core.extract_dim(self, dim))
 
 
 class Bezier(BezierBase):
@@ -493,7 +493,7 @@ class Bezier(BezierBase):
         spline : BSpline
         """
         return _settings.NAME_TO_TYPE["BSpline"](
-            spline=_splinepy_core.same_spline_with_knot_vectors(self)
+            spline=_core.same_spline_with_knot_vectors(self)
         )
 
     @property
@@ -509,7 +509,7 @@ class Bezier(BezierBase):
         spline : NURBS
         """
         return _settings.NAME_TO_TYPE["NURBS"](
-            spline=_splinepy_core.same_spline_with_knot_vectors(
+            spline=_core.same_spline_with_knot_vectors(
                 self.rationalbezier
             )
         )

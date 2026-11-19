@@ -5,6 +5,8 @@ Thin logging wrapper.
 import functools as _functools
 import logging as _logging
 
+_LOGGER = _logging.getLogger("splinepy")
+
 
 def configure(debug=False, logfile=None):
     """
@@ -71,8 +73,9 @@ def debug(*log):
     --------
     None
     """
-    logger = _logging.getLogger("splinepy")
-    logger.debug(" ".join(map(str, log)))
+    # skip formatting for disabled levels, this runs on hot paths
+    if _LOGGER.isEnabledFor(_logging.DEBUG):
+        _LOGGER.debug(" ".join(map(str, log)))
 
 
 def info(*log):
@@ -87,8 +90,9 @@ def info(*log):
     --------
     None
     """
-    logger = _logging.getLogger("splinepy")
-    logger.info(" ".join(map(str, log)))
+    # skip formatting for disabled levels, this runs on hot paths
+    if _LOGGER.isEnabledFor(_logging.INFO):
+        _LOGGER.info(" ".join(map(str, log)))
 
 
 def warning(*log):
@@ -103,8 +107,9 @@ def warning(*log):
     --------
     None
     """
-    logger = _logging.getLogger("splinepy")
-    logger.warning(" ".join(map(str, log)))
+    # skip formatting for disabled levels, this runs on hot paths
+    if _LOGGER.isEnabledFor(_logging.WARNING):
+        _LOGGER.warning(" ".join(map(str, log)))
 
 
 def error(*log):
@@ -119,8 +124,9 @@ def error(*log):
     --------
     None
     """
-    logger = _logging.getLogger("splinepy")
-    logger.error(" ".join(map(str, log)))
+    # skip formatting for disabled levels, this runs on hot paths
+    if _LOGGER.isEnabledFor(_logging.ERROR):
+        _LOGGER.error(" ".join(map(str, log)))
 
 
 def prepend_log(message, log_func, as_method=True):
@@ -139,5 +145,11 @@ def prepend_log(message, log_func, as_method=True):
     -------
     prepended: function
     """
-    p = _functools.partialmethod if as_method else _functools.partial
-    return p(log_func, message)
+    if not as_method:
+        return _functools.partial(log_func, message)
+
+    # a plain function binds as method without partialmethod's per-access cost
+    def prepended(self, *log):
+        log_func(message, *log)
+
+    return prepended

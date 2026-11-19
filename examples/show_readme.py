@@ -152,15 +152,13 @@ splinepy.show(["extruded", extruded], ["revolved", revolved], background=bg)
 
 ### 4.2
 
-# extract meshes as gustaf objects
+# extract meshes (plain dicts, see splinepy.mesh)
 control_mesh = nurbs.extract.control_mesh()
 control_points = nurbs.extract.control_points()
 mesh = nurbs.extract.faces([201, 33])  # specify sample resolutions
 
-control_mesh_as_edges = control_mesh.to_edges()
-control_mesh_as_edges.show_options.update(c="black", lw=8)
 splinepy.show(
-    ["control mesh", control_mesh_as_edges],
+    ["control mesh", splinepy.mesh.unique_edges(control_mesh)],
     ["control points", control_points],
     ["spline", mesh],
     background=bg,
@@ -186,8 +184,7 @@ splinepy.show(
 )
 
 ### 4.3
-# create gustaf mesh using extract.spline()
-# or use gustaf's io functions (gustaf.io)
+# sample a mesh, or bring one from gustaf (splinepy.mesh.from_gustaf)
 mesh = splinepy.helpme.create.torus(2, 1).extract.faces([100, 100, 100])
 
 # initialize ffd and move control points

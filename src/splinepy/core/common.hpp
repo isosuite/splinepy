@@ -7,6 +7,20 @@
 #include <string_view>
 #include <utility>
 
+/// Marks functions that may also be compiled for a device (CUDA / HIP).
+#if defined(__CUDACC__) || defined(__HIPCC__)
+#define SPLINEPY_HD __host__ __device__
+#else
+#define SPLINEPY_HD
+#endif
+
+/// Forces inlining, e.g. of the lambdas that unroll a loop over axes.
+#if defined(__GNUC__) || defined(__clang__)
+#define SPLINEPY_INLINE __attribute__((always_inline))
+#else
+#define SPLINEPY_INLINE
+#endif
+
 namespace splinepy::core {
 
 constexpr double kDefaultTolerance = 1e-11;

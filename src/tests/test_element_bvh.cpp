@@ -146,49 +146,54 @@ TEST_P(ElementBvhTest, TraversalIsOrderedAndComplete) {
   }
 }
 
-TEST_P(ElementBvhTest, PruningNeverDropsTheClosestElement) {
+// Best-first search with the running best as upper bound: pruning must skip
+// elements, and never one that holds the closest point.
+TEST_P(ElementBvhTest, PruningSkipsElementsButKeepsTheClosest) {
   TestSpline s(GetParam());
   const auto view = s.View();
   ElementBvh bvh(view);
 
-  std::mt19937 gen(8);
-  std::uniform_real_distribution<double> uni(-3.0, 3.0);
-  for (int i = 0; i < 50; ++i) {
-    const double q[3] = {uni(gen), uni(gen), uni(gen)};
-
-    // brute force: best distance over a dense sampling, and its element
+  // closest sampled squared distance inside one element
+  const auto element_distance = [&](const int64_t e, const double* q) {
+    double lo[2], hi[2];
+    bvh.ElementBounds(e, lo, hi);
     double best = std::numeric_limits<double>::infinity();
-    double best_u[2] = {0, 0};
-    for (int a = 0; a <= 40; ++a) {
-      for (int b = 0; b <= 40; ++b) {
-        const double u[2] = {a / 40.0, b / 40.0};
+    for (int a = 0; a <= 10; ++a) {
+      for (int b = 0; b <= 10; ++b) {
+        const double u[2] = {lo[0] + (hi[0] - lo[0]) * a / 10.0,
+                             lo[1] + (hi[1] - lo[1]) * b / 10.0};
         double x[3];
         Evaluate(view, Span<const double>(u, 2), Span<double>(x, 3));
-        const double d2 = (x[0] - q[0]) * (x[0] - q[0])
-                          + (x[1] - q[1]) * (x[1] - q[1])
-                          + (x[2] - q[2]) * (x[2] - q[2]);
-        if (d2 < best) {
-          best = d2;
-          best_u[0] = u[0];
-          best_u[1] = u[1];
+        double d2 = 0.0;
+        for (int k = 0; k < 3; ++k) {
+          d2 += (x[k] - q[k]) * (x[k] - q[k]);
         }
+        best = std::min(best, d2);
       }
     }
+    return best;
+  };
 
-    // visitor reports the sampled optimum as soon as it sees its element
-    bool saw_best_element = false;
-    bvh.Traverse(q, [&](const int64_t e, const double) {
-      double lo[2], hi[2];
-      bvh.ElementBounds(e, lo, hi);
-      if (best_u[0] >= lo[0] && best_u[0] <= hi[0] && best_u[1] >= lo[1]
-          && best_u[1] <= hi[1]) {
-        saw_best_element = true;
-        return best;
-      }
-      return std::numeric_limits<double>::infinity();
+  std::mt19937 gen(8);
+  std::uniform_real_distribution<double> uni(-3.0, 3.0);
+  int64_t total_visits = 0;
+  constexpr int kQueries = 50;
+  for (int i = 0; i < kQueries; ++i) {
+    const double q[3] = {uni(gen), uni(gen), uni(gen)};
+
+    double brute_force = std::numeric_limits<double>::infinity();
+    for (int64_t e = 0; e < bvh.NumElements(); ++e) {
+      brute_force = std::min(brute_force, element_distance(e, q));
+    }
+
+    double best = std::numeric_limits<double>::infinity();
+    total_visits += bvh.Traverse(q, [&](const int64_t e, const double) {
+      best = std::min(best, element_distance(e, q));
+      return best;
     });
-    EXPECT_TRUE(saw_best_element);
+    EXPECT_EQ(best, brute_force) << "query " << i;
   }
+  EXPECT_LT(total_visits, kQueries * bvh.NumElements());
 }
 
 INSTANTIATE_TEST_SUITE_P(Polynomial, ElementBvhTest, ::testing::Values(false));

@@ -1,5 +1,5 @@
 find_package(
-  Python 3.8
+  Python 3.10
   COMPONENTS Interpreter Development.Module
   REQUIRED)
 find_package(nanobind CONFIG REQUIRED)
@@ -9,7 +9,6 @@ nanobind_add_module(
   splinepy_core.cpp
   nb_spline.cpp
   nb_multipatch.cpp
-  nb_knot_insertion_matrix.cpp
   nb_spline_extensions.cpp
   nb_hierarchy.cpp)
 

@@ -5,7 +5,7 @@ import pytest
 
 from splinepy import FFD
 from splinepy.viewer import Viewer
-from splinepy.viewer.mesh import make_mesh
+from splinepy.mesh import make_mesh
 
 
 def test_ffd_native_meshes_without_gustaf(monkeypatch):

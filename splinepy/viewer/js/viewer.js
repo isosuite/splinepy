@@ -85,7 +85,9 @@ function makeMesh(layer, pos, idx, vals, lo, hi, renderer, pending, redraw) {
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
   g.setIndex(new THREE.BufferAttribute(idx, 1));
-  const opts = { side: THREE.DoubleSide, transparent: (layer.opacity ?? 1) < 1, opacity: layer.opacity ?? 1 };
+  const opacity = layer.opacity ?? 1;
+  // Transparent surfaces must not write depth, or back faces fight (moire).
+  const opts = { side: THREE.DoubleSide, transparent: opacity < 1, opacity, depthWrite: opacity >= 1 };
   const uv = unpack(layer.uv);
   if (layer.texture && uv) {
     g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
@@ -114,7 +116,8 @@ function makeLines(layer, pos, idx, materials) {
 function makePoints(layer, pos, vals, lo, hi) {
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-  const opts = { size: layer.size ?? 6, sizeAttenuation: false };
+  const opacity = layer.opacity ?? 1;
+  const opts = { size: layer.size ?? 6, sizeAttenuation: false, transparent: opacity < 1, opacity };
   if (vals) {
     g.setAttribute("color", new THREE.BufferAttribute(colorize(layer, vals, lo, hi), 3));
     opts.vertexColors = true;

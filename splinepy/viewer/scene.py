@@ -11,11 +11,12 @@ import json as _json
 
 import numpy as _np
 
-from splinepy.viewer import mesh as _mesh
+from splinepy import mesh as _mesh
+from splinepy.viewer.compat import COLORMAP_STOPS as _COLORMAP_STOPS
 from splinepy.viewer.compat import to_css as _to_css
 from splinepy.viewer.texture import to_data_url as _to_data_url
 
-COLORMAPS = ("viridis", "plasma", "coolwarm", "jet", "gray")
+COLORMAPS = tuple(_COLORMAP_STOPS)
 LIGHTING = (
     "default", "metallic", "plastic", "shiny", "glossy", "ambient", "off"
 )  # fmt: skip
@@ -228,9 +229,14 @@ def scene_from_splines(
     arrow_color=None,
     arrow_to_origin=False,
     knot_color=None,
+    knot_opacity=None,
+    knot_line_width=None,
     control_point_color=None,
     control_point_size=None,
+    control_point_opacity=None,
     control_mesh_color=None,
+    control_mesh_opacity=None,
+    control_mesh_line_width=None,
     line_width=None,
     fitting_queries=True,
 ):
@@ -282,8 +288,12 @@ def scene_from_splines(
         end (instead of start) at their location.
     knot_color, control_point_color, control_mesh_color : str, optional
         Colors of the respective layers.
+    knot_opacity, control_point_opacity, control_mesh_opacity : float, optional
+        Opacities of the respective layers.
     control_point_size, line_width : float, optional
         Sizes in pixels.
+    knot_line_width, control_mesh_line_width : float, optional
+        Line widths in pixels of knot lines and the control mesh.
     fitting_queries: bool
         Show ``spline._fitting_queries`` if the spline has any.
 
@@ -376,13 +386,15 @@ def scene_from_splines(
                     _layer("lines", "knots", k["vertices"],
                            indices=k["connectivity"],
                            color=_color(knot_color, "#000000"),
-                           width=1.5)
+                           width=knot_line_width or 1.5,
+                           opacity=knot_opacity)
                 )  # fmt: skip
             elif kn:
                 k = _mesh.merge(kn)
                 layers.append(
                     _layer("points", "knots", k["vertices"],
-                           color=_color(knot_color, "#1b7f1b"), size=6)
+                           color=_color(knot_color, "#1b7f1b"), size=6,
+                           opacity=knot_opacity)
                 )  # fmt: skip
 
         if arrows is not None:
@@ -439,6 +451,7 @@ def scene_from_splines(
                     cp,
                     color=_color(control_point_color, "#d62728"),
                     size=control_point_size or 8,
+                    opacity=control_point_opacity,
                 )
             )
         n_cp = sum(len(p.control_points) for p in sub)
@@ -461,7 +474,9 @@ def scene_from_splines(
                 _layer("lines", "control_mesh", cm["vertices"],
                        indices=cm["connectivity"],
                        color=_color(control_mesh_color, "#d62728"),
-                       width=1.5, opacity=0.8)
+                       width=control_mesh_line_width or 1.5,
+                       opacity=0.8 if control_mesh_opacity is None
+                       else control_mesh_opacity)
             )  # fmt: skip
         fq = getattr(p, "_fitting_queries", None) if len(sub) == 1 else None
         if fitting_queries and fq is not None:
@@ -485,36 +500,6 @@ def _assemble(layers, axes=True, background=None, camera=None):
             "bounds": [allp.min(0).tolist(), allp.max(0).tolist()],
         },
     }
-
-
-def _gustaf_to_mesh(obj):
-    vertices = _np.ascontiguousarray(obj.vertices, dtype=_np.float64)
-    elements = getattr(obj, "elements", None)
-    whatami = getattr(obj, "whatami", "")
-    if elements is None or len(elements) == 0 or whatami == "vertices":
-        etype = "vertex"
-        connectivity = None
-    elif elements.shape[1] == 2:
-        etype = "line"
-        connectivity = elements
-    elif elements.shape[1] == 3:
-        etype = "triangle"
-        connectivity = elements
-    elif elements.shape[1] == 4:
-        etype = "tet" if whatami.startswith("tet") else "quad"
-        connectivity = elements
-    elif elements.shape[1] == 8:
-        etype = "hexa"
-        connectivity = elements
-    else:
-        etype = "vertex"
-        connectivity = None
-    vdata = {}
-    if hasattr(obj, "vertex_data"):
-        # Gustaf VertexData exposes keys() but does not support direct iteration.
-        for k in obj.vertex_data.keys():  # noqa: SIM118
-            vdata[k] = obj.vertex_data[k]
-    return _mesh.make_mesh(etype, vertices, connectivity, vertex_data=vdata)
 
 
 def scene_from_mesh(
@@ -596,7 +581,7 @@ def scene_from_mesh(
     if lighting is not None and lighting not in LIGHTING:
         raise ValueError(f"lighting must be one of {LIGHTING}")
     if hasattr(mesh, "vertices") and not isinstance(mesh, dict):
-        mesh = _gustaf_to_mesh(mesh)
+        mesh = _mesh.from_gustaf(mesh)
     elif not isinstance(mesh, dict):
         mesh = _mesh.make_mesh("vertex", mesh)
     etype = mesh["element_type"]

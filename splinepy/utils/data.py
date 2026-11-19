@@ -418,9 +418,9 @@ class SplineDataAdaptor(_SplinepyBase):
                 )
             elif self.is_spline and self.data.para_dim > 2:
                 # TODO: replace this with generalized query helpers.
-                return self.data.extract.faces(
-                    resolutions, watertight=False
-                ).vertices
+                return self.data.extract.faces(resolutions, watertight=False)[
+                    "vertices"
+                ]
             else:
                 return self.data.sample(resolutions)
 

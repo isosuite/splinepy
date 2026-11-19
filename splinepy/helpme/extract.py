@@ -2,12 +2,34 @@ from functools import wraps as _wraps
 
 import numpy as _np
 
+from splinepy import mesh as _mesh
 from splinepy import settings as _settings
-from splinepy import splinepy_core as _splinepy_core
-from splinepy.helpme import visualize as _visualize
+from splinepy import splinepy_core as _core
 from splinepy.utils import log as _log
 from splinepy.utils.data import _enforce_len
 from splinepy.utils.data import cartesian_product as _cartesian_product
+
+
+def _patches(spline):
+    """Patches of a Multipatch, or the spline itself."""
+    return list(spline.patches) if spline.name.startswith("Multi") else [spline]
+
+
+def _tiled(connectivity, n_vertices, n_copies):
+    """Repeats ``connectivity`` for ``n_copies`` blocks of ``n_vertices``."""
+    offsets = n_vertices * _np.arange(n_copies).reshape(-1, 1, 1)
+    return (connectivity[None] + offsets).reshape(-1, connectivity.shape[1])
+
+
+def _sampled_grid(spline, resolution):
+    """Samples every patch on a grid and connects it (line, quad, hexa)."""
+    res = [int(r) for r in _enforce_len(resolution, spline.para_dim)]
+    etype, connectivity = _mesh.grid_elements(res)
+    return _mesh.make_mesh(
+        etype,
+        spline.sample(res),
+        _tiled(connectivity, int(_np.prod(res)), len(_patches(spline))),
+    )
 
 
 def edges(
@@ -29,121 +51,46 @@ def edges(
 
     Returns
     --------
-    edges: Edges
+    edges: dict
+      "line" mesh, see :mod:`splinepy.mesh`.
     """
-    from gustaf import Edges as _Edges
-    from gustaf.utils import connec as _connec
-
-    from splinepy import Multipatch as _Multipatch
-
     if spline.para_dim == 1:
-        # get a single value
         if isinstance(resolution, (_np.ndarray, tuple, list)):
             resolution = max(resolution)
-        # ensure int
-        resolution = int(resolution)
+        return _sampled_grid(spline, int(resolution))
 
-        vertices = spline.sample(resolution)
-        e = _connec.range_to_edges(
-            (0, resolution),
-            closed=False,
-        )
-        if isinstance(spline, _Multipatch):
-            e = _np.vstack(
-                [e + i * resolution for i in range(len(spline.patches))]
-            )
-        return _Edges(
-            vertices=vertices,
-            edges=e,
+    resolution = [int(r) for r in _enforce_len(resolution, spline.para_dim)]
+    if spline.name.startswith("Multi"):
+        return _mesh.merge(
+            edges(p, resolution=resolution, all_knots=all_knots)
+            for p in spline.patches
         )
 
+    if all_knots:
+        relevant_knots = list(spline.unique_knots)
     else:
-        # for para_dim > 1, we support array-like resolutions
-        resolution = _enforce_len(resolution, spline.para_dim)
+        relevant_knots = list(spline.parametric_bounds.T)
 
-        # recursion for Multipatch splines
-        if isinstance(spline, _Multipatch):
-            return _Edges.concat(
-                [
-                    edges(spline=s, resolution=resolution, all_knots=all_knots)
-                    for s in spline.patches
-                ]
+    lines = []
+    for i in range(spline.para_dim):
+        split_knots = relevant_knots.copy()
+        split_knots.pop(i)
+        n_lines = int(_np.prod([len(k) for k in split_knots]))
+        # cartesian product runs the first entry fastest; move it to axis i
+        reorder = [*range(1, i + 1), 0, *range(1 + i, spline.para_dim)]
+        queries = _cartesian_product(
+            [_np.linspace(*spline.parametric_bounds[:, i], resolution[i])]
+            + split_knots,
+            reverse=True,
+        )[:, reorder]
+        lines.append(
+            _mesh.make_mesh(
+                "line",
+                spline.evaluate(queries),
+                _tiled(_mesh.grid_edges((resolution[i],)), resolution[i], n_lines),
             )
-
-        # Single patch case
-        if all_knots:
-            relevant_knots = spline.unique_knots
-        else:
-            relevant_knots = list(spline.parametric_bounds.T)
-
-        temp_edges = []  # edges' is not a valid syntax
-        for i in range(spline.para_dim):
-            split_knots = relevant_knots.copy()
-            split_knots.pop(i)
-            n_knot_lines = _np.prod([len(s) for s in split_knots], dtype=int)
-            # Create query points
-            # Sampling along a line can be done using cartesian product,
-            # however, to preserve the correct order we need to permute the
-            # columns, example:
-            #
-            # [y0, x, z]    [x, y0, z]
-            # [y1, x, z] -> [x, y1, z]
-            # [y2, x, z]    [x, y2, z]
-            reorder_mask = (
-                [*range(1, i + 1)] + [0] + [*range(1 + i, spline.para_dim)]
-            )
-            extract_knot_queries = _cartesian_product(
-                [_np.linspace(*spline.parametric_bounds[:, i], resolution[i])]
-                + split_knots,
-                reverse=True,
-            )[:, reorder_mask]
-
-            # Retrieve connectivity to be repeated
-            single_line_connectivity = _connec.range_to_edges(
-                (0, resolution[i]),
-                closed=False,
-            )
-
-            temp_edges.append(
-                _Edges(
-                    vertices=spline.evaluate(extract_knot_queries),
-                    edges=_np.vstack(
-                        [
-                            single_line_connectivity + resolution[i] * j
-                            for j in range(n_knot_lines)
-                        ]
-                    ),
-                )
-            )
-
-        return _Edges.concat(temp_edges)
-
-
-def _uniform_3d_faces(spline, res):
-    # Extract boundaries and sample from boundaries
-    from gustaf import Faces as _Faces
-    from gustaf.utils import connec as _connec
-
-    if isinstance(spline, _settings.NAME_TO_TYPE["Multipatch"]):
-        boundaries = spline.boundary_multipatch()
-    else:
-        boundaries = _settings.NAME_TO_TYPE["Multipatch"](
-            splines=spline.extract.boundaries()
         )
-
-    n_faces = (res - 1) ** 2
-    vertices = res**2
-    f_loc = _connec.make_quad_faces(_enforce_len(res, 2))
-    face_connectivity = _np.empty((n_faces * len(boundaries.patches), 4))
-
-    # Create Connectivity for Multipatches
-    for i in range(len(boundaries.patches)):
-        face_connectivity[i * n_faces : (i + 1) * n_faces] = f_loc + (
-            i * vertices
-        )
-
-    # make faces and merge vertices before returning
-    return _Faces(vertices=boundaries.sample(res), faces=face_connectivity)
+    return _mesh.merge(lines)
 
 
 def faces(
@@ -153,8 +100,9 @@ def faces(
 ):
     """Extract faces from spline. Valid iff para_dim is one of the following:
     {2, 3}. In case of {3}, it will return only surfaces. If internal faces are
-    desired, used `spline.extract.volumes().faces()`. Note that dimension
-    higher than 3 is not showable.
+    desired, use :func:`splinepy.mesh.boundary_faces` on
+    `spline.extract.volumes()`. Note that dimension higher than 3 is not
+    showable.
 
     Parameters
     -----------
@@ -163,67 +111,30 @@ def faces(
     resolution: int or list
       samples per parametric dimension.
     watertight: bool
-      Default is True. Only related to para_dim = 3 splines. If False,
-      overlapping vertices at boundary edges won't be merged.
+      Default is True. If False, overlapping vertices at patch and boundary
+      edges won't be merged.
 
     Returns
     --------
-    faces: faces
+    faces: dict
+      "quad" mesh, see :mod:`splinepy.mesh`.
     """
-    from gustaf import Faces as _Faces
-    from gustaf.utils import connec as _connec
-
-    from splinepy import Multipatch as _Multipatch
-
     if spline.para_dim == 2:
-        if isinstance(spline, _Multipatch):
-            n_faces = (resolution - 1) ** spline.para_dim
-            vertices = resolution**spline.para_dim
-            f_loc = _connec.make_quad_faces(
-                _enforce_len(resolution, spline.para_dim)
-            )
-            face_connectivity = _np.empty((n_faces * len(spline.patches), 4))
-            # Create Connectivity for Multipatches
-            for i in range(len(spline.patches)):
-                face_connectivity[i * n_faces : (i + 1) * n_faces] = f_loc + (
-                    i * vertices
-                )
-        else:
-            face_connectivity = _connec.make_quad_faces(
-                _enforce_len(resolution, spline.para_dim)
-            )
-        faces = _Faces(
-            vertices=spline.sample(resolution),
-            faces=face_connectivity,
-        )
-
+        faces = _sampled_grid(spline, resolution)
     elif spline.para_dim == 3:
-        full_res = _enforce_len(resolution, spline.para_dim)
-        if (full_res[0] == full_res[1] == full_res[2]) or isinstance(
-            spline, _Multipatch
-        ):
-            faces = _uniform_3d_faces(spline, int(max(full_res)))
+        full_res = [int(r) for r in _enforce_len(resolution, 3)]
+        if spline.name.startswith("Multi"):
+            faces = _sampled_grid(spline.boundary_multipatch(), max(full_res))
         else:
-            # single patch should support varying resolution sample
-            b_faces = []
-            for i, bs in enumerate(spline.extract.boundaries()):
-                res = full_res.tolist()
-                pop_dim = i // 2
-                res.pop(pop_dim)
-
-                b_faces.append(
-                    _Faces(bs.sample(res), _connec.make_quad_faces(res))
-                )
-
-            faces = _Faces.concat(b_faces)
-
+            # boundary 2k and 2k+1 are normal to axis k
+            faces = _mesh.merge(
+                _sampled_grid(b, full_res[: i // 2] + full_res[i // 2 + 1 :])
+                for i, b in enumerate(spline.extract.boundaries())
+            )
     else:
         raise ValueError("Invalid spline to make faces.")
 
-    if watertight:
-        faces.merge_vertices()
-
-    return faces
+    return _mesh.merge_vertices(faces) if watertight else faces
 
 
 def volumes(spline, resolution, watertight=False):
@@ -240,57 +151,24 @@ def volumes(spline, resolution, watertight=False):
 
     Returns
     --------
-    volumes: Volumes
+    volumes: dict
+      "hexa" mesh, see :mod:`splinepy.mesh`.
     """
-    from gustaf import Volumes as _Volumes
-    from gustaf.utils import connec as _connec
-
-    from splinepy import Multipatch as _Multipatch
-
     if spline.para_dim != 3 or spline.dim != 3:
         raise ValueError(
             "Volume extraction from a spline is only valid for "
             "para_dim: 3 dim: 3 splines."
         )
-
-    if isinstance(spline, _Multipatch):
-        if not isinstance(resolution, int):
-            raise ValueError(
-                "Resolution for sampling must be integer type for Multipatch "
-                "objects"
-            )
-        p_connect = _connec.make_hexa_volumes(_enforce_len(resolution, 3))
-        n_elements_per_patch = p_connect.shape[0]
-        n_vertices_per_patch = resolution**spline.para_dim
-        connectivity = _np.empty(
-            (n_elements_per_patch * len(spline.patches), p_connect.shape[1])
+    if spline.name.startswith("Multi") and not isinstance(resolution, int):
+        raise ValueError(
+            "Resolution for sampling must be integer type for Multipatch objects"
         )
-
-        for i in range(len(spline.patches)):
-            ids = slice(
-                i * n_elements_per_patch,
-                (i + 1) * n_elements_per_patch,
-                None,
-            )
-            connectivity[ids] = p_connect + i * n_vertices_per_patch
-    else:
-        connectivity = _connec.make_hexa_volumes(_enforce_len(resolution, 3))
-
-    # Create volumes
-    volumes = _Volumes(
-        vertices=spline.sample(resolution),
-        volumes=connectivity,
-    )
-
-    if watertight:
-        volumes.merge_vertices()
-
-    return volumes
+    volumes = _sampled_grid(spline, resolution)
+    return _mesh.merge_vertices(volumes) if watertight else volumes
 
 
 def control_points(spline):
-    """Extracts control points and return as vertices. Same can be achieved by
-    doing `gustaf.Vertices(spline.control_points)`
+    """Extracts control points as a "vertex" mesh.
 
     Parameters
     -----------
@@ -299,11 +177,21 @@ def control_points(spline):
 
     Returns
     --------
-    cps_as_Vertices: Vertices
+    control_points: dict
+      "vertex" mesh, see :mod:`splinepy.mesh`.
     """
-    from gustaf import Vertices as _Vertices
+    return _mesh.make_mesh("vertex", spline.control_points)
 
-    return _Vertices(spline.control_points)
+
+def _control_grid(spline, para_dim):
+    """Control mesh of every patch, as one line / quad / hexa mesh."""
+    if spline.para_dim != para_dim:
+        raise ValueError("Invalid spline type!")
+    meshes = []
+    for p in _patches(spline):
+        etype, connectivity = _mesh.grid_elements(tuple(p.control_mesh_resolutions))
+        meshes.append(_mesh.make_mesh(etype, p.control_points, connectivity))
+    return _mesh.merge(meshes)
 
 
 def control_edges(spline):
@@ -316,26 +204,10 @@ def control_edges(spline):
 
     Returns
     --------
-    edges: Edges
+    edges: dict
+      "line" mesh, see :mod:`splinepy.mesh`.
     """
-    from gustaf import Edges as _Edges
-    from gustaf.utils import connec as _connec
-
-    from splinepy import Multipatch as _Multipatch
-
-    if spline.para_dim != 1:
-        raise ValueError("Invalid spline type!")
-
-    if isinstance(spline, _Multipatch):
-        # @todo avoid loop and transfer range_to_edges to cpp
-        return _Edges.concat([control_edges(s) for s in spline.patches])
-    else:
-        return _Edges(
-            vertices=spline.control_points,
-            edges=_connec.range_to_edges(
-                len(spline.control_points), closed=False
-            ),
-        )
+    return _control_grid(spline, 1)
 
 
 def control_faces(spline):
@@ -348,24 +220,10 @@ def control_faces(spline):
 
     Returns
     --------
-    faces: Faces
+    faces: dict
+      "quad" mesh, see :mod:`splinepy.mesh`.
     """
-    from gustaf import Faces as _Faces
-    from gustaf.utils import connec as _connec
-
-    from splinepy import Multipatch as _Multipatch
-
-    if spline.para_dim != 2:
-        raise ValueError("Invalid spline type!")
-
-    if isinstance(spline, _Multipatch):
-        # @todo avoid loop and transfer range_to_edges to cpp
-        return _Faces.concat([control_faces(s) for s in spline.patches])
-    else:
-        return _Faces(
-            vertices=spline.control_points,
-            faces=_connec.make_quad_faces(spline.control_mesh_resolutions),
-        )
+    return _control_grid(spline, 2)
 
 
 def control_volumes(spline):
@@ -375,31 +233,17 @@ def control_volumes(spline):
     -----------
     spline: Spline / Multipatch
       (`self`-argument if called via extract member of a spline)
+
     Returns
     --------
-    volumes: Volumes
+    volumes: dict
+      "hexa" mesh, see :mod:`splinepy.mesh`.
     """
-    from gustaf import Volumes as _Volumes
-    from gustaf.utils import connec as _connec
-
-    from splinepy import Multipatch as _Multipatch
-
-    if spline.para_dim != 3:
-        raise ValueError("Invalid spline type!")
-
-    if isinstance(spline, _Multipatch):
-        # @todo avoid loop and transfer range_to_edges to cpp
-        return _Volumes.concat([control_volumes(s) for s in spline.patches])
-    else:
-        return _Volumes(
-            vertices=spline.control_points,
-            volumes=_connec.make_hexa_volumes(spline.control_mesh_resolutions),
-        )
+    return _control_grid(spline, 3)
 
 
 def control_mesh(spline):
-    """Calls control_edges, control_faces, control_volumes based on current
-    spline.
+    """Control mesh of a spline with para_dim 1 to 3.
 
     Parameters
     -----------
@@ -408,18 +252,14 @@ def control_mesh(spline):
 
     Returns
     --------
-    control_mesh: Edges or Faces or Volumes
+    control_mesh: dict
+      "line", "quad" or "hexa" mesh, see :mod:`splinepy.mesh`.
     """
-    if spline.para_dim == 1:
-        return control_edges(spline)
-    elif spline.para_dim == 2:
-        return control_faces(spline)
-    elif spline.para_dim == 3:
-        return control_volumes(spline)
-    else:
+    if spline.para_dim not in (1, 2, 3):
         raise ValueError(
             "Invalid para_dim to extract control_mesh. Supports 1 to 3."
         )
+    return _control_grid(spline, spline.para_dim)
 
 
 def spline(spline, para_dim, split_plane):
@@ -490,7 +330,7 @@ def spline(spline, para_dim, split_plane):
     if is_interval and coordinates[0] >= coordinates[1]:
         raise ValueError("Interval endpoints resolve to the same knot.")
     if missing:
-        _splinepy_core.insert_knots(spline_copy, para_dim, missing, tolerance=0)
+        _core.insert_knots(spline_copy, para_dim, missing, tolerance=0)
 
     knots = spline_copy.knot_vectors[para_dim]
     split_ids = [
@@ -557,7 +397,6 @@ def boundaries(spline, boundary_ids=None):
         boundary spline, which has one less para_dim
     """
     from splinepy import Multipatch as _Multipatch
-    from splinepy import splinepy_core as _core
 
     # Pass to respective c++ implementation
     if isinstance(spline, _Multipatch):
@@ -573,7 +412,9 @@ def boundaries(spline, boundary_ids=None):
 def arrow_data(spline, adata_name):
     """
     Creates edges that represent arrow_data.
-    This function respects entries in show_options.
+    This function respects entries in show_options: ``resolutions``,
+    ``arrow_data_on`` and ``arrow_data_scale``. Without a scale, the longest
+    arrow is at most 10% of the bounding box diagonal.
 
     Parameters
     ----------
@@ -582,49 +423,57 @@ def arrow_data(spline, adata_name):
 
     Returns
     -------
-    adata_edges: gus.Edges
+    adata_edges: dict
+      "line" mesh with one edge per arrow, see :mod:`splinepy.mesh`. If the
+      data does not match the spline's dim, a "vertex" mesh at the arrow
+      origins with the data as vertex_data.
     """
-    from gustaf.create.edges import from_data as _from_data
-
     if adata_name not in spline.spline_data:
-        raise KeyError(
-            f"given splines does not have arrow data - {adata_name}."
-        )
+        raise KeyError(f"given splines does not have arrow data - {adata_name}.")
 
+    options = spline.show_options
     default_res = 10 if spline.name.startswith("Multi") else 100
-    res = spline.show_options.get("resolutions", default_res)
-    sampled_spline = _visualize._sample_spline(spline, res)
-
-    adata = _visualize._sample_arrow_data(
-        spline, adata_name, sampled_spline, _enforce_len(res, spline.para_dim)
-    )
-
-    # if `on` is specified, arrow_data will be a vertices, else it's processed
-    # within sampled_spline
-    gus_mesh = sampled_spline if adata is None else adata
-
-    arrow_data_value = gus_mesh.vertex_data.as_arrow(adata_name, None, True)
-
-    # if data and origin does not have save dimension, they can't be
-    # represented as edges.
-    # We can either raise error or return gus_mesh. We will do the latter
-    # One can extract origin and value using gus_mesh.vertices and
-    # gus_mesh.vertex_data[adata_name]
-    if arrow_data_value.shape[1] != spline.dim:
-        _log.warning(
-            "dimension mismatch between arrow_data and spline."
-            "returning sampled mesh as is (not as gus.Edges)."
+    res = _enforce_len(options.get("resolutions", default_res), spline.para_dim)
+    on = options.get("arrow_data_on", None)
+    if getattr(spline.spline_data[adata_name], "has_locations", False):
+        if on is not None:
+            raise ValueError(
+                f"arrow_data-({adata_name}) has fixed location, "
+                "but `arrow_data_on` is set."
+            )
+        origins = spline.evaluate(spline.spline_data[adata_name].locations)
+        values = spline.spline_data.as_arrow(adata_name)
+    elif on is not None:
+        on = _np.asarray(on, dtype=float)
+        origins = spline.evaluate(on)
+        values = spline.spline_data.as_arrow(adata_name, on=on)
+    else:
+        origins = (
+            faces(spline, res, watertight=False)["vertices"]
+            if spline.para_dim > 2
+            else spline.sample(res)
         )
-        return gus_mesh
+        values = spline.spline_data.as_arrow(adata_name, resolutions=res)
 
-    as_edges = _from_data(
-        gus_mesh,
-        arrow_data_value,
-        gus_mesh.show_options.get("arrow_data_scale", None),
-        data_norm=gus_mesh.vertex_data.as_scalar(adata),
+    values = _np.asarray(values, dtype=float)
+    if values.ndim != 2 or values.shape[1] != spline.dim:
+        _log.warning(
+            "dimension mismatch between arrow_data and spline. "
+            "returning arrow origins with the data as vertex_data."
+        )
+        return _mesh.make_mesh("vertex", origins, vertex_data={adata_name: values})
+
+    scale = options.get("arrow_data_scale", None)
+    if scale is None:
+        diagonal = _np.linalg.norm(origins.max(axis=0) - origins.min(axis=0))
+        longest = _np.linalg.norm(values, axis=1).max()
+        scale = min(1.0, 0.1 * diagonal / longest) if longest > 0 else 1.0
+    vertices = _np.hstack((origins, origins + values * scale))
+    return _mesh.make_mesh(
+        "line",
+        vertices.reshape(-1, spline.dim),
+        _np.arange(2 * len(origins)).reshape(-1, 2),
     )
-
-    return as_edges
 
 
 def bases(spline, ids=None, parametric_view=True):
@@ -810,10 +659,9 @@ class HierarchyExtractor:
         """
         from splinepy import Bezier, RationalBezier
 
-        data, cache = self._spline._state
         threads = _settings.NTHREADS if nthreads is None else nthreads
-        points, weights = cache.bezier_geometry(threads)
-        degrees = data[0]
+        points, weights = self._spline._bezier_geometry(threads)
+        degrees = self._spline.degrees
         if weights is None:
             return [
                 Bezier(degrees=degrees.copy(), control_points=points_on_leaf.copy())
@@ -945,9 +793,8 @@ class HierarchyExtractor:
         if basis not in ("bspline", "bernstein"):
             raise ValueError("basis must be 'bspline' or 'bernstein'")
         threads = _settings.NTHREADS if nthreads is None else nthreads
-        _, cache = self._spline._state
-        result = cache.extraction()
+        result = self._spline.extraction
         if basis == "bernstein":
-            result["values"] = cache.bernstein_extraction(threads)
+            result["values"] = self._spline._bernstein_extraction(threads)
         result["basis"] = basis
         return result
