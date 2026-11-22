@@ -14,7 +14,7 @@
 /// Most parametric axes a spline can have. Per-axis data of views lives
 /// inline, so views never allocate. Set it at build time, e.g.
 /// -DSPLINEPY_MAX_PARA_DIM=6. A value <= 0 is reserved for a dynamic build
-/// without a cap, see docs/design/spline_data.md.
+/// without a cap.
 #ifndef SPLINEPY_MAX_PARA_DIM
 #define SPLINEPY_MAX_PARA_DIM 8
 #endif
