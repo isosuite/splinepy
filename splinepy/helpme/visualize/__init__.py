@@ -7,9 +7,6 @@ argument, else by ``splinepy.settings.SHOW_BACKEND``.
 
 from splinepy import settings as _settings
 from splinepy.helpme.visualize.options import (
-    MultipatchShowOption as MultipatchShowOption,
-)
-from splinepy.helpme.visualize.options import (
     SplineShowOption as SplineShowOption,
 )
 from splinepy.helpme.visualize.viewer_backend import show_viewer

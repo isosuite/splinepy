@@ -117,10 +117,3 @@ class SplineShowOption(_ShowOption):
         "fitting_queries": (bool,),
         "arrow_data_on": (list, tuple, _np.ndarray),
     }
-
-
-class MultipatchShowOption(_ShowOption):
-    """Show options for multipatches."""
-
-    __slots__ = ()
-    _helps = "Multipatch"
