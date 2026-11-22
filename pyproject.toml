@@ -23,7 +23,7 @@ classifiers=[
     "Natural Language :: English",
     "Topic :: Scientific/Engineering",
 ]
-dependencies = ["numpy"]
+dependencies = ["numpy", "funi>=0.2.1"]
 requires-python = '>=3.10'
 dynamic = ["version"]
 
@@ -36,7 +36,7 @@ all = ["gustaf[all]>=0.0.25", "anywidget", "playwright"]
 gustaf = ["gustaf[all]>=0.0.25"]
 viewer = ["anywidget"]
 viewer-export = ["playwright"]
-test = ["funi>=0.2.1", "pytest", "gustaf>=0.0.25"]
+test = ["pytest", "gustaf>=0.0.25", "scipy"]
 
 [project.scripts]
 splinepy = "splinepy.cli:entry"
@@ -51,7 +51,9 @@ wheel.packages = [
     "splinepy.microstructure.tiles",
     "splinepy.viewer",
 ]
-wheel.exclude = ["splinepy/viewer/js/node_modules", "splinepy/viewer/js/package-lock.json"]
+# The viewer's JS sources build static/viewer.bundle.js (committed); only the
+# bundle ships.
+wheel.exclude = ["splinepy/viewer/js/"]
 
 build-dir = "build"
 
@@ -120,7 +122,7 @@ lint.ignore = [
 "splinepy/viewer/html.py" = ["E501"]  # Embedded HTML and JavaScript.
 
 [tool.codespell]
-ignore-words-list = "connec,tye,ned"
+ignore-words-list = "connec,tye,ned,nd"
 skip="./docs/source/_generated/**,./docs/build/*,./build/*,./tests/data/*.svg,*.html,*.js"
 
 

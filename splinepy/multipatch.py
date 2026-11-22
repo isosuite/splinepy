@@ -107,8 +107,8 @@ class Multipatch(_SplinepyBase):
     """An ordered collection of spline patches with connectivity and fields.
 
     Assign to :attr:`patches` to replace the patch collection. Always edit
-    attached control points through :meth:`edit_patch_control_points`,
-    :meth:`edit_patches_control_points`, or :meth:`update_patch_control_points`.
+    attached control points through :meth:`edit_patches_control_points` or
+    :meth:`update_patch_control_points`.
     These methods keep cached queries current and propagate changes to shared
     control points across conforming interfaces. Direct edits to an attached
     spline can leave cached results stale or shared control points out of sync.
@@ -494,9 +494,14 @@ class Multipatch(_SplinepyBase):
         if bid < 0 and self._boundary_multipatch is not None:
             return self._boundary_multipatch
 
-        sub_patches = self.sub_multipatch.patches
-        ids = self.boundary_patch_ids(bid)
-        b_patches = type(self)([sub_patches[i] for i in ids])
+        # only the faces asked for, not the sub multipatch of all faces
+        n_faces = self.interfaces.shape[1]
+        b_patches = type(self)(
+            [
+                _core.extract_boundaries(self._patches[i // n_faces], [i % n_faces])[0]
+                for i in self.boundary_patch_ids(bid).tolist()
+            ]
+        )
         b_patches.n_default_threads = _default_if_none(
             nthreads, self.n_default_threads
         )
@@ -758,23 +763,6 @@ class Multipatch(_SplinepyBase):
         yield tuple(edits.values())
         self._update_patch_cps(edits)
 
-    @_contextmanager
-    def edit_patch_control_points(self, patch_id):
-        """Yield a working copy and propagate seam edits on clean exit.
-
-        Parameters
-        ----------
-        patch_id : int
-            Index of the patch to edit.
-
-        Returns
-        -------
-        editor : context manager
-            Context manager yielding a writable control point array.
-        """
-        with self.edit_patches_control_points([patch_id]) as (points,):
-            yield points
-
     def control_point_offsets(self):
         """
         Offsets of each patch's control points in `control_points`.
@@ -810,8 +798,8 @@ class Multipatch(_SplinepyBase):
           coordinates of the patch-boundary centers
         """
         if self._sub_patch_centers is None and self._patches:
-            self._sub_patch_centers = _np.vstack(
-                [_core.boundary_centers(p) for p in self._patches]
+            self._sub_patch_centers = _core.boundary_centers(
+                self._patches, _settings.NTHREADS
             )
         return self._sub_patch_centers
 
@@ -1092,11 +1080,13 @@ class Multipatch(_SplinepyBase):
             f_mp.same_parametric_bounds = self.same_parametric_bounds
             self._fields.append(f_mp)
 
-    def _add_sensitivity_fields(self, fields, field_dim):
+    def _add_sensitivity_fields(self, fields):
         layouts = tuple(self._patches)
         layout_cache = None
+        # fields come from the native composition, matching the geometry
         for field in fields:
-            self._check_field(field, field_dim, True, True, True, True, implicit=True)
+            if len(field) != len(layouts):
+                raise RuntimeError("Expected one field entry per patch.")
             sensitivity = type(self)(field)
             sensitivity.n_default_threads = _settings.NTHREADS
             sensitivity.same_parametric_bounds = self.same_parametric_bounds
@@ -1210,9 +1200,6 @@ class Multipatch(_SplinepyBase):
             # for now, just take the first elem
             resolutions = int(resolutions[0])
 
-        self._logd(
-            f"Sampling {resolutions ** self.para_dim} points from spline."
-        )
         nthreads = _default_if_none(nthreads, _settings.NTHREADS)
         if not self._patch_entries:
             return None

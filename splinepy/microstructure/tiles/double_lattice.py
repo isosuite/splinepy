@@ -21,6 +21,7 @@ class DoubleLattice(_TileBase):
     _evaluation_points = _np.array([[0.5, 0.5]])
     _n_info_per_eval_point = 2
     _sensitivities_implemented = True
+    _affine = True
     _parameter_bounds = [[0.0, 1 / (2 * (1 + _np.sqrt(2)))]] * 2
     _parameters_shape = (1, 2)
     _default_parameter_value = 0.1
@@ -56,316 +57,300 @@ class DoubleLattice(_TileBase):
         -------
         microtile_list : list(splines)
         """
+        if parameter_sensitivities is not None:
+            return self._affine_derivatives(
+                parameters,
+                parameter_sensitivities,
+                contact_length=contact_length,
+                **kwargs,
+            )
+
         self._check_custom_parameter(
             contact_length, "contact length", self._CONTACT_LENGTH_BOUNDS
         )
 
-        parameters, n_derivatives, derivatives = self._process_input(
-            parameters=parameters,
-            parameter_sensitivities=parameter_sensitivities,
+        parameters = self._parameters(parameters)
+
+            # Constant auxiliary values
+        cl = contact_length
+        thick_vert_hor = parameters[0, 0]  # parameters.shape == [1]
+        thick_diagonal = parameters[0, 1]
+
+        # Set variables
+        a01 = 0.0
+        a02 = thick_vert_hor
+        a03 = thick_vert_hor + thick_diagonal * _np.sqrt(2)
+        a04 = (1.0 - cl) * 0.5
+        a05 = 0.5 - thick_diagonal * _np.sqrt(2)
+        a06 = 0.5
+        a07 = 0.5 + thick_diagonal * _np.sqrt(2)
+        a08 = (1.0 + cl) * 0.5
+        a09 = 1.0 - (thick_vert_hor + thick_diagonal * _np.sqrt(2))
+        a10 = 1.0 - thick_vert_hor
+        a11 = 1.0
+        # Init return value
+        spline_list = []
+
+        # 1
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1],
+                control_points=[
+                    [a01, a01],
+                    [a02, a02],
+                    [a01, a04],
+                    [a02, a03],
+                ],
+            )
         )
 
-        splines = []
-        for i_derivative in range(n_derivatives + 1):
-            # Constant auxiliary values
-            if i_derivative == 0:
-                cl = contact_length
-                thick_vert_hor = parameters[0, 0]  # parameters.shape == [1]
-                thick_diagonal = parameters[0, 1]
-                v_one_half = 0.5
-                v_one = 1.0
-                v_zero = 0.0
-            else:
-                cl = 0.0
-                thick_vert_hor = parameter_sensitivities[
-                    0, 0, i_derivative - 1
-                ]
-                thick_diagonal = parameter_sensitivities[
-                    0, 1, i_derivative - 1
-                ]
-                v_one_half = 0.0
-                v_one = 0.0
-                v_zero = 0.0
-
-            # Set variables
-            a01 = v_zero
-            a02 = thick_vert_hor
-            a03 = thick_vert_hor + thick_diagonal * _np.sqrt(2)
-            a04 = (v_one - cl) * 0.5
-            a05 = v_one_half - thick_diagonal * _np.sqrt(2)
-            a06 = v_one_half
-            a07 = v_one_half + thick_diagonal * _np.sqrt(2)
-            a08 = (v_one + cl) * 0.5
-            a09 = v_one - (thick_vert_hor + thick_diagonal * _np.sqrt(2))
-            a10 = v_one - thick_vert_hor
-            a11 = v_one
-            # Init return value
-            spline_list = []
-
-            # 1
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1],
-                    control_points=[
-                        [a01, a01],
-                        [a02, a02],
-                        [a01, a04],
-                        [a02, a03],
-                    ],
-                )
+        # 2
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1],
+                control_points=[
+                    [a01, a01],
+                    [a04, a01],
+                    [a02, a02],
+                    [a03, a02],
+                ],
             )
+        )
 
-            # 2
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1],
-                    control_points=[
-                        [a01, a01],
-                        [a04, a01],
-                        [a02, a02],
-                        [a03, a02],
-                    ],
-                )
+        # 3
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1],
+                control_points=[
+                    [a04, a01],
+                    [a08, a01],
+                    [a03, a02],
+                    [a09, a02],
+                ],
             )
+        )
 
-            # 3
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1],
-                    control_points=[
-                        [a04, a01],
-                        [a08, a01],
-                        [a03, a02],
-                        [a09, a02],
-                    ],
-                )
-            )
+        # 4
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1],
+                control_points=[
+                    [a08, a01],
+                    [a11, a01],
+                    [a09, a02],
+                    [a10, a02],
+                ],
+            ),
+        )
 
-            # 4
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1],
-                    control_points=[
-                        [a08, a01],
-                        [a11, a01],
-                        [a09, a02],
-                        [a10, a02],
-                    ],
-                ),
+        # 5
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1],
+                control_points=[
+                    [a10, a02],
+                    [a11, a01],
+                    [a10, a03],
+                    [a11, a04],
+                ],
             )
+        )
 
-            # 5
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1],
-                    control_points=[
-                        [a10, a02],
-                        [a11, a01],
-                        [a10, a03],
-                        [a11, a04],
-                    ],
-                )
+        # 6
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1],
+                control_points=[
+                    [a11, a04],
+                    [a11, a08],
+                    [a10, a03],
+                    [a10, a09],
+                ],
             )
+        )
 
-            # 6
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1],
-                    control_points=[
-                        [a11, a04],
-                        [a11, a08],
-                        [a10, a03],
-                        [a10, a09],
-                    ],
-                )
+        # 7
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1],
+                control_points=[
+                    [a10, a09],
+                    [a11, a08],
+                    [a10, a10],
+                    [a11, a11],
+                ],
             )
+        )
+        # 8
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1],
+                control_points=[
+                    [a09, a10],
+                    [a10, a10],
+                    [a08, a11],
+                    [a11, a11],
+                ],
+            )
+        )
 
-            # 7
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1],
-                    control_points=[
-                        [a10, a09],
-                        [a11, a08],
-                        [a10, a10],
-                        [a11, a11],
-                    ],
-                )
+        # 9
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1],
+                control_points=[
+                    [a03, a10],
+                    [a09, a10],
+                    [a04, a11],
+                    [a08, a11],
+                ],
             )
-            # 8
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1],
-                    control_points=[
-                        [a09, a10],
-                        [a10, a10],
-                        [a08, a11],
-                        [a11, a11],
-                    ],
-                )
-            )
+        )
 
-            # 9
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1],
-                    control_points=[
-                        [a03, a10],
-                        [a09, a10],
-                        [a04, a11],
-                        [a08, a11],
-                    ],
-                )
+        # 10
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1],
+                control_points=[
+                    [a02, a10],
+                    [a03, a10],
+                    [a01, a11],
+                    [a04, a11],
+                ],
             )
+        )
 
-            # 10
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1],
-                    control_points=[
-                        [a02, a10],
-                        [a03, a10],
-                        [a01, a11],
-                        [a04, a11],
-                    ],
-                )
+        # 11
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1],
+                control_points=[
+                    [a01, a08],
+                    [a02, a09],
+                    [a01, a11],
+                    [a02, a10],
+                ],
             )
+        )
 
-            # 11
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1],
-                    control_points=[
-                        [a01, a08],
-                        [a02, a09],
-                        [a01, a11],
-                        [a02, a10],
-                    ],
-                )
+        # 12
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1],
+                control_points=[
+                    [a01, a04],
+                    [a02, a03],
+                    [a01, a08],
+                    [a02, a09],
+                ],
             )
+        )
 
-            # 12
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1],
-                    control_points=[
-                        [a01, a04],
-                        [a02, a03],
-                        [a01, a08],
-                        [a02, a09],
-                    ],
-                )
+        # 13
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1],
+                control_points=[
+                    [a02, a09],
+                    [a05, a06],
+                    [a02, a10],
+                    [a06, a06],
+                ],
             )
+        )
 
-            # 13
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1],
-                    control_points=[
-                        [a02, a09],
-                        [a05, a06],
-                        [a02, a10],
-                        [a06, a06],
-                    ],
-                )
+        # 14
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1],
+                control_points=[
+                    [a02, a10],
+                    [a06, a06],
+                    [a03, a10],
+                    [a06, a07],
+                ],
             )
+        )
 
-            # 14
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1],
-                    control_points=[
-                        [a02, a10],
-                        [a06, a06],
-                        [a03, a10],
-                        [a06, a07],
-                    ],
-                )
+        # 15
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1],
+                control_points=[
+                    [a02, a02],
+                    [a06, a06],
+                    [a02, a03],
+                    [a05, a06],
+                ],
             )
+        )
 
-            # 15
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1],
-                    control_points=[
-                        [a02, a02],
-                        [a06, a06],
-                        [a02, a03],
-                        [a05, a06],
-                    ],
-                )
+        # 16
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1],
+                control_points=[
+                    [a02, a02],
+                    [a03, a02],
+                    [a06, a06],
+                    [a06, a05],
+                ],
             )
+        )
 
-            # 16
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1],
-                    control_points=[
-                        [a02, a02],
-                        [a03, a02],
-                        [a06, a06],
-                        [a06, a05],
-                    ],
-                )
+        # 17
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1],
+                control_points=[
+                    [a09, a02],
+                    [a10, a02],
+                    [a06, a05],
+                    [a06, a06],
+                ],
             )
+        )
 
-            # 17
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1],
-                    control_points=[
-                        [a09, a02],
-                        [a10, a02],
-                        [a06, a05],
-                        [a06, a06],
-                    ],
-                )
+        # 18
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1],
+                control_points=[
+                    [a06, a06],
+                    [a10, a02],
+                    [a07, a06],
+                    [a10, a03],
+                ],
             )
+        )
 
-            # 18
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1],
-                    control_points=[
-                        [a06, a06],
-                        [a10, a02],
-                        [a07, a06],
-                        [a10, a03],
-                    ],
-                )
+        # 19
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1],
+                control_points=[
+                    [a06, a06],
+                    [a07, a06],
+                    [a10, a10],
+                    [a10, a09],
+                ],
             )
+        )
 
-            # 19
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1],
-                    control_points=[
-                        [a06, a06],
-                        [a07, a06],
-                        [a10, a10],
-                        [a10, a09],
-                    ],
-                )
+        # 20
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1],
+                control_points=[
+                    [a06, a06],
+                    [a10, a10],
+                    [a06, a07],
+                    [a09, a10],
+                ],
             )
+        )
 
-            # 20
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1],
-                    control_points=[
-                        [a06, a06],
-                        [a10, a10],
-                        [a06, a07],
-                        [a09, a10],
-                    ],
-                )
-            )
-
-            # Pass to output
-            if i_derivative == 0:
-                splines = spline_list.copy()
-            else:
-                derivatives.append(spline_list)
+        # Pass to output
 
         # Return results
-        return (splines, derivatives)
+        return (spline_list, None)

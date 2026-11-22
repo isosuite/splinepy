@@ -20,4 +20,3 @@ class SplinepyBase:
             "<" + cls.__qualname__ + ">", _log.warning
         )
         cls._loge = _log.prepend_log("<" + cls.__qualname__ + ">", _log.error)
-        return super().__new__(cls)

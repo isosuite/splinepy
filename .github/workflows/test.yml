@@ -32,6 +32,21 @@ jobs:
       run: |
         pip install ".[test]" -v
 
+    # Every other job has scipy from the test extra; this one covers the
+    # numpy-only fallbacks.
+    - name: remove scipy
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        pip uninstall -y scipy
+
+    # The viewer's screenshot and widget tests skip without these; this job
+    # runs them in headless Chromium.
+    - name: install headless browser
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        pip install playwright pillow anywidget
+        playwright install --with-deps chromium
+
     - name: test
       run: |
-        pytest tests
+        pytest tests -rs

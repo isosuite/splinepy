@@ -1,71 +1,52 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
-#include <fstream>
 #include <string>
 #include <vector>
 
 #include "splinepy/core/bezier/bezier.hpp"
+#include "splinepy/core/memory/workspace.hpp"
 #include "splinepy/core/queries/queries.hpp"
-
-#ifndef TEST_DATA_DIR
-#define TEST_DATA_DIR "tests/data/golden/bin"
-#endif
+#include "test_utils.hpp"
 
 namespace splinepy::core {
-namespace {
+using namespace test;
 
-template<typename T>
-std::vector<T> LoadBin(const std::string& filename) {
-  const std::string full_path = std::string(TEST_DATA_DIR) + "/" + filename;
-  std::ifstream is(full_path, std::ios::binary | std::ios::ate);
-  if (!is) {
-    throw std::runtime_error("Could not open binary test data file: "
-                             + full_path);
-  }
-  const std::streamsize size = is.tellg();
-  is.seekg(0, std::ios::beg);
-  std::vector<T> buffer(static_cast<std::size_t>(size) / sizeof(T));
-  if (!is.read(reinterpret_cast<char*>(buffer.data()), size)) {
-    throw std::runtime_error("Failed to read binary test data file: "
-                             + full_path);
-  }
-  return buffer;
-}
-
-double MaxAbsDiff(Span<const double> a, Span<const double> b) {
-  EXPECT_EQ(a.size(), b.size());
-  double max_diff = 0.0;
-  for (std::size_t i = 0; i < std::min(a.size(), b.size()); ++i) {
-    const double diff = std::abs(a[i] - b[i]);
-    if (diff > max_diff) {
-      max_diff = diff;
+TEST(BezierAlgebraTest, RejectsKnotVectorInputs) {
+  const int32_t degree = 1;
+  const double points[] = {0., 1.};
+  const auto bezier = MakeBezierView({&degree, 1}, {points, 2}, 1);
+  SplineData tensor;
+  tensor.para_dim = tensor.dim = 1;
+  tensor.degrees = {1};
+  tensor.knot_vectors.resize(1);
+  tensor.knot_vectors[0] = {0., 0., 0.5, 1., 1.};
+  tensor.control_points = {0., 1., 2.};
+  const int32_t order = 1;
+  for (const bool rational : {false, true}) {
+    if (rational) {
+      tensor.weights = {1., 2., 1.};
     }
+    const auto spline = tensor.View();
+    EXPECT_THROW(Add(bezier, spline), SplinepyException);
+    EXPECT_THROW(Add(spline, bezier), SplinepyException);
+    EXPECT_THROW(Multiply(bezier, spline), SplinepyException);
+    EXPECT_THROW(Multiply(spline, bezier), SplinepyException);
+    EXPECT_THROW(Compose(bezier, spline), SplinepyException);
+    EXPECT_THROW(Compose(spline, bezier), SplinepyException);
+    EXPECT_THROW(ComposeSensitivities(bezier, spline), SplinepyException);
+    EXPECT_THROW(CompositionDerivative(bezier, bezier, spline),
+                 SplinepyException);
+    EXPECT_THROW(DerivativeSpline(spline, {&order, 1}), SplinepyException);
+    EXPECT_THROW(Split(spline, 0, 0.5), SplinepyException);
+    EXPECT_THROW(Split(spline, 0, Span<const double>{}), SplinepyException);
+    EXPECT_THROW(ComposeBatch({&bezier, 1}, {&spline, 1}), SplinepyException);
+    EXPECT_THROW(ComposeBatch({&spline, 1}, {&bezier, 1}), SplinepyException);
+    EXPECT_THROW(
+        CompositionDerivativeBatch({&bezier, 1}, {&bezier, 1}, {&spline, 1}),
+        SplinepyException);
   }
-  return max_diff;
 }
-
-SplineView MakeBezierView(Span<const int32_t> degrees,
-                          Span<const double> cps,
-                          int32_t dim,
-                          Span<const double> weights = {}) {
-  SplineView v;
-  v.para_dim = static_cast<int32_t>(degrees.size());
-  v.dim = dim;
-  v.degrees = degrees;
-  v.knot_vectors = {};
-  v.control_points_data = cps.data();
-  v.num_control_points = static_cast<int64_t>(cps.size() / dim);
-  v.cp_stride = dim;
-  v.dim_stride = 1;
-  if (!weights.empty()) {
-    v.weights_data = weights.data();
-    v.weight_stride = 1;
-  }
-  return v;
-}
-
-} // namespace
 
 TEST(BezierAlgebraTest, SplitGolden) {
   auto b1_degrees = LoadBin<int32_t>("operations_bezier_b1_degrees.bin");
@@ -101,18 +82,27 @@ TEST(BezierAlgebraTest, SplitMultiLocation) {
                                  Span<const double>(b1_cps),
                                  2);
 
-  std::vector<double> locations = {0.25, 0.5, 0.75};
+  const std::vector<double> locations = {0.25, 0.5, 0.75};
   auto splits = Split(b1, 1, Span<const double>(locations));
   ASSERT_EQ(splits.size(), 4u);
 
-  // Verify partition and evaluation invariance
-  // Segment 0: u1 in [0.0, 0.25] -> local t = u1 / 0.25
-  double q_global[2] = {0.3, 0.1};
-  double q_local[2] = {0.3, 0.1 / 0.25};
-
-  auto p_global = Evaluate(b1, Span<const double>(q_global, 2));
-  auto p_local = Evaluate(splits[0].View(), Span<const double>(q_local, 2));
-  EXPECT_LT(MaxAbsDiff(p_global.cspan(), p_local.cspan()), 1e-14);
+  // every segment, mapped back to its global interval, matches the original
+  const double bounds[5] = {0.0, 0.25, 0.5, 0.75, 1.0};
+  for (std::size_t seg = 0; seg < splits.size(); ++seg) {
+    for (const double t : {0.0, 0.3, 0.7, 1.0}) {
+      for (const double u0 : {0.1, 0.6}) {
+        const double q_global[2] = {u0,
+                                    bounds[seg]
+                                        + t * (bounds[seg + 1] - bounds[seg])};
+        const double q_local[2] = {u0, t};
+        const auto p_global = Evaluate(b1, Span<const double>(q_global, 2));
+        const auto p_local =
+            Evaluate(splits[seg].View(), Span<const double>(q_local, 2));
+        EXPECT_LT(MaxAbsDiff(p_global.cspan(), p_local.cspan()), 1e-13)
+            << "segment " << seg << " t=" << t;
+      }
+    }
+  }
 }
 
 TEST(BezierAlgebraTest, SplitRational) {
@@ -130,12 +120,17 @@ TEST(BezierAlgebraTest, SplitRational) {
   EXPECT_TRUE(splits[0].View().IsRational());
   EXPECT_TRUE(splits[1].View().IsRational());
 
-  // Evaluate both halves and compare with original
-  double t_orig = 0.25;
-  double t_half = 0.5;
-  auto p1 = Evaluate(circle, Span<const double>(&t_orig, 1));
-  auto p2 = Evaluate(splits[0].View(), Span<const double>(&t_half, 1));
-  EXPECT_LT(MaxAbsDiff(p1.cspan(), p2.cspan()), 1e-14);
+  // both halves stay on the original arc
+  for (std::size_t half = 0; half < 2; ++half) {
+    for (const double t : {0.0, 0.2, 0.5, 0.9, 1.0}) {
+      const double t_orig = 0.5 * (half + t);
+      const auto p1 = Evaluate(circle, Span<const double>(&t_orig, 1));
+      const auto p2 = Evaluate(splits[half].View(), Span<const double>(&t, 1));
+      EXPECT_LT(MaxAbsDiff(p1.cspan(), p2.cspan()), 1e-14)
+          << "half " << half << " t=" << t;
+      EXPECT_NEAR(std::hypot(p2[0], p2[1]), 1.0, 1e-14);
+    }
+  }
 }
 
 TEST(BezierAlgebraTest, AddGolden) {
@@ -184,6 +179,38 @@ TEST(BezierAlgebraTest, AddDegreePromotion) {
     auto v2 = Evaluate(s2, Span<const double>(&u, 1));
     auto v_sum = Evaluate(sum.View(), Span<const double>(&u, 1));
     EXPECT_NEAR(v_sum[0], v1[0] + v2[0], 1e-14);
+  }
+}
+
+TEST(BezierAlgebraTest, AddRationalAndMixedMatchPointwiseSum) {
+  // quarter circle (rational, degree 2) plus a rational and a polynomial line
+  const int32_t deg2 = 2, deg1 = 1;
+  const std::vector<double> arc = {1.0, 0.0, 1.0, 1.0, 0.0, 1.0};
+  const std::vector<double> arc_w = {1.0, std::sqrt(0.5), 1.0};
+  const std::vector<double> line = {0.0, 0.0, 2.0, 1.0};
+  const std::vector<double> line_w = {1.0, 3.0};
+  const SplineView a = MakeBezierView(Span<const int32_t>(&deg2, 1),
+                                      Span<const double>(arc),
+                                      2,
+                                      Span<const double>(arc_w));
+  const SplineView rational = MakeBezierView(Span<const int32_t>(&deg1, 1),
+                                             Span<const double>(line),
+                                             2,
+                                             Span<const double>(line_w));
+  const SplineView polynomial = MakeBezierView(Span<const int32_t>(&deg1, 1),
+                                               Span<const double>(line),
+                                               2);
+  for (const SplineView& b : {rational, polynomial}) {
+    const auto sum = Add(a, b);
+    EXPECT_TRUE(sum.View().IsRational());
+    for (double u = 0.0; u <= 1.0; u += 0.125) {
+      const auto va = Evaluate(a, Span<const double>(&u, 1));
+      const auto vb = Evaluate(b, Span<const double>(&u, 1));
+      const auto vs = Evaluate(sum.View(), Span<const double>(&u, 1));
+      for (int c = 0; c < 2; ++c) {
+        EXPECT_NEAR(vs[c], va[c] + vb[c], 1e-14);
+      }
+    }
   }
 }
 
@@ -294,31 +321,6 @@ TEST(BezierAlgebraTest, MultiplyMatchesPointwiseProduct) {
             << " rational=" << k.rational;
       }
     }
-  }
-}
-
-TEST(BezierAlgebraTest, MultiplyDotProduct) {
-  // Dot product of two 2D Bezier curves
-  int32_t deg = 1;
-  std::vector<double> cps_a = {1.0, 2.0, 3.0, 4.0};
-  std::vector<double> cps_b = {5.0, 6.0, 7.0, 8.0};
-  SplineView sa = MakeBezierView(Span<const int32_t>(&deg, 1),
-                                 Span<const double>(cps_a),
-                                 2);
-  SplineView sb = MakeBezierView(Span<const int32_t>(&deg, 1),
-                                 Span<const double>(cps_b),
-                                 2);
-
-  auto dot = Multiply(sa, sb);
-  EXPECT_EQ(dot.dim, 1);
-  EXPECT_EQ(dot.degrees[0], 2);
-
-  for (double u = 0.0; u <= 1.0; u += 0.25) {
-    auto va = Evaluate(sa, Span<const double>(&u, 1));
-    auto vb = Evaluate(sb, Span<const double>(&u, 1));
-    auto v_dot = Evaluate(dot.View(), Span<const double>(&u, 1));
-    double expected = va[0] * vb[0] + va[1] * vb[1];
-    EXPECT_NEAR(v_dot[0], expected, 1e-14);
   }
 }
 
@@ -602,50 +604,56 @@ TEST(BezierAlgebraTest, ComposeBatchVariantsMatchSingle) {
         inner_ders.push_back(data.View());
       }
 
-      for (const int nthreads : {1, 4}) {
-        Options options;
-        options.nthreads = nthreads;
-        const std::string label =
-            "outer_rational=" + std::to_string(outer_rational)
-            + " inner_rational=" + std::to_string(inner_rational)
-            + " nthreads=" + std::to_string(nthreads);
+      for (const int nthreads : {1, 4})
+        for (const bool caller_workspace : {false, true}) {
+          // a caller workspace with one arena must still give every worker
+          // its own scratch
+          Workspace workspace(1024, 1);
+          Options options;
+          options.nthreads = nthreads;
+          options.workspace = caller_workspace ? &workspace : nullptr;
+          const std::string label =
+              "outer_rational=" + std::to_string(outer_rational)
+              + " inner_rational=" + std::to_string(inner_rational)
+              + " nthreads=" + std::to_string(nthreads)
+              + " caller_workspace=" + std::to_string(caller_workspace);
 
-        auto sens = ComposeSensitivitiesBatch(Span<const SplineView>(outers),
-                                              Span<const SplineView>(inners),
-                                              options);
-        auto ders =
-            CompositionDerivativeBatch(Span<const SplineView>(outers),
-                                       Span<const SplineView>(inners),
-                                       Span<const SplineView>(inner_ders),
-                                       options);
-        ASSERT_EQ(sens.size(), static_cast<std::size_t>(kOuters * kInners));
-        ASSERT_EQ(ders.size(), static_cast<std::size_t>(kOuters * kInners));
+          auto sens = ComposeSensitivitiesBatch(Span<const SplineView>(outers),
+                                                Span<const SplineView>(inners),
+                                                options);
+          auto ders =
+              CompositionDerivativeBatch(Span<const SplineView>(outers),
+                                         Span<const SplineView>(inners),
+                                         Span<const SplineView>(inner_ders),
+                                         options);
+          ASSERT_EQ(sens.size(), static_cast<std::size_t>(kOuters * kInners));
+          ASSERT_EQ(ders.size(), static_cast<std::size_t>(kOuters * kInners));
 
-        for (int o = 0; o < kOuters; ++o) {
-          for (int i = 0; i < kInners; ++i) {
-            const auto expected_sens =
-                ComposeSensitivities(outers[o], inners[i]);
-            const auto& got_sens = sens[o * kInners + i];
-            ASSERT_EQ(got_sens.size(), expected_sens.size()) << label;
-            for (std::size_t k = 0; k < expected_sens.size(); ++k) {
-              EXPECT_LT(MaxAbsDiff(got_sens[k].control_points.cspan(),
-                                   expected_sens[k].control_points.cspan()),
-                        1e-13)
+          for (int o = 0; o < kOuters; ++o) {
+            for (int i = 0; i < kInners; ++i) {
+              const auto expected_sens =
+                  ComposeSensitivities(outers[o], inners[i]);
+              const auto& got_sens = sens[o * kInners + i];
+              ASSERT_EQ(got_sens.size(), expected_sens.size()) << label;
+              for (std::size_t k = 0; k < expected_sens.size(); ++k) {
+                EXPECT_LT(MaxAbsDiff(got_sens[k].control_points.cspan(),
+                                     expected_sens[k].control_points.cspan()),
+                          1e-13)
+                    << label;
+                EXPECT_EQ(got_sens[k].weights.size(),
+                          expected_sens[k].weights.size());
+              }
+
+              const auto expected_der =
+                  CompositionDerivative(outers[o], inners[i], inner_ders[i]);
+              const auto& got_der = ders[o * kInners + i];
+              EXPECT_LT(MaxAbsDiff(got_der.control_points.cspan(),
+                                   expected_der.control_points.cspan()),
+                        1e-12)
                   << label;
-              EXPECT_EQ(got_sens[k].weights.size(),
-                        expected_sens[k].weights.size());
             }
-
-            const auto expected_der =
-                CompositionDerivative(outers[o], inners[i], inner_ders[i]);
-            const auto& got_der = ders[o * kInners + i];
-            EXPECT_LT(MaxAbsDiff(got_der.control_points.cspan(),
-                                 expected_der.control_points.cspan()),
-                      1e-12)
-                << label;
           }
         }
-      }
     }
   }
 }
@@ -671,7 +679,7 @@ TEST(BezierAlgebraTest, ComposeBatchRejectsMixedOuters) {
                      2)};
   EXPECT_THROW(ComposeBatch(Span<const SplineView>(outers),
                             Span<const SplineView>(inners)),
-               std::invalid_argument);
+               SplinepyException);
 }
 
 TEST(BezierAlgebraTest, CompositionDerivative) {

@@ -1,152 +1,94 @@
 #pragma once
 
 #include <algorithm>
-#include <exception>
-#include <future>
-#include <mutex>
+#include <cstddef>
 #include <thread>
-#include <type_traits>
-#include <vector>
+
+#include "splinepy/core/concurrency/thread_pool.hpp"
 
 namespace splinepy::core {
 
-/// Parallelizes a loop [start, end) across worker threads using standard
-/// std::thread. Zero external dependency (no OpenMP).
+/// Number of threads an Options::nthreads value asks for: a negative value
+/// means one per hardware thread, 0 and 1 mean sequential on the caller.
+inline int ResolveThreadCount(int nthreads) noexcept {
+  if (nthreads < 0) {
+    return std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
+  }
+  return std::max(nthreads, 1);
+}
+
+/// Threads worth using for about work multiply-adds: one per kGrain, at
+/// least one, at most ResolveThreadCount(nthreads). Waking a pool thread costs
+/// about as much as kGrain multiply-adds, so small work stays on the caller.
+inline int ThreadsFor(double work, int nthreads) {
+  constexpr double kGrain = 32768.0;
+  const double useful = std::max(1.0, work / kGrain);
+  return static_cast<int>(
+      std::min<double>(ResolveThreadCount(nthreads), useful));
+}
+
+/// Splits [start, end) into contiguous chunks of near equal size and runs
+/// fn(chunk_begin, chunk_end, thread_id) once per chunk, at most one chunk per
+/// thread. thread_id is in [0, ResolveThreadCount(nthreads)); the calling
+/// thread runs as thread 0. The threads come from the shared pool (see
+/// RunOnThreads); when it is busy, everything runs as one chunk on the
+/// caller. The first exception thrown by any chunk is
+/// rethrown on the caller after all chunks finished.
 template<typename IndexType, typename Function>
-void ParallelFor(IndexType start, IndexType end, int nthreads, Function&& fn) {
-  if (start >= end) {
+void ParallelForChunks(IndexType start,
+                       IndexType end,
+                       int nthreads,
+                       Function&& fn) {
+  if (!(start < end)) {
     return;
   }
-
-  const auto total_work = static_cast<std::size_t>(end - start);
-  const int max_threads = static_cast<int>(
-      std::clamp(static_cast<std::size_t>(nthreads > 0 ? nthreads : 1),
-                 std::size_t{1},
-                 total_work));
-
-  if (max_threads <= 1 || total_work <= 1) {
-    for (IndexType i = start; i < end; ++i) {
-      fn(i);
-    }
-    return;
-  }
-
-  std::vector<std::thread> workers;
-  workers.reserve(max_threads - 1);
-  std::exception_ptr error_ptr{nullptr};
-  std::mutex error_mutex;
-
-  const std::size_t chunk_size = total_work / max_threads;
-  const std::size_t remainder = total_work % max_threads;
-
-  auto run_chunk = [&](IndexType chunk_start, IndexType chunk_end) {
-    try {
-      for (IndexType i = chunk_start; i < chunk_end; ++i) {
-        fn(i);
-      }
-    } catch (...) {
-      std::lock_guard<std::mutex> lock(error_mutex);
-      if (!error_ptr) {
-        error_ptr = std::current_exception();
-      }
-    }
+  const auto total = static_cast<std::size_t>(end - start);
+  const auto threads =
+      std::min(static_cast<std::size_t>(ResolveThreadCount(nthreads)), total);
+  // the first `remainder` chunks take one extra item
+  const std::size_t size = total / threads;
+  const std::size_t remainder = total % threads;
+  const auto chunk = [&](int t) {
+    const auto i = static_cast<std::size_t>(t);
+    const std::size_t first = i * size + std::min(i, remainder);
+    const std::size_t count = size + (i < remainder ? 1 : 0);
+    fn(start + static_cast<IndexType>(first),
+       start + static_cast<IndexType>(first + count),
+       t);
   };
-
-  std::size_t current_offset = 0;
-  for (int t = 0; t < max_threads - 1; ++t) {
-    const std::size_t this_chunk =
-        chunk_size + (static_cast<std::size_t>(t) < remainder ? 1 : 0);
-    const IndexType s = start + static_cast<IndexType>(current_offset);
-    const IndexType e = s + static_cast<IndexType>(this_chunk);
-    current_offset += this_chunk;
-    workers.emplace_back(run_chunk, s, e);
-  }
-
-  // Master thread runs the final chunk
-  const IndexType master_start = start + static_cast<IndexType>(current_offset);
-  run_chunk(master_start, end);
-
-  for (auto& w : workers) {
-    if (w.joinable()) {
-      w.join();
-    }
-  }
-
-  if (error_ptr) {
-    std::rethrow_exception(error_ptr);
+  if (threads <= 1 || !RunOnThreads(static_cast<int>(threads), chunk)) {
+    fn(start, end, 0);
   }
 }
 
-/// Parallelizes a loop [start, end) across worker threads, passing unique
-/// thread_id to fn(i, thread_id). Useful for index-based access to per-thread
-/// workspaces.
+/// Parallelizes a loop [start, end), calling fn(i, thread_id) for every index.
+/// thread_id identifies the worker, e.g. for per-thread workspaces.
 template<typename IndexType, typename Function>
 void ParallelForWithThreadId(IndexType start,
                              IndexType end,
                              int nthreads,
                              Function&& fn) {
-  if (start >= end) {
-    return;
-  }
+  ParallelForChunks(start,
+                    end,
+                    nthreads,
+                    [&](IndexType chunk_start, IndexType chunk_end, int tid) {
+                      for (IndexType i = chunk_start; i < chunk_end; ++i) {
+                        fn(i, tid);
+                      }
+                    });
+}
 
-  const auto total_work = static_cast<std::size_t>(end - start);
-  const int max_threads = static_cast<int>(
-      std::clamp(static_cast<std::size_t>(nthreads > 0 ? nthreads : 1),
-                 std::size_t{1},
-                 total_work));
-
-  if (max_threads <= 1 || total_work <= 1) {
-    for (IndexType i = start; i < end; ++i) {
-      fn(i, 0);
-    }
-    return;
-  }
-
-  std::vector<std::thread> workers;
-  workers.reserve(max_threads - 1);
-  std::exception_ptr error_ptr{nullptr};
-  std::mutex error_mutex;
-
-  const std::size_t chunk_size = total_work / max_threads;
-  const std::size_t remainder = total_work % max_threads;
-
-  auto run_chunk =
-      [&](IndexType chunk_start, IndexType chunk_end, int thread_id) {
-        try {
-          for (IndexType i = chunk_start; i < chunk_end; ++i) {
-            fn(i, thread_id);
-          }
-        } catch (...) {
-          std::lock_guard<std::mutex> lock(error_mutex);
-          if (!error_ptr) {
-            error_ptr = std::current_exception();
-          }
-        }
-      };
-
-  std::size_t current_offset = 0;
-  for (int t = 0; t < max_threads - 1; ++t) {
-    const std::size_t this_chunk =
-        chunk_size + (static_cast<std::size_t>(t) < remainder ? 1 : 0);
-    const IndexType s = start + static_cast<IndexType>(current_offset);
-    const IndexType e = s + static_cast<IndexType>(this_chunk);
-    current_offset += this_chunk;
-    workers.emplace_back(run_chunk, s, e, t + 1);
-  }
-
-  // Master thread runs the final chunk as thread 0
-  const IndexType master_start = start + static_cast<IndexType>(current_offset);
-  run_chunk(master_start, end, 0);
-
-  for (auto& w : workers) {
-    if (w.joinable()) {
-      w.join();
-    }
-  }
-
-  if (error_ptr) {
-    std::rethrow_exception(error_ptr);
-  }
+/// Parallelizes a loop [start, end), calling fn(i) for every index.
+template<typename IndexType, typename Function>
+void ParallelFor(IndexType start, IndexType end, int nthreads, Function&& fn) {
+  ParallelForChunks(start,
+                    end,
+                    nthreads,
+                    [&](IndexType chunk_start, IndexType chunk_end, int) {
+                      for (IndexType i = chunk_start; i < chunk_end; ++i) {
+                        fn(i);
+                      }
+                    });
 }
 
 } // namespace splinepy::core

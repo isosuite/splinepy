@@ -1,77 +1,43 @@
 import numpy as np
+import pytest
 
 import splinepy
 
 
-def test_greville_points_bezier(bezier_3p3d):
-    """
-    test greville point calculation for bezier
-    """
-    greville_points = splinepy.utils.data.cartesian_product(
+def greville(knot_vector, degree):
+    """reference: mean of `degree` consecutive inner knots"""
+    knots = np.asarray(knot_vector)
+    if degree == 0:
+        return (knots[:-1] + knots[1:]) / 2
+    return np.convolve(knots[1:-1], np.ones(degree) / degree, mode="valid")
+
+
+@pytest.mark.parametrize("splinetype", ["bezier_3p3d", "rational_bezier_3p3d"])
+def test_greville_points_bezier(splinetype, request):
+    """bezier greville points are equidistant"""
+    spline = request.getfixturevalue(splinetype)
+    spline.elevate_degrees([1, 2, 2])
+    expected = splinepy.utils.data.cartesian_product(
+        [np.linspace(0, 1, d + 1) for d in spline.degrees]
+    )
+    assert np.allclose(expected, spline.greville_abscissae())
+
+
+@pytest.mark.parametrize("splinetype", ["bspline_3p3d", "nurbs_3p3d"])
+def test_greville_points_bspline_family(splinetype, request):
+    """non-uniform knot vectors with mixed degrees"""
+    spline = request.getfixturevalue(splinetype)
+    spline.elevate_degrees([0, 0, 1, 2])
+    spline.insert_knots(0, [0.2, 0.7])
+    spline.insert_knots(1, [0.2, 0.5, 0.7])
+    spline.insert_knots(2, [0.5])
+    expected = splinepy.utils.data.cartesian_product(
         [
-            np.linspace(0, 1, bezier_3p3d.degrees[i] + 1)
-            for i in range(bezier_3p3d.para_dim)
+            greville(kv, d)
+            for kv, d in zip(spline.knot_vectors, spline.degrees, strict=True)
         ]
     )
-
-    assert np.allclose(greville_points, bezier_3p3d.greville_abscissae())
-
-
-def test_greville_points_rational_bezier(rational_bezier_3p3d):
-    """
-    test greville point calculation for rational bezier
-    """
-    greville_points = splinepy.utils.data.cartesian_product(
-        [
-            np.linspace(0, 1, rational_bezier_3p3d.degrees[i] + 1)
-            for i in range(rational_bezier_3p3d.para_dim)
-        ]
-    )
-    assert np.allclose(
-        greville_points, rational_bezier_3p3d.greville_abscissae()
-    )
-
-
-def test_greville_points_bspline(bspline_3p3d):
-    """
-    test greville point calculation for bspline
-    """
-    # Modify some splines
-    bspline_3p3d.insert_knots(0, [0.2, 0.7])
-    bspline_3p3d.insert_knots(1, [0.2, 0.5, 0.7])
-    bspline_3p3d.insert_knots(2, [0.5])
-
-    # Test non-unifrom Splines
-    greville_points = splinepy.utils.data.cartesian_product(
-        [
-            np.convolve(
-                bspline_3p3d.knot_vectors[i][1:-1],
-                np.ones(bspline_3p3d.degrees[i]),
-            )
-            for i in range(bspline_3p3d.para_dim)
-        ]
-    )
-    assert np.allclose(greville_points, bspline_3p3d.greville_abscissae())
-
-
-def test_greville_points_nurbs(nurbs_3p3d):
-    """
-    test greville point calculation for nurbs
-    """
-    nurbs_3p3d.elevate_degrees([0, 0, 1, 2])
-    nurbs_3p3d.insert_knots(0, [0.25])
-    # Test Uniform Types
-    greville_points = splinepy.utils.data.cartesian_product(
-        [
-            np.convolve(
-                nurbs_3p3d.knot_vectors[i][1:-1],
-                np.ones(nurbs_3p3d.degrees[i]) / nurbs_3p3d.degrees[i],
-                mode="valid",
-            )
-            for i in range(nurbs_3p3d.para_dim)
-        ]
-    )
-    assert np.allclose(greville_points, nurbs_3p3d.greville_abscissae())
+    assert np.allclose(expected, spline.greville_abscissae())
 
 
 def test_greville_with_duplicate_points():

@@ -11,13 +11,14 @@ namespace splinepy::core {
 /// admissibility check. Exact transfer rejects geometry outside the target
 /// space. A max_iterations value of -1 uses the size-dependent default per
 /// component.
-std::optional<ThbRefinementData> CoarsenThb(const SplineView& spline,
-                                            const ThbCacheData& cache,
-                                            Span<const std::size_t> marked,
-                                            int32_t admissible,
-                                            bool exact,
-                                            double tolerance,
-                                            int64_t max_iterations,
-                                            const Options& options = {});
+std::optional<ThbRefinementData>
+CoarsenThb(const HierarchicalSplineView& spline,
+           const ThbCacheData& cache,
+           Span<const std::size_t> marked,
+           int32_t admissible,
+           bool exact,
+           double tolerance,
+           int64_t max_iterations,
+           const Options& options = {});
 
 } // namespace splinepy::core

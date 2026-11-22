@@ -4,8 +4,7 @@ import numpy as np
 import pytest
 
 import splinepy
-from splinepy import viewer
-from splinepy.viewer import mesh
+from splinepy import mesh, viewer
 
 
 @pytest.fixture(autouse=True)
@@ -19,6 +18,17 @@ def chromium():
     with playwright.sync_playwright() as pw:
         if not Path(pw.chromium.executable_path).exists():
             pytest.skip("Chromium is not installed for Playwright")
+
+
+def _assert_drawn(path, width, height):
+    """the screenshot has the requested size and shows more than the empty
+    page: an empty scene leaves ~1% of the pixels off the background"""
+    image = pytest.importorskip("PIL.Image")
+    pixels = np.asarray(image.open(path).convert("RGB"), dtype=float)
+    assert pixels.shape == (height, width, 3)
+    background = np.median(pixels.reshape(-1, 3), axis=0)
+    drawn = np.abs(pixels - background).sum(axis=-1) > 30
+    assert drawn.mean() > 0.025
 
 
 def test_headless_launch_failure_cleans_up(monkeypatch):
@@ -39,27 +49,10 @@ def test_headless_launch_failure_cleans_up(monkeypatch):
 
 def _hex_grid(n):
     """n x n x n unit cell hexa mesh, first axis fastest."""
-    pts = np.stack(np.meshgrid(*[np.arange(n + 1)] * 3, indexing="ij"), -1).reshape(
-        -1, 3, order="F"
+    pts = np.stack(np.meshgrid(*[np.arange(n + 1)] * 3, indexing="ij"), -1)
+    return mesh.make_mesh(
+        "hexa", pts.reshape(-1, 3, order="F"), mesh.grid_hexas((n + 1,) * 3)
     )
-    ids = mesh.grid_ids((n + 1,) * 3)
-    conn = np.stack(
-        [
-            ids[:-1, :-1, :-1], ids[1:, :-1, :-1],
-            ids[1:, 1:, :-1], ids[:-1, 1:, :-1],
-            ids[:-1, :-1, 1:], ids[1:, :-1, 1:],
-            ids[1:, 1:, 1:], ids[:-1, 1:, 1:],
-        ],
-        -1,
-    ).reshape(-1, 8, order="F")  # fmt: skip
-    return mesh.make_mesh("hexa", pts, conn)
-
-
-def test_boundary_faces_of_hexa_block():
-    m = _hex_grid(3)
-    b = mesh.boundary_faces(m)
-    assert b["element_type"] == "quad"
-    assert len(b["connectivity"]) == 6 * 3 * 3
 
 
 def test_gustaf_tetrahedron():
@@ -72,27 +65,6 @@ def test_gustaf_tetrahedron():
     edges = viewer.scene_from_mesh(volume, mode="edges")["layers"][0]
     assert faces["indices"].shape == (4, 3)
     assert edges["indices"].shape == (6, 2)
-
-
-def test_unique_edges_of_hexa_block():
-    m = _hex_grid(2)
-    # 3 directions * 2 * 3 * 3 edges
-    assert len(mesh.unique_edges(m)["connectivity"]) == 54
-
-
-def test_grid_edges_and_quads_counts():
-    assert len(mesh.grid_edges((4, 3))) == 3 * 3 + 4 * 2
-    assert len(mesh.grid_quads((4, 3))) == 3 * 2
-
-
-def test_vertex_normals_flat_quad():
-    m = mesh.make_mesh("quad", [[0, 0], [1, 0], [1, 1], [0, 1]], [[0, 1, 2, 3]])
-    assert np.allclose(mesh.vertex_normals(m), [[0, 0, 1]] * 4)
-
-
-def test_make_mesh_rejects_wrong_node_count():
-    with pytest.raises(ValueError):
-        mesh.make_mesh("quad", np.zeros((3, 2)), [[0, 1, 2]])
 
 
 def test_query_grid_matches_spline_sample():
@@ -139,6 +111,28 @@ def test_multipatch_scene():
         spline_layer["scalars"],
         np.linalg.norm(spline_layer["positions"], axis=1),
     )
+
+
+def test_volume_multipatch_draws_only_boundary_faces():
+    box = splinepy.helpme.create.box(1, 1, 1).bspline
+    for axis in range(3):
+        box.insert_knots(axis, [1 / 3, 2 / 3])
+    multipatch = splinepy.Multipatch(box.extract.beziers())  # 3 x 3 x 3
+    resolution = 4
+
+    scene = viewer.scene_from_splines(multipatch, resolutions=resolution)
+
+    layers = {layer["name"]: layer for layer in scene["layers"]}
+    # 9 patch faces on each side of the cube; the center patch has none
+    assert len(layers["spline"]["positions"]) == 6 * 9 * resolution**2
+    # every drawn point is on the surface of the unit cube
+    for name in ("spline", "knots"):
+        positions = layers[name]["positions"]
+        on_surface = np.isclose(positions, 0) | np.isclose(positions, 1)
+        assert on_surface.any(axis=1).all()
+    # a single volume still shows its six faces
+    scene = viewer.scene_from_splines(box, resolutions=resolution)
+    assert len(scene["layers"][0]["positions"]) == 6 * resolution**2
 
 
 def test_show_bare_vertices_as_points():
@@ -201,8 +195,8 @@ def test_control_point_ids_layer():
 def test_headless_screenshot(tmp_path):
     a = splinepy.Bezier(degrees=[2], control_points=[[0, 0], [1, 1], [2, 0]])
     out = viewer.show(a).screenshot(tmp_path / "s.png", 200, 150)
-    assert (tmp_path / "s.png").stat().st_size > 500
     assert out == tmp_path / "s.png"
+    _assert_drawn(out, 200, 150)
 
 
 @pytest.mark.usefixtures("chromium")
@@ -272,9 +266,7 @@ def test_sampling_resolutions_accept_arrays():
 @pytest.mark.parametrize("value", [0, [2, 3, 4], [2, 1.5], [[2, 3]]])
 def test_sampling_resolutions_reject_invalid_values(option, value):
     with pytest.raises(ValueError, match=option):
-        viewer.scene_from_splines(
-            _surface(), arrows=np.ones_like, **{option: value}
-        )
+        viewer.scene_from_splines(_surface(), arrows=np.ones_like, **{option: value})
 
 
 def test_scalar_errors_are_reported():
@@ -299,18 +291,29 @@ def test_vedo_names_are_aliases():
     )  # fmt: skip
     assert out == {
         "color": "#ff0000", "opacity": 0.5, "colormap": "viridis",
-        "axes": True, "arrows": "v",
+        "axes": True, "arrows": "v", "knot_line_width": 3,
     }  # fmt: skip
     sc = viewer.show(_surface(), c="red", alpha=0.5, cmap="plasma").scene
     layer = sc["layers"][0]
     assert layer["color"] == "red" and layer["opacity"] == 0.5
 
+    spline = _surface()
+    spline.show_options(knot_alpha=0.4, knot_lw=3, control_point_alpha=0.3,
+                        control_mesh_alpha=0.2, control_mesh_lw=2)  # fmt: skip
+    from splinepy.helpme.visualize import show_viewer
+
+    scene = show_viewer(spline, open=False).scene
+    layers = {layer["name"]: layer for layer in scene["layers"]}
+    assert layers["knots"]["opacity"] == 0.4 and layers["knots"]["width"] == 3
+    assert layers["control_points"]["opacity"] == 0.3
+    assert layers["control_mesh"]["opacity"] == 0.2
+    assert layers["control_mesh"]["width"] == 2
+
 
 def test_integer_colors():
     spline = _surface()
     colors = [
-        viewer.show(spline, c=index).scene["layers"][0]["color"]
-        for index in range(10)
+        viewer.show(spline, c=index).scene["layers"][0]["color"] for index in range(10)
     ]
     assert len(set(colors)) == 10
     indexed = viewer.show(spline, color=np.int64(-11)).scene["layers"][0]
@@ -332,7 +335,7 @@ def test_refined_thb_renders_headlessly(tmp_path):
     spline.refine([0], admissible=None)
     shown = spline.show(backend="viewer", open=False, resolutions=4, c=1)
     path = shown.screenshot(tmp_path / "thb.png", 320, 240)
-    assert path.stat().st_size > 500
+    _assert_drawn(path, 320, 240)
 
 
 def test_spline_show_backend_switch(monkeypatch):
@@ -429,7 +432,7 @@ def test_headless_render_with_texture_and_lighting(tmp_path):
     img[0, 0] = img[1, 1] = 1
     v = viewer.show(_surface(), texture=img, lighting="glossy")
     v.screenshot(tmp_path / "t.png", 200, 150)
-    assert (tmp_path / "t.png").stat().st_size > 500
+    _assert_drawn(tmp_path / "t.png", 200, 150)
 
 
 def test_show_opens_browser_outside_notebooks(monkeypatch):
@@ -470,3 +473,61 @@ def test_default_viewer_without_gustaf(tmp_path):
     """)
     # Import the installed package rather than the source tree in CI.
     subprocess.run([sys.executable, "-c", script], cwd=tmp_path, check=True)
+
+
+def test_colormap_matches_viewer_stops():
+    from splinepy.viewer import compat
+
+    rgb = compat.colormap([0, 0.5, 1], "jet", vmin=0, vmax=1)
+    assert np.allclose(rgb[0], [0, 0, 128 / 255])
+    assert np.allclose(rgb[-1], [128 / 255, 0, 0])
+    assert np.allclose(rgb[1], [0.5, 1, 0.5])  # between cyan and yellow
+    # discrete colors: two bins
+    two = compat.colormap(np.linspace(0, 1, 5), "gray", n_colors=2)
+    assert np.allclose(two[:, 0], [0, 0, 1, 1, 1])
+    # The wheel leaves out the JS source; read it from the checkout.
+    source = Path(__file__).parents[1] / "splinepy" / "viewer" / "js"
+    js = (source / "viewer.js").read_text()
+    for name, stops in compat.COLORMAP_STOPS.items():
+        assert f"{name}: {list(stops)}".replace("'", '"') in js
+
+
+def test_control_mesh_and_ids_follow_control_points():
+    def names(*objs, **kwargs):
+        scene = splinepy.show(*objs, open=False, **kwargs).scene
+        layers = scene.get("layers") or [
+            layer for panel in scene["panels"] for layer in panel["layers"]
+        ]
+        return {layer["name"].split(" [")[0] for layer in layers}
+
+    control = {"control_points", "control_point_ids", "control_mesh"}
+    bases = splinepy.helpme.create.disk(2, 1).extract.bases([0, 1])
+    assert not names(bases[0]) & control
+    assert not names(bases) & control
+    assert not names(*bases) & control
+    assert control <= names(bases, control_points=True)
+
+    box = splinepy.helpme.create.box(1, 1)
+    assert control <= names(splinepy.Multipatch([box, box.copy()]))
+    box.show_options["control_points"] = False
+    box.show_options["control_mesh"] = True
+    assert "control_mesh" in names(box)
+
+
+def test_multipatch_draws_shared_knot_lines_once():
+    from splinepy.viewer.scene import scene_from_splines
+
+    box = splinepy.helpme.create.box(2, 2).bspline
+    box.insert_knots(0, [0.5])
+    box.insert_knots(1, [0.5])
+    multipatch = splinepy.Multipatch(box.extract.beziers())
+    res = 5
+
+    def n_lines(s):
+        scene = scene_from_splines(s, resolutions=res, control_points=False)
+        (knots,) = (x for x in scene["layers"] if x["name"] == "knots")
+        return len(knots["positions"]) // res
+
+    # three lines per direction, each in two pieces; 16 with doubled seams
+    assert n_lines(multipatch) == 12
+    assert n_lines(box) == 6

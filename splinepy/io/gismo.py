@@ -1,7 +1,6 @@
 import base64 as _base64
 import copy as _copy
 import xml.etree.ElementTree as _ET
-from sys import version as _python_version
 
 import numpy as _np
 
@@ -114,7 +113,7 @@ class AdditionalBlocks:
             for bidname, bctype, block_id in bc_list
         ]
 
-        for cv_unknown, cv_patch, cv_corner, cv_function in cv_list:
+        for cv_unknown, cv_patch, cv_corner, cv_function in cv_list or ():
             function_dict_cv = {
                 "tag": "cv",
                 "attributes": {
@@ -447,7 +446,7 @@ def _spline_to_ET(
             )
             if "weights" in spline.required_properties:
                 weights = _np.hstack(
-                    [multipatch.fields[j][id].weights for j in support]
+                    [multipatch.fields[j].patches[id].weights for j in support]
                 )
         else:
             coefs = spline.control_points
@@ -729,7 +728,7 @@ def export(
         field_xml.find("MultiPatch").find(
             "patches"
         ).text = f"{index_offset} {n_patches - 1 + index_offset}"
-        if int(_python_version.split(".")[1]) >= 9 and indent:
+        if indent:
             _ET.indent(field_xml)
         file_content = _ET.tostring(field_xml)
         with open(fname + ".fields.xml", "wb") as f:
@@ -757,7 +756,7 @@ def export(
             """Convert the XML options into Python values."""
             for gismo_dictionary in options_list:
                 name = gismo_dictionary.get("tag", None)
-                if name is None and not isinstance(name, str):
+                if not isinstance(name, str):
                     raise ValueError(
                         "Gismo option in unsupported format, tag must be set, "
                         "please check out export documentation"
@@ -783,16 +782,8 @@ def export(
 
         _apply_options(xml_data, additional_blocks)
 
-    if int(_python_version.split(".")[1]) >= 9 and indent:
-        # Pretty printing xml with indent only exists in version > 3.9
+    if indent:
         _ET.indent(xml_data)
-
-    elif int(_python_version.split(".")[1]) < 9 and indent:
-        _debug(
-            "Indented xml output is only supported from > python3.9.",
-            "Output will not be indented.",
-            f"Current python version: {_python_version}",
-        )
 
     file_content = _ET.tostring(xml_data)
     with open(fname, "wb") as f:
@@ -845,16 +836,16 @@ def load(fname, load_options=True):
         if format_flag.lower() == "ascii":
             return _np.fromstring(xml_node.text.replace("\n", " "), sep=" ")
         # Check for all excepted binary flags
-        format = type_from_keyword.get(format_flag.lower())
+        dtype = type_from_keyword.get(format_flag.lower())
 
-        if format is None:
+        if dtype is None:
             raise ValueError(
                 "Unknown format in xml file: " + format_flag.lower()
             )
 
         return _np.frombuffer(
             _base64.b64decode(xml_node.text.strip().encode("ascii")),
-            dtype=_np.float64,
+            dtype=dtype,
         )
 
     # Auxiliary function to unravel
@@ -911,7 +902,7 @@ def load(fname, load_options=True):
             # Patch ids
             patch_element = child.find("patches")
             if patch_element is None:
-                _debug("Unsupported format")
+                raise ValueError("MultiPatch without patches in xml file")
             if patch_element.attrib.get("type") != "id_range":
                 _debug(
                     f"Invalid patch type {patch_element.attrib.get('type')}"
@@ -957,26 +948,22 @@ def load(fname, load_options=True):
                 )
 
             # Extract interfaces and boundaries
-            boundary_elements = child.findall("boundary")
-            if boundary_elements is None:
-                _debug("No boundary information found")
-            else:
-                for id, boundary_element in enumerate(
-                    boundary_elements, start=1
-                ):
-                    if boundary_element.text is None:
-                        continue
-                    boundary_information = (
-                        _matrix_from_node(boundary_element)
-                        .astype(
-                            dtype=_np.int64,
-                        )
-                        .reshape(-1, 2)
+            for id, boundary_element in enumerate(
+                child.findall("boundary"), start=1
+            ):
+                if boundary_element.text is None:
+                    continue
+                boundary_information = (
+                    _matrix_from_node(boundary_element)
+                    .astype(
+                        dtype=_np.int64,
                     )
-                    interface_array[
-                        boundary_information[:, 0] - offset,
-                        boundary_information[:, 1] - 1,
-                    ] = -id
+                    .reshape(-1, 2)
+                )
+                interface_array[
+                    boundary_information[:, 0] - offset,
+                    boundary_information[:, 1] - 1,
+                ] = -id
 
         elif child.tag.startswith("Geometry"):
             spline_dict = {}
@@ -1008,13 +995,17 @@ def load(fname, load_options=True):
     _debug(f"Found a total of {len(list_of_splines)} BSplines and NURBS")
     multipatch = _Multipatch(list_of_splines)
     if interface_array is not None:
-        if invalid_integer in interface_array:
-            _warning("Unmatched faces or insufficient information in xml file")
-            invalid_splines = _np.where(interface_array)[0][0] + offset
-            _warning(f"Check faces with ids {invalid_splines}")
-            _warning("Interface information ignored")
-
-        multipatch.interfaces = interface_array
+        unmatched = _np.unique(
+            _np.where(interface_array == invalid_integer)[0]
+        )
+        if unmatched.size:
+            _warning(
+                "Unmatched faces or insufficient information in xml file. "
+                f"Check patches with ids {(unmatched + offset).tolist()}. "
+                "Interface information ignored."
+            )
+        else:
+            multipatch.interfaces = interface_array
 
     if load_options:
         return multipatch, list_of_options

@@ -3,6 +3,37 @@ import numpy as _np
 from splinepy._base import SplinepyBase as _SplinepyBase
 
 
+def _stack(patches):
+    return _np.vstack([patch.control_points for patch in patches])
+
+
+def _bounds(tile):
+    """(lower, upper) of a tile's flattened parameters, or None."""
+    bounds = getattr(tile, "_parameter_bounds", None)
+    if not bounds:
+        return None
+    return _np.asarray(bounds, dtype=float).reshape(-1, 2).T
+
+
+def _affine_map(create, tile, parameters):
+    """cps = base + A (p - center) of an affine tile, from one step per
+    parameter about the center of its bounds. create(p) is create_tile."""
+    p = parameters.ravel()
+    bounds = _bounds(tile)
+    if bounds is None:
+        center, steps = p, 0.5 * _np.maximum(1.0, _np.abs(p))
+    else:
+        center, steps = bounds.mean(axis=0), 0.25 * (bounds[1] - bounds[0])
+    base = _stack(create(center.reshape(parameters.shape))[0])
+    columns = []
+    for i, step in enumerate(steps):
+        moved = center.copy()
+        moved[i] += step
+        patches, _ = create(moved.reshape(parameters.shape))
+        columns.append((_stack(patches) - base).ravel() / step)
+    return base, center, _np.column_stack(columns)
+
+
 class TileBase(_SplinepyBase):
     """
     Base class for tile objects
@@ -19,7 +50,12 @@ class TileBase(_SplinepyBase):
     _n_info_per_eval_point: int
         Number of tile parameters per evaluation point
     _sensitivities_implemented: bool
-        Whether sensitivities w.r.t. tile parameters are implemented
+        Whether sensitivities w.r.t. tile parameters are implemented. If not,
+        a microstructure uses central differences.
+    _affine: bool
+        Whether the control points are an affine function of the parameters,
+        for every closure. A microstructure then builds all cells from one
+        probe and needs no derivatives.
     _closure_directions: list<str>
         List of directions in which the closure has been implemented
     _parameter_bounds: list<list<float>>
@@ -35,6 +71,7 @@ class TileBase(_SplinepyBase):
     _evaluation_points = None
     _n_info_per_eval_point = None
     _sensitivities_implemented = None
+    _affine = False
     _closure_directions = None
     _parameter_bounds = None
     _parameters_shape = None
@@ -298,20 +335,7 @@ class TileBase(_SplinepyBase):
         derivatives: list/None
             Initialized list of derivatives
         """
-        # Set parameters to default values if not user-given
-        if parameters is None:
-            default_value = self.default_parameter_value
-            self._logd(f"Setting parameters to default values ({default_value})")
-            if isinstance(default_value, float):
-                parameters = _np.full(
-                    (len(self.evaluation_points), self.n_info_per_eval_point),
-                    default_value,
-                )
-            elif isinstance(default_value, _np.ndarray):
-                parameters = default_value
-
-        # Validity check of parameters and their sensitivities
-        self.check_params(parameters)
+        parameters = self._parameters(parameters)
         self.check_param_derivatives(parameter_sensitivities)
 
         # Initialize list of derivatives
@@ -323,6 +347,60 @@ class TileBase(_SplinepyBase):
             derivatives = None
 
         return parameters, n_derivatives, derivatives
+
+    def _parameters(self, parameters):
+        """The given parameters, checked, or the defaults."""
+        if parameters is None:
+            default_value = self.default_parameter_value
+            self._logd(f"Setting parameters to default values ({default_value})")
+            if isinstance(default_value, float):
+                parameters = _np.full(
+                    (len(self.evaluation_points), self.n_info_per_eval_point),
+                    default_value,
+                )
+            elif isinstance(default_value, _np.ndarray):
+                parameters = default_value
+        self.check_params(parameters)
+        return parameters
+
+    def _affine_derivatives(self, parameters, parameter_sensitivities, **kwargs):
+        """create_tile of an affine tile with derivatives. A derivative is the
+        tile with control points A s, for each sensitivity s.
+
+        Parameters
+        ----------
+        parameters: np.ndarray or None
+        parameter_sensitivities: np.ndarray
+        **kwargs
+          The other arguments of create_tile
+
+        Returns
+        -------
+        tiles: list
+        derivatives: list<list<Spline>>
+        """
+        parameters = self._parameters(parameters)
+        self.check_param_derivatives(parameter_sensitivities)
+
+        def create(p):
+            return self.create_tile(parameters=p, **kwargs)
+
+        splines, _ = create(parameters)
+        _, _, jacobian = _affine_map(create, self, parameters)
+        seeds = parameter_sensitivities.reshape(parameters.size, -1)
+        offsets = _np.cumsum([0] + [len(s.control_points) for s in splines])
+        derivatives = []
+        for values in (jacobian @ seeds).T:
+            points = values.reshape(offsets[-1], -1)
+            derivative = []
+            for spline, start, end in zip(
+                splines, offsets[:-1], offsets[1:], strict=True
+            ):
+                patch = spline.copy()
+                patch.control_points = points[start:end]
+                derivative.append(patch)
+            derivatives.append(derivative)
+        return splines, derivatives
 
     def _check_custom_parameter(self, value, param_name, bounds):
         """Check if a custom tile parameter (e.g. contact length) is within bounds

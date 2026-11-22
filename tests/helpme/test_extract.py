@@ -1,8 +1,11 @@
-import gustaf as gus
 import numpy as np
 import pytest
 
 import splinepy
+
+
+def centers(mesh):
+    return mesh["vertices"][mesh["connectivity"]].mean(axis=1)
 
 
 def test_extract_edges():
@@ -12,7 +15,7 @@ def test_extract_edges():
         degrees=[2], control_points=[[0, 1], [1, 1], [2, 1]]
     )
     edges = bezier_line.extract.edges(resolution=20)
-    assert np.allclose(edges.vertices[:, 0], np.linspace(0, 2, 20))
+    assert np.allclose(edges["vertices"][:, 0], np.linspace(0, 2, 20))
 
     # 1D Parametric (MP)
     bezier_line_2 = bezier_line.copy()
@@ -20,7 +23,7 @@ def test_extract_edges():
     mp_line = splinepy.Multipatch(splines=[bezier_line, bezier_line_2])
     edges = mp_line.extract.edges(resolution=20)
     assert np.allclose(
-        edges.vertices[:, 0],
+        edges["vertices"][:, 0],
         np.hstack((np.linspace(0, 2, 20), np.linspace(2, 4, 20))),
     )
 
@@ -70,7 +73,7 @@ def test_extract_edges():
             [1.0, 1.0, 1.0],
         ]
     )
-    assert np.allclose(edges.vertices, expected)
+    assert np.allclose(edges["vertices"], expected)
 
     # Extract Patch border (MP)
     bezier_cube_2 = bezier_cube.copy()
@@ -78,7 +81,7 @@ def test_extract_edges():
     mp_cubes = splinepy.Multipatch(splines=[bezier_cube, bezier_cube_2])
     edges = mp_cubes.extract.edges(resolution=2, all_knots=False)
     assert np.allclose(
-        edges.vertices, np.vstack([expected, expected + [0, 0, 1]])
+        edges["vertices"], np.vstack([expected, expected + [0, 0, 1]])
     )
 
 
@@ -93,7 +96,7 @@ def test_extract_faces(np_rng):
     # Modify to make more interesting
     bspline.elevate_degrees([0, 0, 1, 1])
     faces = bspline.extract.faces(resolution=6)
-    assert np.allclose(faces.vertices, bspline.sample(6))
+    assert np.allclose(faces["vertices"], bspline.sample(6))
     # Check a random face center
     face_id = np_rng.integers(0, 5 * 5)
     face_col = face_id // 5
@@ -104,21 +107,21 @@ def test_extract_faces(np_rng):
         face_col * d_x,
     ]
     face_center = np.sum(bspline.evaluate(query_points), axis=0) / 4
-    assert np.allclose(face_center, faces.centers()[face_id, :])
+    assert np.allclose(face_center, centers(faces)[face_id, :])
 
     # Two dimensional single patch
     bspline_2 = bspline.copy()
     bspline_2.cps += [1, 1]
     mp_2d = splinepy.Multipatch(splines=[bspline, bspline_2])
     mp_faces = mp_2d.extract.faces(resolution=6, watertight=False)
-    assert np.allclose(mp_faces.vertices, mp_2d.sample(6))
+    assert np.allclose(mp_faces["vertices"], mp_2d.sample(6))
 
     # Check faces
-    assert np.allclose(face_center, faces.centers()[face_id, :])
+    assert np.allclose(face_center, centers(faces)[face_id, :])
 
     assert np.allclose(
         face_center + [1, 1],
-        mp_faces.centers()[face_id + faces.elements.shape[0], :],
+        centers(mp_faces)[face_id + faces["connectivity"].shape[0], :],
     )
 
     # Watertighten faces
@@ -127,10 +130,10 @@ def test_extract_faces(np_rng):
     # Check faces (remain true)
     face_id = np_rng.integers(0, 5 * 5)
     assert np.allclose(
-        mp_faces_wt.centers()[face_id, :], faces.centers()[face_id, :]
+        centers(mp_faces_wt)[face_id, :], centers(faces)[face_id, :]
     )
 
-    assert mp_faces.vertices.shape[0] - mp_faces_wt.vertices.shape[0] == 6
+    assert mp_faces["vertices"].shape[0] - mp_faces_wt["vertices"].shape[0] == 6
 
     # p3D
     nurbs = splinepy.NURBS(
@@ -149,33 +152,33 @@ def test_extract_faces(np_rng):
         weights=np.ones(8),
     )
     faces = nurbs.extract.faces(resolution=8, watertight=False)
-    assert np.allclose(faces.vertices.shape[0], 8 * 8 * 6)
+    assert np.allclose(faces["vertices"].shape[0], 8 * 8 * 6)
 
     # Check watertighten
     faces = nurbs.extract.faces(resolution=8, watertight=True)
-    assert faces.vertices.shape[0] == 8 * 8 * 6 - 6 * 12 - 2 * 8
+    assert faces["vertices"].shape[0] == 8 * 8 * 6 - 6 * 12 - 2 * 8
 
     # Check multipatch
     nurbs_2 = nurbs.copy()
     nurbs_2.cps += [2, 0, 0]
     mp_3d = splinepy.Multipatch(splines=[nurbs, nurbs_2])
     faces = mp_3d.extract.faces(resolution=8, watertight=False)
-    assert np.allclose(faces.vertices.shape[0], 2 * 8 * 8 * 5)
+    assert np.allclose(faces["vertices"].shape[0], 2 * 8 * 8 * 5)
 
     # Check watertighten
     mp_3d = splinepy.Multipatch(splines=[nurbs, nurbs_2])
     faces = mp_3d.extract.faces(resolution=8, watertight=True)
-    assert faces.vertices.shape[0] == 2 * 8 * 8 * 5 - 6 * 20 - 2 * 8 - 3 * 4
+    assert faces["vertices"].shape[0] == 2 * 8 * 8 * 5 - 6 * 20 - 2 * 8 - 3 * 4
 
     # Check if the boundary centers correspond to the expected faces
     boundaries = nurbs.extract.boundaries() + nurbs_2.extract.boundaries()[1:]
     boundaries.pop(1)  # First id of first spline is duplicate
-    expected_faces = gus.Faces.concat(
+    expected_faces = splinepy.mesh.merge(
         [b.extract.faces(resolution=8) for b in boundaries]
     )
     assert np.allclose(
-        np.sort(expected_faces.centers(), axis=0),
-        np.sort(faces.centers(), axis=0),
+        np.sort(centers(expected_faces), axis=0),
+        np.sort(centers(faces), axis=0),
     )
 
 
@@ -215,13 +218,13 @@ def test_extract_volumes():
     )
 
     # Check length and compare centers
-    assert volumes_sp.elements.shape[0] == 5**3
-    assert np.allclose(nurbs.evaluate(queries), volumes_sp.centers())
+    assert volumes_sp["connectivity"].shape[0] == 5**3
+    assert np.allclose(nurbs.evaluate(queries), centers(volumes_sp))
 
     # Watertight flag does not have an influence on single patch geometries
     assert np.allclose(
-        nurbs.extract.volumes(resolution=6, watertight=True).vertices,
-        volumes_sp.vertices,
+        nurbs.extract.volumes(resolution=6, watertight=True)["vertices"],
+        volumes_sp["vertices"],
     )
 
     # Check multipatch geometries
@@ -233,16 +236,16 @@ def test_extract_volumes():
     volumes_mp = mp_nurbs.extract.volumes(resolution=6, watertight=False)
 
     # Check length and compare centers
-    assert volumes_mp.elements.shape[0] == 2 * 5**3
-    assert np.allclose(mp_nurbs.evaluate(queries), volumes_mp.centers())
+    assert volumes_mp["connectivity"].shape[0] == 2 * 5**3
+    assert np.allclose(mp_nurbs.evaluate(queries), centers(volumes_mp))
 
     # Copy mp_nurbs because it currently has issues #198
     mp_nurbs = splinepy.Multipatch(splines=[nurbs, nurbs_2])
     volumes_mp_wt = mp_nurbs.extract.volumes(resolution=6, watertight=True)
 
     # Watertight flag does not have an influence on single patch geometries
-    assert volumes_mp_wt.vertices.shape[0] == 2 * 6**3 - 6**2
-    assert np.allclose(volumes_mp.centers(), volumes_mp_wt.centers())
+    assert volumes_mp_wt["vertices"].shape[0] == 2 * 6**3 - 6**2
+    assert np.allclose(centers(volumes_mp), centers(volumes_mp_wt))
 
 
 def test_extract_control_points():
@@ -263,7 +266,7 @@ def test_extract_control_points():
     ctps_mp = mp.extract.control_points()
 
     assert np.allclose(
-        np.vstack([ctps0.vertices, ctps1.vertices]), ctps_mp.vertices
+        np.vstack([ctps0["vertices"], ctps1["vertices"]]), ctps_mp["vertices"]
     )
 
 
@@ -347,7 +350,7 @@ def test_extract_arrow_data(np_rng):
 
     # 1. check number of edges
     me_edges = spline.extract.arrow_data("me")
-    assert isinstance(me_edges, gus.Edges)
+    assert me_edges["element_type"] == "line"
     # 3d should give you arrows on the faces
     total = 0
     for i in range(spline.para_dim):
@@ -355,7 +358,7 @@ def test_extract_arrow_data(np_rng):
         r.pop(i)
         total += np.prod(r) * 2
 
-    assert len(me_edges.edges) == total
+    assert len(me_edges["connectivity"]) == total
 
     # 2. check if they point to the direction they need to point
     def check_values(a, b):
@@ -367,10 +370,10 @@ def test_extract_arrow_data(np_rng):
 
         assert np.allclose(a, b)
 
-    direction = np.diff(me_edges.vertices[me_edges.edges], axis=1).reshape(
-        -1, me_edges.vertices.shape[1]
+    direction = np.diff(me_edges["vertices"][me_edges["connectivity"]], axis=1).reshape(
+        -1, me_edges["vertices"].shape[1]
     )
-    sample = spline.extract.faces(res, watertight=False).vertices
+    sample = spline.extract.faces(res, watertight=False)["vertices"]
 
     check_values(direction, sample)
 
@@ -382,13 +385,13 @@ def test_extract_arrow_data(np_rng):
     me_at_edges = spline.extract.arrow_data("me_at")
 
     # 3.1 len test
-    assert isinstance(me_at_edges, gus.Edges)
-    assert len(me_at_edges.edges) == len(locations)
+    assert me_at_edges["element_type"] == "line"
+    assert len(me_at_edges["connectivity"]) == len(locations)
 
     # 3.2 arrow validity
     direction = np.diff(
-        me_at_edges.vertices[me_at_edges.edges], axis=1
-    ).reshape(-1, me_at_edges.vertices.shape[1])
+        me_at_edges["vertices"][me_at_edges["connectivity"]], axis=1
+    ).reshape(-1, me_at_edges["vertices"].shape[1])
     sample = spline.evaluate(locations)
 
     check_values(direction, sample)
@@ -398,13 +401,13 @@ def test_extract_arrow_data(np_rng):
     me_at_edges = spline.extract.arrow_data("me_at")
 
     # 3.1 len test
-    assert isinstance(me_at_edges, gus.Edges)
-    assert len(me_at_edges.edges) == len(locations)
+    assert me_at_edges["element_type"] == "line"
+    assert len(me_at_edges["connectivity"]) == len(locations)
 
     # 3.2 arrow validity
     direction = np.diff(
-        me_at_edges.vertices[me_at_edges.edges], axis=1
-    ).reshape(-1, me_at_edges.vertices.shape[1])
+        me_at_edges["vertices"][me_at_edges["connectivity"]], axis=1
+    ).reshape(-1, me_at_edges["vertices"].shape[1])
     sample = spline.evaluate(locations)
     assert np.allclose(
         direction, sample * spline.show_options["arrow_data_scale"]

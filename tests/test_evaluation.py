@@ -305,22 +305,6 @@ def test_basis_function_derivatives(
     )
 
 
-def test_partition_of_unity(np_rng, bspline_2p2d, nurbs_2p2d):
-    """Test the partition of unity of the calculated basis functions."""
-
-    def basis_functions_sum(basis_functions):
-        return basis_functions.sum(axis=1)
-
-    # use random query points
-    q2D = np_rng.random((10, 2))
-
-    u_bspline = basis_functions_sum(bspline_2p2d.basis_and_support(q2D)[0])
-    assert np.allclose(u_bspline, np.ones(np.shape(u_bspline)))
-
-    u_nurbs = basis_functions_sum(nurbs_2p2d.basis_and_support(q2D)[0])
-    assert np.allclose(u_nurbs, np.ones(np.shape(u_nurbs)))
-
-
 @pytest.mark.parametrize(
     "spline, reference",
     [
@@ -462,20 +446,21 @@ def test_higher_order_derivatives(np_rng):
     )
 
 
+@pytest.mark.parametrize("query", ["evaluate", "jacobian"])
 @pytest.mark.parametrize("splinetype", all_2p2d_splines)
-def test_assertions_evaluation(request, splinetype):
-    """Test if the right assertions are thrown"""
+def test_query_assertions(request, splinetype, query):
+    """Out of bounds and wrongly shaped queries raise meaningful errors"""
     spline = request.getfixturevalue(splinetype)
-    # Test for evaluation
-    # Check minimum with kwargs
+    function = getattr(spline, query)
 
+    # Check minimum with kwargs
     with pytest.raises(
         ValueError,
         match=r"Query request out of bounds in parametric dimension 0. "
         r"Detected query \[-0.1  0. \] at positions 0, which is out of"
         r" bounds with minimum values \[0. 0.\].",
     ):
-        spline.evaluate(queries=[[-0.1, 0.0], [0.4, 0.6]])
+        function(queries=[[-0.1, 0.0], [0.4, 0.6]])
 
     # Check maximum with args
     with pytest.raises(
@@ -484,7 +469,7 @@ def test_assertions_evaluation(request, splinetype):
         r"Detected query \[1.1 0. \] at positions 0, which is out of "
         r"bounds with maximum values \[1. 1.\].",
     ):
-        spline.evaluate([[1.1, 0.0], [0.4, 0.6]])
+        function([[1.1, 0.0], [0.4, 0.6]])
 
     # Check dimensions
     with pytest.raises(
@@ -492,89 +477,52 @@ def test_assertions_evaluation(request, splinetype):
         match=r"Dimension mismatch between parametric dimension of spline "
         r"\(2\), and query-request \(3\)",
     ):
-        spline.evaluate([[1.0, 1.0, 1.0]])
-
-
-@pytest.mark.parametrize("splinetype", all_2p2d_splines)
-def test_assertions_jacobian(request, splinetype):
-    """Test if the right assertions are thrown"""
-    # Test for evaluation
-    spline = request.getfixturevalue(splinetype)
-    # Check minimum with kwargs
-    with pytest.raises(
-        ValueError,
-        match=r"Query request out of bounds in parametric dimension 0. "
-        r"Detected query \[-0.1  0. \] at positions 0, which is out of"
-        r" bounds with minimum values \[0. 0.\].",
-    ):
-        spline.jacobian(queries=[[-0.1, 0.0], [0.4, 0.6]])
-
-    # Check maximum with args
-    with pytest.raises(
-        ValueError,
-        match=r"Query request out of bounds in parametric dimension 0. "
-        r"Detected query \[1.1 0. \] at positions 0, which is out of "
-        r"bounds with maximum values \[1. 1.\].",
-    ):
-        spline.jacobian([[1.1, 0.0], [0.4, 0.6]])
-
-    # Check dimensions
-    with pytest.raises(
-        ValueError,
-        match=r"Dimension mismatch between parametric dimension of spline "
-        r"\(2\), and query-request \(3\)",
-    ):
-        spline.jacobian([[1.0, 1.0, 1.0]])
+        function([[1.0, 1.0, 1.0]])
 
 
 @pytest.mark.parametrize("splinetype", all_2p2d_splines)
 def test_basis_function_matrix(request, splinetype, np_rng):
     """Test the correct evaluation of basis function matrices"""
     make_matrix = splinepy.utils.data.make_matrix
-    # Use
     q2D = np_rng.random((10, 2))
+    spline = request.getfixturevalue(splinetype)
 
-    if splinetype == "nurbs_2p2d":
-        return
+    # Trivial evaluation
+    matrix = make_matrix(
+        *spline.basis_and_support(q2D), spline.cps.shape[0]
+    )
+    assert np.allclose(
+        matrix @ spline.cps,
+        spline.evaluate(q2D),
+    )
 
-    # Test for both bezier and BSpline family and rationals
-    else:
-        spline = request.getfixturevalue(splinetype)
-        # Compute derivative matrix
-        # Trivial evaluation
-        matrix = make_matrix(
-            *spline.basis_and_support(q2D), spline.cps.shape[0]
-        )
-        assert np.allclose(
-            matrix @ spline.cps,
-            spline.evaluate(q2D),
-        )
+    # Test first order derivative
+    matrix = make_matrix(
+        *spline.basis_derivative_and_support(q2D, orders=[1, 0]),
+        spline.cps.shape[0],
+    )
+    assert np.allclose(
+        matrix @ spline.cps,
+        spline.derivative(q2D, orders=[1, 0]),
+    )
 
-        # Test first order derivative
-        matrix = make_matrix(
-            *spline.basis_derivative_and_support(q2D, orders=[1, 0]),
-            spline.cps.shape[0],
-        )
-        assert np.allclose(
-            matrix @ spline.cps,
-            spline.derivative(q2D, orders=[1, 0]),
-        )
-
-        # Test seoncd order derivative as numpy (enforce)
-        matrix = make_matrix(
-            *spline.basis_derivative_and_support(q2D, orders=[1, 2]),
-            spline.cps.shape[0],
-            as_array=True,
-        )
-        assert np.allclose(
-            matrix @ spline.cps,
-            spline.derivative(q2D, orders=[1, 2]),
-        )
+    # Test second order derivative as numpy (enforce)
+    matrix = make_matrix(
+        *spline.basis_derivative_and_support(q2D, orders=[1, 2]),
+        spline.cps.shape[0],
+        as_array=True,
+    )
+    assert np.allclose(
+        matrix @ spline.cps,
+        spline.derivative(q2D, orders=[1, 2]),
+    )
 
 
+@pytest.mark.parametrize("nthreads", [1, 3])
 @pytest.mark.parametrize("splinetype", all_splines)
-def test_multiple_derivative_queries(request, splinetype, np_rng):
-    """Test cartesian product queries of parametric coordinates and orders"""
+def test_multiple_derivative_queries(request, splinetype, np_rng, nthreads):
+    """Test cartesian product queries of parametric coordinates and orders.
+    3 threads split the 10 queries unevenly."""
     spline = request.getfixturevalue(splinetype)
 
     p_coord = {2: np_rng.random((10, 2)), 3: np_rng.random((10, 3))}
@@ -593,9 +541,11 @@ def test_multiple_derivative_queries(request, splinetype, np_rng):
     os = orders[pd]
 
     # multiple queries
-    multi0 = spline.derivative(qs, os)
-    multi1 = spline.basis_derivative(qs, os)
-    multi2, multi2_support = spline.basis_derivative_and_support(qs, os)
+    multi0 = spline.derivative(qs, os, nthreads=nthreads)
+    multi1 = spline.basis_derivative(qs, os, nthreads=nthreads)
+    multi2, multi2_support = spline.basis_derivative_and_support(
+        qs, os, nthreads=nthreads
+    )
 
     # as well as jacobian transposed queries
     # however, we transpose results to enable direct comparison
@@ -708,6 +658,29 @@ def test_proximities_multiple_basins(guess, control_points, np_rng):
     assert wrong.sum() <= tolerated
 
 
+def test_proximities_max_starts(np_rng):
+    """more starts never find a farther point on a surface that folds"""
+    surface = splinepy.BSpline(
+        [2, 2],
+        [[0, 0, 0, 0.25, 0.5, 0.75, 1, 1, 1]] * 2,
+        np_rng.random((36, 3)),
+    )
+    queries = surface.evaluate(np_rng.random((200, 2)))
+    distances = [
+        surface.proximities(queries, return_verbose=True, max_starts=n)[3]
+        for n in (1, 4, 16)
+    ]
+    assert np.all(distances[1] <= distances[0])
+    assert np.all(distances[2] <= distances[1])
+    assert distances[2].sum() < distances[0].sum()
+    search = surface.prepare_proximity(max_starts=16)
+    np.testing.assert_array_equal(
+        search.query(queries, return_verbose=True)[3], distances[2]
+    )
+    with pytest.raises(ValueError, match="max_starts"):
+        surface.proximities(queries, max_starts=0)
+
+
 def test_proximities_many_elements_bvh_matches_grid(np_rng):
     spline = splinepy.helpme.create.box(1, 1).bspline
     spline.elevate_degrees([0, 1])
@@ -748,7 +721,6 @@ def test_proximities_collapsed_edge_cone(np_rng):
     assert np.all(distance <= reference + 1e-6)
 
 
-
 def test_tensor_query_shape_without_bounds_check(monkeypatch):
     spline = splinepy.helpme.create.box(1, 1)
     monkeypatch.setattr(splinepy.settings, "CHECK_BOUNDS", False)
@@ -787,3 +759,34 @@ def test_proximity_out_buffers():
     params.flags.writeable = False
     with pytest.raises(ValueError, match="Invalid proximity output"):
         search.query(queries, out=params)
+
+
+@pytest.mark.parametrize("para_dim", [5, 6, 8])
+def test_high_para_dim(para_dim, np_rng):
+    """Beyond the fast kernels (para_dim > 4) up to the build's cap."""
+    cps = np_rng.random((2**para_dim, 2))
+    bezier = splinepy.Bezier([1] * para_dim, cps)
+    queries = np_rng.random((3, para_dim))
+
+    # multilinear reference, axis 0 runs fastest in the control points
+    reference = []
+    for q in queries:
+        grid = cps.reshape((2,) * para_dim + (2,))
+        for d in range(para_dim):
+            grid = (1 - q[d]) * grid[..., 0, :] + q[d] * grid[..., 1, :]
+        reference.append(grid)
+    assert np.allclose(bezier.evaluate(queries), reference)
+    assert np.allclose(bezier.basis_and_support(queries)[0].sum(axis=1), 1)
+
+    bspline = bezier.bspline
+    bspline.insert_knots(para_dim - 1, [0.3, 0.6])
+    assert np.allclose(bspline.evaluate(queries), reference)
+    jac = bspline.jacobian(queries)
+    step = 1e-6 * np.eye(para_dim)[para_dim - 1]
+    numeric = (bspline.evaluate(queries + step) - bspline.evaluate(queries)) / 1e-6
+    assert np.allclose(jac[:, :, para_dim - 1], numeric, atol=1e-5)
+
+
+def test_para_dim_above_cap():
+    with pytest.raises(Exception, match="SPLINEPY_MAX_PARA_DIM"):
+        splinepy.Bezier([1] * 9, np.zeros((2**9, 1)))

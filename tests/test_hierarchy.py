@@ -862,3 +862,15 @@ def test_proximity_iteration_budget_is_validated_for_both_spline_types(max_itera
     for spline in (tensor, hierarchy):
         with pytest.raises(ValueError, match="max_iterations"):
             spline.proximities(query, max_iterations=max_iterations)
+
+
+def test_arrays_read_before_refine_stay_valid():
+    hierarchy = splinepy.THBSpline([1, 1], [[0, 0, 1, 1]] * 2, np.eye(4)[:, :2])
+    points, extraction = hierarchy.control_points, hierarchy.extraction
+    layout = hierarchy._layout
+    hierarchy.refine([0], admissible=None)
+    assert hierarchy._layout != layout
+    assert hierarchy.control_points is not points
+    np.testing.assert_array_equal(points, np.eye(4)[:, :2])  # old state kept
+    assert extraction["values"].shape[0] == 4
+    assert not hierarchy.control_points.flags.writeable

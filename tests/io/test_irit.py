@@ -29,3 +29,15 @@ def test_irit_export_import(
                 list_of_splines, list_of_splines_loaded, strict=True
             )
         )
+
+
+def test_irit_load_reads_tabs_and_leaves_the_file(bspline_2p2d, tmp_path):
+    fname = tmp_path / "tabs.itd"
+    splinepy.io.irit.export(fname, [bspline_2p2d])
+    tabbed = fname.read_text().replace("    [", "\t[").replace(" ", "\t")
+    fname.write_text(tabbed)
+
+    (loaded,) = splinepy.io.irit.load(fname)
+
+    assert fname.read_text() == tabbed
+    assert (loaded.control_points == bspline_2p2d.control_points).all()

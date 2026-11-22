@@ -166,7 +166,7 @@ def solve_for_control_points(
             at = coefficient_matrix[1:-1, 1:-1].transpose(copy=True)
             fitting_spline.control_points[1:-1] = _spsolve(
                 at @ coefficient_matrix[1:-1, 1:-1], at @ rhs[1:-1]
-            ).reshape(rhs[1:-1].shape)
+            ).reshape(fitting_spline.control_points[1:-1].shape)
         else:
             # move known values to RHS
             rhs[1:-1, :] += (

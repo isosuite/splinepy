@@ -23,7 +23,7 @@ def load(fname, expand_tabs=True, strip_comments=False):
     fname: str
       Path to the irit file to read in.
     expand_tabs: bool
-      Replace all tabs in the irit file. Defaults to True.
+      Read tabs as spaces. Defaults to True. The file is not changed.
     strip_comments: bool
       (BETA) tries to identify comments and strips them from file
 
@@ -32,10 +32,6 @@ def load(fname, expand_tabs=True, strip_comments=False):
     splines: list
       Spline Type defined in NAME_TO_TYPE
     """
-    # Expand taps to spaces
-    if expand_tabs:
-        _ioutils.expand_tabs(fname)
-
     # Delete lines not containing brackets in the beginning
     def extract_relevant_text(lines):
         """Extract the spline entries from an IRIT block."""
@@ -53,6 +49,8 @@ def load(fname, expand_tabs=True, strip_comments=False):
     with open(fname) as f:
         # Strip commentaries
         lines = f.readlines()
+        if expand_tabs:
+            lines = [line.replace("\t", " ") for line in lines]
         relevant_text = extract_relevant_text(lines)
 
         # At this point we ignore all non-spline related data and do a keyword

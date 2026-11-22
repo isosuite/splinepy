@@ -43,9 +43,7 @@ def load(fname):
     nurbs: dict
       dict ready to be used for init.
     """
-    from copy import deepcopy as _deepcopy
-
-    mk = _deepcopy(_mfem_meaningful_keywords)
+    mk = _mfem_meaningful_keywords
     # they follow a strict order or keywords, so just gather those in order
     # Ordering is a hotkey because control points comes right after
     hotkeys = [
@@ -67,7 +65,7 @@ def load(fname):
 
             elif len(keyword_hit) == 1 and keyword_hit[0] in hotkeys:
                 collect = True
-                current_key = _deepcopy(keyword_hit[0])
+                current_key = keyword_hit[0]
                 continue
 
             elif len(keyword_hit) == 1 and keyword_hit[0] not in hotkeys:
@@ -183,8 +181,8 @@ def read_solution(
 
     _, reorder = dof_mapping(spline)
 
+    # the weights are the reference's, already in splinepy's order
     spline.cps = _np.ascontiguousarray(solution)[reorder]
-    spline.ws[:] = spline.ws[reorder]
 
     return spline
 
@@ -294,10 +292,120 @@ def dof_mapping(spline):
         raise ValueError("supports para_dim of 2 and 3")
 
 
+# Corners of an mfem element (splinepy's corner order) that bound its edges
+# along each parametric axis, each pair in increasing parameter direction.
+_AXIS_EDGES = {
+    2: (((0, 1), (3, 2)), ((0, 3), (1, 2))),
+    3: (
+        ((0, 1), (3, 2), (4, 5), (7, 6)),
+        ((0, 3), (1, 2), (4, 7), (5, 6)),
+        ((0, 4), (1, 5), (2, 6), (3, 7)),
+    ),
+}
+
+
+def _unit_knots(spline, axis):
+    """Knot vector of an axis scaled to [0, 1]."""
+    if spline.has_knot_vectors:
+        kv = _np.asarray(spline.knot_vectors[axis], dtype=float)
+    else:
+        n = spline.degrees[axis] + 1
+        kv = _np.repeat([0.0, 1.0], n)
+    return (kv - kv[0]) / (kv[-1] - kv[0])
+
+
+def _edges(patches, vertex_ids, tolerance):
+    """The mfem edges section: knot vector id and vertices of every edge.
+
+    Parallel edges of a patch share its knot vector, and patches that meet
+    share the edges between them, so the knot vectors are classes of edges.
+    A union-find with one parity bit per edge (does it run against its
+    class root?) finds the classes and a direction for each, for any
+    orientation of the patches. mfem reads the direction from the vertex
+    order of an edge.
+
+    Returns
+    -------
+    edges: (n, 3) np.ndarray
+      knot vector id, first vertex, second vertex
+    """
+    para_dim = {4: 2, 8: 3}[vertex_ids.shape[1]]
+    pairs = _np.asarray(_AXIS_EDGES[para_dim])
+    # (patch, axis, edge, start / end) vertex ids
+    ends = vertex_ids[:, pairs]
+    if _np.any(ends[..., 0] == ends[..., 1]):
+        raise ValueError(
+            "MFEM export needs patches without collapsed edges. Use "
+            "explicit_edges=False to let MFEM assign the knot vectors."
+        )
+    keys, edge_ids = _np.unique(
+        _np.sort(ends, axis=-1).reshape(-1, 2), axis=0, return_inverse=True
+    )
+    edge_ids = edge_ids.reshape(ends.shape[:-1])
+    # whether a patch edge runs from the larger to the smaller vertex id
+    flipped = ends[..., 0] > ends[..., 1]
+
+    parent = list(range(len(keys)))
+    parity = [False] * len(keys)
+
+    def find(e):
+        """Root of e and the parity of e relative to it."""
+        odd = False
+        while parent[e] != e:
+            odd ^= parity[e]
+            e = parent[e]
+        return e, odd
+
+    for patch_edges, patch_flips in zip(
+        edge_ids.reshape(-1, pairs.shape[1]),
+        flipped.reshape(-1, pairs.shape[1]),
+        strict=True,
+    ):
+        root, odd = find(patch_edges[0])
+        odd ^= patch_flips[0]
+        for e, f in zip(patch_edges[1:], patch_flips[1:], strict=True):
+            other, other_odd = find(e)
+            other_odd ^= f
+            if other != root:
+                parent[other] = root
+                parity[other] = odd ^ other_odd
+            elif odd != other_odd:
+                raise ValueError(
+                    "Patch edges that share a knot vector run in opposite "
+                    "directions, which MFEM can not represent."
+                )
+
+    roots, odds = zip(*(find(e) for e in range(len(keys))), strict=True)
+    _, knot_ids = _np.unique(roots, return_inverse=True)
+    odds = _np.asarray(odds)
+
+    # every patch axis must have the knot vector of its class
+    knots = {}
+    for i, spline in enumerate(patches):
+        for axis in range(para_dim):
+            e = edge_ids[i, axis, 0]
+            kv = _unit_knots(spline, axis)
+            if odds[e] ^ flipped[i, axis, 0]:
+                kv = 1.0 - kv[::-1]
+            reference = knots.setdefault(knot_ids[e], (kv, i))
+            if reference[0].shape != kv.shape or not _np.allclose(
+                reference[0], kv, atol=tolerance
+            ):
+                raise ValueError(
+                    f"Patches {reference[1]} and {i} share an edge but not "
+                    "the knot vector along it."
+                )
+
+    first = _np.where(odds, keys[:, 1], keys[:, 0])
+    second = _np.where(odds, keys[:, 0], keys[:, 1])
+    return _np.column_stack([knot_ids, first, second])
+
+
 def export_cartesian(
     fname,
     spline_list,
     tolerance=None,
+    explicit_edges=True,
 ):
     """
     Export list of bezier splines in mfem export.
@@ -310,12 +418,15 @@ def export_cartesian(
       list of bezier spline objects
     tolerance : float
       tolerance to collapse two neighboring points
+    explicit_edges: bool
+      Writes which knot vector each edge has. MFEM's own assignment, used
+      with False, fails for some patch orientations.
 
     Returns
     -------
     None
     """
-    import gustaf as _gus
+    import funi as _funi
 
     from splinepy import Multipatch as _Multipatch
 
@@ -406,12 +517,10 @@ def export_cartesian(
         ]
     )
 
-    # Retrieve information using bezman
+    # Retrieve patch connectivity
     connectivity = spline_list.interfaces
 
-    _, _, inverse_numeration, _ = _gus.utils.arr.close_rows(
-        corner_vertices, tolerance, return_intersection=False
-    )
+    _, _, inverse_numeration = _funi.unique_rows(corner_vertices, tolerance)
     vertex_ids = inverse_numeration.reshape(-1, n_vertex_per_element)
     # Get boundaries from interfaces
     boundary_elements, boundary_faces = _np.where(connectivity < 0)
@@ -421,6 +530,12 @@ def export_cartesian(
         vertex_ids[boundary_elements, :],
         sub_element_vertices[splinepy_face_id_2_mfem_face_id[boundary_faces]],
         axis=1,
+    )
+
+    edges = (
+        _edges(spline_list.patches, vertex_ids, tolerance).tolist()
+        if explicit_edges
+        else []
     )
 
     # Write all gathered information into a file
@@ -456,8 +571,9 @@ def export_cartesian(
             )
         )
 
-        # Write number of edges 0, for auto knot2edge
-        f.write(f"\n\nedges\n{0}\n")
+        # Edges with their knot vectors; 0 lets MFEM assign them
+        f.write(f"\n\nedges\n{len(edges)}\n")
+        f.write("".join(" ".join(map(str, row)) + "\n" for row in edges))
 
         # Write Number Of vertices
         f.write(f"\nvertices\n{int(_np.max(vertex_ids) + 1)}\n\n")
@@ -507,10 +623,8 @@ def export_cartesian(
                     + "\n\n"
                 )
 
-        f.close()
 
-
-def export(fname, nurbs, precision=10):
+def export(fname, nurbs, precision=None):
     """Exports current nurbs in `mfem` format.
 
     IDs of MFEM Geometry types are:
@@ -537,15 +651,20 @@ def export(fname, nurbs, precision=10):
     -----------
     nurbs: NURBS
     fname: str
+    precision: int
+      Decimals of weights and control points. Default is None: the shortest
+      text that reads back as the same number.
 
     Returns
     --------
     None
     """
-    if nurbs.whatami.startswith("NURBS"):
-        pass
-    else:
-        nurbs = nurbs.nurbs  # turns it into nurbs
+    if not nurbs.whatami.startswith("NURBS"):
+        nurbs = nurbs.nurbs
+
+    def text(x):
+        """One number of the weights or control points."""
+        return repr(x) if precision is None else f"{x:.{precision}f}"
 
     intro_sec = _form_lines(
         "MFEM NURBS mesh v1.0",
@@ -668,24 +787,17 @@ def export(fname, nurbs, precision=10):
     # disregard inverse
     reorder_ids, _ = dof_mapping(nurbs)
 
-    with _np.printoptions(
-        formatter={"float_kind": lambda x: f"{x:.{precision}f}"}
-    ):
-        # weights - string operation
-        weights_sec = str(nurbs.weights.flatten()[reorder_ids].tolist())
-        weights_sec = weights_sec[1:-1]  # remove []
-        weights_sec = weights_sec.replace("\n", "")  # remove \n
-        weights_sec = weights_sec.replace(",", "")  # remove ,
-        weights_sec = weights_sec.replace(" ", "\n")  # add \n
-        weights_sec = "weights\n" + weights_sec  # add title
-        weights_sec += "\n\n"  # empty line
-
-        # cps
-        cps_sec = str(nurbs.control_points[reorder_ids].tolist())
-        cps_sec = cps_sec.replace("[", "")  # remove [
-        cps_sec = cps_sec.replace(",", "")  # remove ,
-        cps_sec = cps_sec.replace("\n", "")  # remove \n
-        cps_sec = cps_sec.replace("]", "\n")  # replace ] with \n
+    weights_sec = _form_lines(
+        "weights",
+        *(text(w) for w in nurbs.weights.ravel()[reorder_ids].tolist()),
+        "",
+    )
+    cps_sec = _form_lines(
+        *(
+            " ".join(text(x) for x in cp)
+            for cp in nurbs.control_points[reorder_ids].tolist()
+        )
+    )
 
     fe_space_sec = _form_lines(
         "FiniteElementSpace",

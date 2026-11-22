@@ -32,3 +32,9 @@ tests/data/golden/
 
 # editor swap files
 *.swp
+
+# benchmark outputs
+benchmarks/*.json
+
+# lockfile of the local uv environment
+uv.lock

@@ -22,12 +22,9 @@ jobs:
           python -I tests/generate_golden_data.py
 
       - name: Configure C++ tests
-        run: |
-          if [ -f core/CMakeLists.txt ]; then
-            cmake -S core -B build-core -DCMAKE_BUILD_TYPE=Release -DSPLINEPY_CORE_BUILD_TESTS=ON -DSPLINEPY_CORE_BUILD_BENCHMARKS=OFF
-          else
-            cmake -S . -B build-core -DCMAKE_BUILD_TYPE=Release -DSPLINEPY_COMPILE_PYTHON=OFF -DSPLINEPY_CORE_BUILD_TESTS=ON
-          fi
+        run: >
+          cmake -S . -B build-core -DCMAKE_BUILD_TYPE=Release
+          -DSPLINEPY_COMPILE_PYTHON=OFF -DSPLINEPY_CORE_BUILD_TESTS=ON
 
       - name: Build C++ tests
         run: cmake --build build-core --parallel

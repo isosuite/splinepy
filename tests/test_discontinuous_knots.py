@@ -11,6 +11,20 @@ import splinepy
 KNOTS = [0, 0, 0, 0.3, 0.6, 0.6, 0.6, 0.8, 1, 1, 1]  # C^1 at .3, C^-1 at .6, C^1 at .8
 
 
+@pytest.mark.parametrize("knot", [5e-13, 1e-11, 0.5])
+@pytest.mark.parametrize("rational", [False, True])
+def test_degree_elevation_preserves_every_distinct_span(knot, rational):
+    spline = splinepy.BSpline([2], [[0, 0, 0, knot, 1, 1, 1]], [[0], [1], [2], [3]])
+    if rational:
+        spline = spline.nurbs
+        spline.weights[:] = [[1], [1.5], [0.8], [2]]
+    q = np.array([[0], [knot * 0.3], [knot], [0.5], [1]])
+    expected = spline.evaluate(q)
+    spline.elevate_degrees([0])
+    np.testing.assert_allclose(spline.evaluate(q), expected, rtol=1e-12, atol=1e-13)
+    assert knot in spline.knot_vectors[0]
+
+
 def make(rational=False, two_dim=False):
     rng = np.random.default_rng(3)
     n = len(KNOTS) - 3
@@ -90,6 +104,9 @@ def test_knot_insertion_at_existing_jump_is_noop():
     q = queries(spline)
     before = spline.evaluate(q)
     inserted = spline.copy()
-    inserted.insert_knots(0, [0.45, 0.7])
+    # the jump already has multiplicity degree + 1: inserting there is refused,
+    # the knots next to it still go in
+    assert list(inserted.insert_knots(0, [0.45, 0.6, 0.7])) == [True, False, True]
     assert np.allclose(inserted.evaluate(q), before, atol=1e-12)
     assert np.sum(np.isclose(inserted.knot_vectors[0], 0.6)) == 3
+    assert len(inserted.knot_vectors[0]) == len(spline.knot_vectors[0]) + 2

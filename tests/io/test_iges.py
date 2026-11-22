@@ -2,6 +2,7 @@ import platform
 import tempfile
 
 import numpy as np
+import pytest
 
 import splinepy
 
@@ -14,11 +15,7 @@ def test_iges_round_trip_bsplines(to_tmpf, are_splines_equal):
     if platform.system().startswith(
         "Win"
     ) and splinepy.splinepy_core.build_type().startswith("debug"):
-        splinepy.utils.log.warning(
-            "Skipping io.iges test.",
-            "Try release mode, if you need to use io.iges",
-        )
-        return None
+        pytest.skip("io.iges is broken in windows debug builds")
 
     bsp_el2 = splinepy.BSpline(
         degrees=[1, 1],
@@ -28,7 +25,7 @@ def test_iges_round_trip_bsplines(to_tmpf, are_splines_equal):
     nur_el3 = splinepy.NURBS(
         degrees=[1, 1],
         control_points=[[1, 1], [2, 1], [1, 2], [2, 2]],
-        weights=[1, 1, 1, 1],
+        weights=[1.0, 0.8, 1.3, 0.9],
         knot_vectors=[[0, 0, 1, 1], [0, 0, 1, 1]],
     )
 

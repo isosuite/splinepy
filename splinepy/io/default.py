@@ -37,8 +37,9 @@ def export(fname, splinepy_obj):
 
     Returns
     -------
-    output_dict : dict
-      Dictornay data written into file
+    output :
+      What the exporter of the format returns: the written dict for json,
+      None for the others.
 
     """
     # Determine file extension
@@ -47,7 +48,7 @@ def export(fname, splinepy_obj):
         raise ValueError("Extension not supported")
 
     # Export
-    extension_to_io[extension].export(fname, splinepy_obj)
+    return extension_to_io[extension].export(fname, splinepy_obj)
 
 
 def load(fname):

@@ -3,6 +3,9 @@
 #include <cmath>
 #include <sstream>
 
+#include "splinepy/core/math/bspline_basis.hpp"
+#include "splinepy/core/model/grid.hpp"
+
 namespace splinepy::core {
 
 namespace {
@@ -12,7 +15,7 @@ bool IsFinite(double val) noexcept { return std::isfinite(val); }
 } // namespace
 
 Status Validate(const SplineView& view, const Options& options) {
-  if (view.hierarchy || view.para_dim <= 0 || view.dim <= 0) {
+  if (view.para_dim <= 0 || view.dim <= 0) {
     return Status::kInvalidArgument;
   }
 
@@ -91,10 +94,6 @@ Status Validate(SplineBatchView batch, const Options& options) {
 }
 
 void ThrowIfInvalid(const SplineView& view, const Options& options) {
-  if (view.hierarchy) {
-    throw SplinepyException(
-        "Tensor spline validation requires a tensor spline");
-  }
   if (view.para_dim <= 0) {
     throw SplinepyException("Parametric dimension must be > 0",
                             Status::kInvalidArgument);
@@ -193,6 +192,59 @@ void ThrowIfInvalid(const SplineView& view, const Options& options) {
             << ") must be strictly positive";
         throw SplinepyException(oss.str(), Status::kInvalidArgument);
       }
+    }
+  }
+}
+
+void ThrowIfInvalidQueryValues(const SplineView& view,
+                               Span<const double> queries) {
+  const auto check = [&](int64_t cp) {
+    for (int32_t c = 0; c < view.dim; ++c) {
+      if (!std::isfinite(view.Point(cp, c))) {
+        throw SplinepyException("A queried control point is non-finite.");
+      }
+    }
+    if (view.IsRational()) {
+      const double weight = view.Weight(cp);
+      if (!(weight > 0.) || !std::isfinite(weight)) {
+        throw SplinepyException(
+            "A queried weight must be finite and positive.");
+      }
+    }
+  };
+  const auto n = queries.size() / view.para_dim;
+  if (n == 0) {
+    return;
+  }
+  const auto supports = view.NumSupports();
+  if (n >= static_cast<std::size_t>((view.num_control_points - 1) / supports
+                                    + 1)) {
+    for (int64_t cp = 0; cp < view.num_control_points; ++cp) {
+      check(cp);
+    }
+    return;
+  }
+  const auto grid = ControlGrid(view);
+  AxisArray<int32_t> starts;
+  starts.resize(view.para_dim);
+  for (std::size_t q = 0; q < n; ++q) {
+    for (int32_t d = 0; d < view.para_dim; ++d) {
+      starts[d] = view.HasKnotVectors()
+                      ? FindSpan(static_cast<int32_t>(grid.n[d]),
+                                 view.degrees[d],
+                                 queries[q * view.para_dim + d],
+                                 view.knot_vectors[d])
+                            - view.degrees[d]
+                      : 0;
+    }
+    for (int64_t support = 0; support < supports; ++support) {
+      int64_t cp = 0, remainder = support;
+      for (int32_t d = 0; d < view.para_dim; ++d) {
+        const int64_t width = static_cast<int64_t>(view.degrees[d]) + 1;
+        cp += (starts[d] + remainder % width) * grid.stride[d];
+        remainder /= width;
+      }
+      check(cp);
     }
   }
 }

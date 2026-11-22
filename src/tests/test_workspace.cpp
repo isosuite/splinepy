@@ -136,6 +136,55 @@ TEST(WorkspaceTest, ConcurrentThreadArenaAccess) {
 }
 
 } // namespace
+TEST(WorkspaceTest, ConcurrentGrowthKeepsArenasStable) {
+  // Many threads grow the pool at once; an arena handed out earlier must stay
+  // at the same address while later ones are added.
+  Workspace ws(1024, 1);
+  MemoryArena* first = &ws.GetThreadArena(0);
+  constexpr int kNumThreads = 16;
+  std::vector<MemoryArena*> seen(kNumThreads * 8, nullptr);
+  std::vector<std::thread> threads;
+  for (int t = 0; t < kNumThreads; ++t) {
+    threads.emplace_back([&, t]() {
+      for (int k = 0; k < 8; ++k) {
+        const int id = t * 8 + k;
+        seen[id] = &ws.GetThreadArena(id);
+        EXPECT_EQ(&ws.GetThreadArena(0), first);
+      }
+    });
+  }
+  for (auto& th : threads) {
+    th.join();
+  }
+  EXPECT_EQ(ws.NumThreadArenas(), static_cast<std::size_t>(kNumThreads * 8));
+  for (int id = 0; id < kNumThreads * 8; ++id) {
+    EXPECT_EQ(seen[id], &ws.GetThreadArena(id));
+  }
+}
+
+TEST(WorkspaceTest, WorkerOptionsGiveSeparateReusedWorkspaces) {
+  Workspace ws(1024, 2);
+  Options options;
+  options.nthreads = 8;
+  options.workspace = &ws;
+  const Options w0 = WorkerOptions(options, ws, 0);
+  const Options w1 = WorkerOptions(options, ws, 1);
+  EXPECT_EQ(w0.nthreads, 1);
+  EXPECT_NE(w0.workspace, nullptr);
+  EXPECT_NE(w0.workspace, &ws);
+  EXPECT_NE(w0.workspace, w1.workspace);
+  EXPECT_EQ(WorkerOptions(options, ws, 0).workspace, w0.workspace);
+}
+
+TEST(WorkspaceTest, WorkspaceRefReservesCallerWorkspace) {
+  Workspace mine(1024, 1);
+  Options with;
+  with.workspace = &mine;
+  WorkspaceRef borrowed(with, 1024, 6);
+  EXPECT_EQ(borrowed.get(), &mine);
+  EXPECT_GE(mine.NumThreadArenas(), 6u);
+}
+
 TEST(WorkspaceTest, WorkspaceRefBorrowsOrReusesThreadDefault) {
   Workspace mine(4096, 1);
   Options with;
@@ -150,6 +199,21 @@ TEST(WorkspaceTest, WorkspaceRefBorrowsOrReusesThreadDefault) {
   EXPECT_EQ(first.get(), second.get());
   EXPECT_NE(first.get(), &mine);
   EXPECT_GE(second->NumThreadArenas(), 4u);
+}
+
+TEST(WorkspaceTest, DefaultWorkspaceReleasesGrownBlocks) {
+  Options none;
+  WorkspaceRef ref(none, 4096, 1);
+  EXPECT_EQ(ref.get(), &DefaultWorkspace());
+  auto& arena = ref->GetThreadArena(0);
+  const auto before = arena.TotalCapacityBytes();
+  {
+    auto scope = arena.CreateScope();
+    arena.AllocateSpan<double>(1 << 16); // forces extra blocks
+  }
+  EXPECT_GT(arena.TotalCapacityBytes(), before);
+  ReleaseDefaultWorkspaceMemory();
+  EXPECT_LE(arena.TotalCapacityBytes(), before);
 }
 
 } // namespace splinepy::core

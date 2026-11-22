@@ -1,12 +1,14 @@
 #include "splinepy/core/multipatch/orientations.hpp"
+#include "splinepy/core/model/grid.hpp"
 
+#include "splinepy/core/memory/dynamic_buffer.hpp"
 #include <algorithm>
 #include <cmath>
 #include <map>
 #include <stdexcept>
-#include <vector>
 
 #include "splinepy/core/concurrency/parallel_for.hpp"
+#include "splinepy/core/memory/workspace.hpp"
 #include "splinepy/core/multipatch/interfaces.hpp"
 #include "splinepy/core/queries/jacobian.hpp"
 #include "splinepy/core/validate/validator.hpp"
@@ -47,17 +49,20 @@ void GetInterfaceOrientation(const SplineView& spline_start,
   const int32_t dim = spline_start.dim;
 
   if (para_dim < 2) {
-    throw std::invalid_argument(
-        "GetInterfaceOrientation: curves (para_dim < 2) are not supported.");
+    throw SplinepyException(
+        "GetInterfaceOrientation: curves (para_dim < 2) are not supported.",
+        Status::kInvalidArgument);
   }
   if (dim < 2) {
-    throw std::invalid_argument(
-        "GetInterfaceOrientation: scalar splines (dim < 2) are not supported.");
+    throw SplinepyException(
+        "GetInterfaceOrientation: scalar splines (dim < 2) are not supported.",
+        Status::kInvalidArgument);
   }
   if (para_dim != spline_end.para_dim || dim != spline_end.dim) {
-    throw std::invalid_argument(
+    throw SplinepyException(
         "GetInterfaceOrientation: start and end splines must have matching "
-        "dimensions.");
+        "dimensions.",
+        Status::kInvalidArgument);
   }
 
   // First check orientation of the boundary axis itself
@@ -70,39 +75,16 @@ void GetInterfaceOrientation(const SplineView& spline_start,
   orientations_ptr[boundary_start_p_dim] =
       (boundary_start_orientation ^ boundary_end_orientation) ? 1 : 0;
 
-  // Compute parametric bounds
-  Buffer<double> bounds_start = ParametricBounds(spline_start);
-  Buffer<double> bounds_end = ParametricBounds(spline_end);
-
-  // Compute face centers in parametric coordinates
-  Buffer<double> center_start(para_dim);
-  Buffer<double> center_end(para_dim);
-
-  for (int32_t i = 0; i < para_dim; ++i) {
-    if (i == boundary_start_p_dim) {
-      center_start[i] = boundary_start_orientation ? bounds_start[i]
-                                                   : bounds_start[i + para_dim];
-    } else {
-      center_start[i] = 0.5 * (bounds_start[i] + bounds_start[i + para_dim]);
-    }
-
-    if (i == boundary_end_p_dim) {
-      center_end[i] =
-          boundary_end_orientation ? bounds_end[i] : bounds_end[i + para_dim];
-    } else {
-      center_end[i] = 0.5 * (bounds_end[i] + bounds_end[i + para_dim]);
-    }
-  }
-
-  // Calculate Jacobians at face centers
-  Buffer<double> J_start =
-      Jacobian(spline_start,
-               Span<const double>(center_start.data(), para_dim),
-               options);
-  Buffer<double> J_end =
-      Jacobian(spline_end,
-               Span<const double>(center_end.data(), para_dim),
-               options);
+  // Jacobians at the face centers
+  const auto center_start = FaceCenter(ParametricBounds(spline_start).cspan(),
+                                       para_dim,
+                                       boundary_start);
+  const auto center_end =
+      FaceCenter(ParametricBounds(spline_end).cspan(), para_dim, boundary_end);
+  const Buffer<double> J_start =
+      Jacobian(spline_start, center_start.cspan(), options);
+  const Buffer<double> J_end =
+      Jacobian(spline_end, center_end.cspan(), options);
 
   // Compare angles between remaining tangent directions
   for (int32_t i_pd = 0; i_pd < para_dim; ++i_pd) {
@@ -180,25 +162,27 @@ Buffer<int32_t> InterfaceOrientations(const SplineBatchView& patches,
     }
   }
 
-  ParallelFor(int32_t{0},
-              number_of_interfaces,
-              options.nthreads,
-              [&](int32_t k) {
-                int32_t* row = &orientations[k * entries_per_line];
-                const int32_t p_start = row[0];
-                const int32_t f_start = row[1];
-                const int32_t p_end = row[2];
-                const int32_t f_end = row[3];
+  WorkspaceRef ws(options, 16 * 1024, options.nthreads);
+  ParallelForWithThreadId(int32_t{0},
+                          number_of_interfaces,
+                          options.nthreads,
+                          [&](int32_t k, int thread_id) {
+                            int32_t* row = &orientations[k * entries_per_line];
+                            const int32_t p_start = row[0];
+                            const int32_t f_start = row[1];
+                            const int32_t p_end = row[2];
+                            const int32_t f_end = row[3];
 
-                GetInterfaceOrientation(patches[p_start],
-                                        f_start,
-                                        patches[p_end],
-                                        f_end,
-                                        tolerance,
-                                        &row[4],
-                                        &row[4 + para_dim],
-                                        options);
-              });
+                            GetInterfaceOrientation(
+                                patches[p_start],
+                                f_start,
+                                patches[p_end],
+                                f_end,
+                                tolerance,
+                                &row[4],
+                                &row[4 + para_dim],
+                                WorkerOptions(options, *ws, thread_id));
+                          });
 
   return orientations;
 }
@@ -206,11 +190,9 @@ Buffer<int32_t> InterfaceOrientations(const SplineBatchView& patches,
 namespace {
 
 struct FaceLayout {
-  Buffer<int64_t> sizes;
-  Buffer<int64_t> strides;
+  AxisArray<int64_t> sizes;
+  AxisArray<int64_t> strides;
   int64_t first{};
-
-  explicit FaceLayout(int dim) : sizes(dim), strides(dim) {}
 
   void SetFace(const SplineView& patch, int face) {
     first = 0;
@@ -226,18 +208,11 @@ struct FaceLayout {
             "Control-point editing requires clamped interfaces");
       }
     }
-    int64_t stride = 1;
-    for (int axis = 0; axis < patch.para_dim; ++axis) {
-      const int64_t degree = patch.degrees[axis];
-      const int64_t size = patch.HasKnotVectors()
-                               ? patch.knot_vectors[axis].size() - degree - 1
-                               : degree + 1;
-      strides[axis] = stride;
-      sizes[axis] = axis == normal ? 1 : size;
-      if (axis == normal && high) {
-        first = (size - 1) * stride;
-      }
-      stride *= size;
+    const Grid grid = ControlGrid(patch);
+    strides = grid.stride;
+    sizes = grid.Resized(normal, 1).n;
+    if (high) {
+      first = (grid.n[normal] - 1) * grid.stride[normal];
     }
   }
 };
@@ -275,11 +250,10 @@ bool MatchKnots(const SplineView& a,
 
 } // namespace
 
-std::vector<std::vector<SeamPoint>>
-SeamControlPoints(SplineBatchView patches,
-                  Span<const int32_t> interfaces,
-                  Span<const int32_t> orientations,
-                  double tolerance) {
+SeamGroups SeamControlPoints(SplineBatchView patches,
+                             Span<const int32_t> interfaces,
+                             Span<const int32_t> orientations,
+                             double tolerance) {
   if (patches.empty()) {
     return {};
   }
@@ -302,7 +276,7 @@ SeamControlPoints(SplineBatchView patches,
   }
 
   std::map<SeamPoint, std::size_t> indices;
-  std::vector<std::size_t> parents;
+  DynamicBuffer<std::size_t> parents;
   const auto index = [&](SeamPoint point) {
     const auto [it, inserted] = indices.try_emplace(point, parents.size());
     if (inserted) {
@@ -319,7 +293,7 @@ SeamControlPoints(SplineBatchView patches,
   };
   Buffer<bool> validated(patches.size());
   Buffer<bool> seen(dim);
-  FaceLayout left(dim), right(dim);
+  FaceLayout left, right;
   for (std::size_t offset = 0; offset < orientations.size(); offset += width) {
     const auto* row = orientations.data() + offset;
     const auto [a, fa, b, fb] = std::array{row[0], row[1], row[2], row[3]};
@@ -418,18 +392,28 @@ SeamControlPoints(SplineBatchView patches,
     throw std::invalid_argument("Missing orientation for a connected face");
   }
 
-  std::vector<std::vector<SeamPoint>> groups;
+  // number the groups by their first point and count their points, then
+  // place every point after the points before it in its group
   const auto unassigned = parents.size();
-  Buffer<std::size_t> group_indices(parents.size(),
-                                    unassigned,
-                                    kDefaultAlignment);
+  Buffer<std::size_t> group_of(parents.size(), unassigned);
+  DynamicBuffer<std::size_t> sizes;
   for (const auto& [point, index] : indices) {
-    auto& group_index = group_indices[root(index)];
-    if (group_index == unassigned) {
-      group_index = groups.size();
-      groups.emplace_back();
+    auto& group = group_of[root(index)];
+    if (group == unassigned) {
+      group = sizes.size();
+      sizes.push_back(0);
     }
-    groups[group_index].push_back(point);
+    ++sizes[group];
+  }
+  SeamGroups groups;
+  groups.offsets = Buffer<std::size_t>(sizes.size() + 1, 0);
+  for (std::size_t g = 0; g < sizes.size(); ++g) {
+    groups.offsets[g + 1] = groups.offsets[g] + sizes[g];
+  }
+  groups.points = Buffer<SeamPoint>(indices.size());
+  Buffer<std::size_t> next = groups.offsets;
+  for (const auto& [point, index] : indices) {
+    groups.points[next[group_of[root(index)]]++] = point;
   }
   return groups;
 }

@@ -4,8 +4,60 @@ deformation function's control points.
 """
 
 import numpy as np
+import pytest
 
 import splinepy
+
+
+@pytest.mark.parametrize("rational", [False, True])
+def test_bezier_algebra_rejects_bspline_inputs(rational):
+    bezier = splinepy.Bezier([1], [[0], [1]])
+    spline = splinepy.BSpline([1], [[0, 0, 0.5, 1, 1]], [[0], [1], [2]])
+    if rational:
+        spline = spline.nurbs
+    for outer, inner in ((bezier, spline), (spline, bezier)):
+        with pytest.raises(ValueError, match="Bezier"):
+            splinepy.splinepy_core.add(outer, inner)
+        with pytest.raises(ValueError, match="Bezier"):
+            splinepy.splinepy_core.compose(outer, inner)
+        with pytest.raises(ValueError, match="Bezier"):
+            splinepy.Bezier.compose_batch([outer], [inner])
+        with pytest.raises(ValueError, match="Bezier"):
+            splinepy.Bezier.compose_batch(
+                [outer], [inner], compute_sensitivities=True, nthreads=4
+            )
+    with pytest.raises(ValueError, match="Bezier"):
+        bezier.composition_derivative(bezier, spline)
+
+
+@pytest.mark.parametrize("scale", [1e-14, 1.0, 1e14])
+def test_rational_addition_is_invariant_under_weight_scaling(scale):
+    first = splinepy.RationalBezier([1], [[0], [1]], scale * np.array([1, 2]))
+    second = splinepy.RationalBezier([1], [[0], [1]], scale * np.array([2, 1]))
+    queries = np.linspace(0, 1, 17).reshape(-1, 1)
+    np.testing.assert_allclose(
+        (first + second).evaluate(queries),
+        first.evaluate(queries) + second.evaluate(queries),
+        rtol=1e-13,
+        atol=1e-14,
+    )
+
+
+@pytest.mark.parametrize("degree", [31, 32, 40, 70])
+def test_high_degree_product_preserves_constant_one(degree):
+    spline = splinepy.Bezier([degree], np.ones((degree + 1, 1)))
+    result = spline * spline
+    np.testing.assert_allclose(result.control_points, 1, rtol=1e-13)
+    np.testing.assert_allclose(result.evaluate([[0.1], [0.5], [0.9]]), 1, rtol=1e-13)
+
+
+def test_rational_sixth_derivative_spline_matches_analytic_derivative():
+    spline = splinepy.RationalBezier([1], [[0], [1]], [1, 2])
+    queries = np.array([[0.2], [0.5], [0.8]])
+    result = spline.derivative_spline([6])
+    np.testing.assert_allclose(
+        result.evaluate(queries), -1440 / (1 + queries) ** 7, rtol=1e-9
+    )
 
 
 def test_composition():
@@ -317,7 +369,8 @@ def test_native_spline_result_keeps_transferred_buffers_alive():
         while isinstance(owner, np.ndarray) and owner.base is not None:
             owner = owner.base
         assert isinstance(owner, memoryview)
-        assert array.flags.writeable
+        # knots are layout: read-only, edited through KnotVector methods
+        assert array.flags.writeable == (array is not knots)
 
     points[1, 0] = 2
     np.testing.assert_array_equal(points[:, 0], [0, 2])
@@ -334,9 +387,10 @@ def test_spline_shares_compatible_inputs_and_copy_is_independent():
     weights = np.array([1.0, 2.0])
     spline = NURBS(degrees, [knots], points, weights)
     clone = spline.copy()
-    assert np.shares_memory(spline.degrees, degrees)
+    assert not np.shares_memory(spline.degrees, degrees)
     assert degrees.flags.writeable
-    assert np.shares_memory(spline.knot_vectors[0], knots)
+    # knots are layout: always copied, never shared with an input
+    assert not np.shares_memory(spline.knot_vectors[0], knots)
     assert np.shares_memory(spline.cps, points)
     assert np.shares_memory(spline.weights, weights)
     points[1, 0] = 2
@@ -344,3 +398,54 @@ def test_spline_shares_compatible_inputs_and_copy_is_independent():
     np.testing.assert_allclose(clone.evaluate([[1.0]]), [[1.0]])
     assert not np.shares_memory(clone.knot_vectors[0], knots)
     assert not np.shares_memory(spline.todict()["knot_vectors"][0], knots)
+
+
+def test_knot_vectors_are_frozen_but_editable():
+    from splinepy import BSpline
+
+    spline = BSpline([1], [[0, 0, 0.5, 1, 1]], [[0], [1], [2]])
+    kv = spline.knot_vectors[0]
+    with pytest.raises(ValueError):
+        np.asarray(kv)[2] = 0.7  # read-only
+    with pytest.raises(ValueError):
+        kv[1:4][1] = 0.7  # parts cannot be edited
+    with pytest.raises(ValueError):
+        kv[2] = 2.0  # must stay non-decreasing
+    kv[2] = 0.25
+    kv.scale(0, 2)
+    np.testing.assert_allclose(spline.knot_vectors[0], [0, 0, 0.5, 2, 2])
+    assert not kv.flags.writeable
+
+    layout = spline._layout
+    with spline.edit_knot_vectors() as kvs:
+        kvs[0][2] = 1.0
+    np.testing.assert_allclose(spline.knot_vectors[0], [0, 0, 1, 2, 2])
+    assert spline._layout != layout
+    assert not spline.knot_vectors[0].flags.writeable
+
+    with pytest.raises(ValueError), spline.edit_knot_vectors() as kvs:
+        kvs[0][2] = 3.0  # decreasing: rejected, spline unchanged
+    np.testing.assert_allclose(spline.knot_vectors[0], [0, 0, 1, 2, 2])
+
+
+def test_result_arrays_are_created_lazily_as_views():
+    from splinepy import Bezier, BSpline
+
+    outer = Bezier([1, 1], np.random.default_rng(0).random((4, 3)))
+    inner = Bezier([1, 1], [[0.1, 0.1], [0.9, 0.1], [0.1, 0.9], [0.9, 0.9]])
+    result = outer.compose(inner)
+    queries = [[0.3, 0.4], [0.7, 0.2]]
+    before = result.evaluate(queries)  # works before any array exists
+    assert result.para_dim == 2 and result.dim == 3 and not result.is_rational
+
+    points = result.control_points
+    assert result.control_points is points  # created once
+    points[0] += 1.0  # edits the spline's own data
+    assert not np.allclose(result.evaluate(queries), before)
+    del result
+    assert np.isfinite(points).all()  # the arrays keep the data alive
+
+    refined = BSpline([1], [[0, 0, 1, 1]], [[0.0], [1.0]])
+    refined.insert_knots(0, [0.5])
+    assert not refined.knot_vectors[0].flags.writeable
+    np.testing.assert_allclose(refined.knot_vectors[0], [0, 0, 0.5, 1, 1])

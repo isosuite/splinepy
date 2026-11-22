@@ -8,7 +8,18 @@
 
 namespace splinepy::core {
 
-/// Groups exterior boundaries into smooth patches based on G1 normal
+/// Groups boundary patches (the boundary faces of a multipatch, in order)
+/// into smooth boundaries: neighbours whose tangents across their shared face
+/// are parallel (1 - |cos| < tolerance) share one. Their entries in
+/// global_interfaces become -1, -2, ... per group. Returns the number of
+/// groups.
+int32_t GroupBoundariesByContinuity(const SplineBatchView& boundaries,
+                                    Span<const int32_t> boundary_interfaces,
+                                    Span<int32_t> global_interfaces,
+                                    double tolerance = 1e-4,
+                                    const Options& options = {});
+
+/// Groups exterior boundaries into smooth patches based on G1
 /// continuity. Modifies global_interfaces in-place: negative entries become -1,
 /// -2, -3, ... for each group. Returns the total number of distinct continuous
 /// boundary groups.

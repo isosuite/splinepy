@@ -6,14 +6,7 @@
 
 namespace splinepy::core {
 
-class MemoryArena;
-
 namespace detail {
-
-RefinementMatrix1D BuildRefinementMatrix1D(MemoryArena& arena,
-                                           int32_t degree,
-                                           Span<const double> coarse,
-                                           Span<const double> fine);
 
 inline int32_t ValidateHierarchyKnots(int32_t degree,
                                       Span<const double> knots) {
@@ -59,4 +52,5 @@ inline void ValidateNested(int32_t degree,
 }
 
 } // namespace detail
+
 } // namespace splinepy::core

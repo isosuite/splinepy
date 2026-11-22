@@ -9,6 +9,46 @@ import pytest
 import splinepy
 
 
+@pytest.mark.parametrize("hierarchical", [False, True])
+@pytest.mark.parametrize(
+    "method,args",
+    [("evaluate", ()), ("derivative", ([1],)), ("jacobian", ()),
+     ("basis", ()), ("basis_derivative", ([1],))],
+)
+def test_outputs_may_overlap_query_storage(hierarchical, method, args):
+    spline = splinepy.Bezier([2], [[0], [1], [3]])
+    if hierarchical:
+        spline = spline.thb
+    storage = np.linspace(0.1, 0.9, 32)
+    queries = storage[:4].reshape(-1, 1)
+    expected = getattr(spline, method)(queries.copy(), *args)
+    out = storage[1 : 1 + expected.size].reshape(expected.shape)
+    result = getattr(spline, method)(queries, *args, out=out)
+    assert result is out
+    np.testing.assert_array_equal(result, expected)
+
+
+def test_query_outputs_cannot_overwrite_geometry():
+    spline = splinepy.Bezier([1], [[0], [2]])
+    with pytest.raises(ValueError, match="property arrays"):
+        spline.evaluate([[0.25], [0.75]], out=spline.control_points)
+    np.testing.assert_array_equal(spline.control_points, [[0], [2]])
+
+
+def test_basis_pair_protects_queries_and_rejects_overlapping_outputs():
+    spline = splinepy.Bezier([1], [[0], [2]])
+    storage = np.linspace(0.1, 0.9, 16)
+    queries = storage[:4].reshape(-1, 1)
+    expected = spline.basis_and_support(queries.copy())
+    basis = storage[1:9].reshape(4, 2)
+    actual = spline.basis_and_support(queries, out=(basis, None))
+    for value, reference in zip(actual, expected, strict=True):
+        np.testing.assert_array_equal(value, reference)
+    support = basis.view(np.int32).reshape(-1)[:8].reshape(4, 2)
+    with pytest.raises(ValueError, match="overlap"):
+        spline.basis_and_support([[0.1]] * 4, out=(basis, support))
+
+
 @pytest.fixture
 def spline():
     return splinepy.BSpline(

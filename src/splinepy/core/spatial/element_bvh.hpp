@@ -7,8 +7,8 @@
 #include <memory>
 #include <new>
 #include <utility>
-#include <vector>
 
+#include "splinepy/core/memory/buffer.hpp"
 #include "splinepy/core/memory/memory_arena.hpp"
 #include "splinepy/core/model/spline_view.hpp"
 
@@ -50,8 +50,8 @@ public:
   int64_t NumElements() const noexcept { return num_elements_; }
 
   /// Number of elements along each parametric dimension.
-  const std::vector<int32_t>& ElementsPerAxis() const noexcept {
-    return elements_per_axis_;
+  Span<const int32_t> ElementsPerAxis() const noexcept {
+    return elements_per_axis_.cspan();
   }
 
   /// Parametric bounds of an element. Both pointers need para_dim entries.
@@ -190,13 +190,14 @@ private:
   int64_t num_elements_{0};
   bool valid_{false};
 
-  std::vector<int32_t> elements_per_axis_;
-  std::vector<double> param_lower_, param_upper_; // elements x para_dim
-  std::vector<double> box_lower_, box_upper_;     // elements x dim
+  Buffer<int32_t> elements_per_axis_;
+  Buffer<double> param_lower_, param_upper_; // elements x para_dim
+  Buffer<double> box_lower_, box_upper_;     // elements x dim
 
-  std::vector<Node> nodes_;
-  std::vector<double> node_lower_, node_upper_; // nodes x dim
-  std::vector<int64_t> element_order_;
+  Buffer<Node> nodes_;
+  Buffer<double> node_lower_, node_upper_; // nodes x dim
+  int64_t num_nodes_{0};
+  Buffer<int64_t> element_order_;
 };
 
 } // namespace splinepy::core

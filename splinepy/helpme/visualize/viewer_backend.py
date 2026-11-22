@@ -55,6 +55,7 @@ def show_viewer(spline, **kwargs):
     show_options = spline.show_options
     options = dict(show_options.items())
     options.update(kwargs)
+    _compat.follow_control_points(options)
     para_space = options.pop("parametric_space", False)
     open_browser = options.pop("open", None)
     block = options.pop("block", True)

@@ -651,3 +651,278 @@ def test_swept_anchor_modes():
     )
     assert not np.allclose(diff_control_vs_geometry[0], 0.0)
     assert not np.allclose(diff_parametric_vs_geometry[0], 0.0)
+
+
+@pytest.mark.parametrize("n_knot_spans", [1, 3, 4])
+def test_circle_is_full_circle(n_knot_spans):
+    radius = 2.0
+    circle = splinepy.helpme.create.circle(radius, n_knot_spans=n_knot_spans)
+    bounds = circle.parametric_bounds.ravel()
+    queries = np.linspace(bounds[0], bounds[1], 41).reshape(-1, 1)
+    points = circle.evaluate(queries)
+
+    assert np.allclose(np.linalg.norm(points, axis=1), radius)
+    assert np.allclose(points[0], points[-1])
+    # by symmetry, the parametric midpoint is the opposite point of the circle
+    assert np.allclose(points[20], [-radius, 0.0])
+
+    quarter_arc = splinepy.helpme.create.arc(radius=radius, angle=90)
+    end = quarter_arc.evaluate(quarter_arc.parametric_bounds[1].reshape(1, -1))
+    assert np.allclose(end, [[0.0, radius]])
+
+
+def _triangle_cross_section(normal):
+    """Planar triangle whose (P1 - P0) x (P2 - P0) points along normal."""
+    normal = np.asarray(normal, dtype=float)
+    normal = normal / np.linalg.norm(normal)
+    helper = [1.0, 0.0, 0.0] if abs(normal[0]) < 0.9 else [0.0, 1.0, 0.0]
+    a = np.cross(normal, helper)
+    a /= np.linalg.norm(a)
+    b = np.cross(normal, a)
+    return splinepy.BSpline(
+        degrees=[1],
+        knot_vectors=[[0, 0, 1, 2, 2]],
+        control_points=[a, b, -a],
+    )
+
+
+@pytest.mark.parametrize(
+    "normal",
+    [
+        [0, 0, 1],
+        [0, 0, 2],
+        [1, 0, 0],
+        [-1, 0, 0],
+        [0, 1, 0],
+        [0, -1, 0],
+        [1, 0, 1],
+        [1, 1, 1],
+        [0, 1, 1],
+        [1, 2, -3],
+    ],
+)
+def test_swept_custom_normal_is_rotated_onto_tangent(normal):
+    cross_section = _triangle_cross_section(normal)
+    trajectory = splinepy.BSpline(
+        degrees=[1],
+        knot_vectors=[[0, 0, 1, 1]],
+        control_points=[[0, 0, 0], [0, 0, 3]],
+    )
+    result = splinepy.helpme.create.swept(
+        cross_section=cross_section,
+        trajectory=trajectory,
+        cross_section_normal=normal,
+        anchor="parametric",
+    )
+
+    n_cs = cross_section.control_points.shape[0]
+    for section in result.control_points.reshape(-1, n_cs, 3):
+        section_normal = np.cross(section[1] - section[0], section[2] - section[0])
+        section_normal /= np.linalg.norm(section_normal)
+        # normal points in the trajectory direction, not against it
+        assert np.allclose(section_normal, [0, 0, 1])
+        # section is moved rigidly
+        assert np.allclose(
+            np.linalg.norm(section - section[1], axis=1),
+            np.linalg.norm(
+                cross_section.control_points - cross_section.control_points[1],
+                axis=1,
+            ),
+        )
+
+
+def test_swept_trajectory_with_shifted_parametric_bounds():
+    cross_section = _triangle_cross_section([0, 0, 1])
+    control_points = [[0, 0, 0], [1, 1, 0], [2, 0, 1]]
+    trajectory = splinepy.BSpline(
+        degrees=[2],
+        knot_vectors=[[0, 0, 0, 1, 1, 1]],
+        control_points=control_points,
+    )
+    shifted_trajectory = splinepy.BSpline(
+        degrees=[2],
+        knot_vectors=[[2, 2, 2, 3, 3, 3]],
+        control_points=control_points,
+    )
+
+    for set_on_trajectory in (False, True):
+        reference = splinepy.helpme.create.swept(
+            cross_section, trajectory, set_on_trajectory=set_on_trajectory
+        )
+        shifted = splinepy.helpme.create.swept(
+            cross_section,
+            shifted_trajectory,
+            set_on_trajectory=set_on_trajectory,
+        )
+        assert np.allclose(shifted.control_points, reference.control_points)
+        assert np.allclose(shifted.knot_vectors[1], [2, 2, 2, 3, 3, 3])
+
+
+def test_swept_closed_nonplanar_trajectory_closes():
+    trajectory = splinepy.helpme.create.circle(2.0, n_knot_spans=4).nurbs
+    trajectory = trajectory.create.embedded(3)
+    # wobble out of plane, keeping the curve closed with matching end tangents
+    trajectory.control_points[:, 2] = [0, 1, 0, -1, 0, 1, 0, -1, 0]
+    bounds = trajectory.parametric_bounds.ravel().reshape(-1, 1)
+    start_end_tangents = trajectory.derivative(bounds, [1])
+    assert np.allclose(*trajectory.evaluate(bounds))
+    assert np.allclose(
+        np.cross(start_end_tangents[0], start_end_tangents[1]), 0.0
+    )
+
+    cross_section = splinepy.BSpline(
+        degrees=[1],
+        knot_vectors=[[0, 0, 1, 2, 3, 4, 4]],
+        control_points=[
+            [0.2, 0.1],
+            [-0.2, 0.1],
+            [-0.2, -0.1],
+            [0.2, -0.1],
+            [0.2, 0.1],
+        ],
+    )
+    n_cs = cross_section.control_points.shape[0]
+
+    for set_on_trajectory in (False, True):
+        result = splinepy.helpme.create.swept(
+            cross_section,
+            trajectory,
+            set_on_trajectory=set_on_trajectory,
+            anchor="parametric",
+        )
+        sections = result.control_points.reshape(-1, n_cs, 3)
+        assert np.allclose(sections[0], sections[-1])
+
+        # every section stays normal to the trajectory tangent
+        tangents = trajectory.derivative(
+            trajectory.greville_abscissae().reshape(-1, 1), [1]
+        )
+        for section, tangent in zip(sections, tangents, strict=True):
+            assert np.allclose(np.dot(section[1] - section[0], tangent), 0.0)
+            assert np.allclose(np.dot(section[2] - section[1], tangent), 0.0)
+
+
+def test_swept_accepts_bezier_types():
+    cross_section = _triangle_cross_section([0, 0, 1])
+    trajectory = splinepy.Bezier(
+        degrees=[2], control_points=[[0, 0, 0], [1, 1, 0], [2, 0, 1]]
+    )
+    reference = splinepy.helpme.create.swept(
+        cross_section, trajectory.bspline
+    )
+    assert np.allclose(
+        splinepy.helpme.create.swept(cross_section, trajectory).control_points,
+        reference.control_points,
+    )
+
+    rational_trajectory = trajectory.nurbs.copy()
+    rational_trajectory.weights[1] = 0.5
+    rational_bezier = splinepy.RationalBezier(
+        degrees=[2],
+        control_points=trajectory.control_points,
+        weights=rational_trajectory.weights,
+    )
+    result = splinepy.helpme.create.swept(cross_section, rational_bezier)
+    assert result.is_rational
+    assert np.allclose(
+        result.control_points,
+        splinepy.helpme.create.swept(
+            cross_section, rational_trajectory
+        ).control_points,
+    )
+
+
+def test_swept_rejects_invalid_parameters():
+    cross_section = _triangle_cross_section([0, 0, 1])
+    trajectory = splinepy.BSpline(
+        degrees=[1],
+        knot_vectors=[[0, 0, 1, 1]],
+        control_points=[[0, 0, 0], [0, 0, 1]],
+    )
+    with pytest.raises(TypeError):
+        splinepy.helpme.create.swept(
+            cross_section, trajectory, rotation_adaption="abc"
+        )
+    with pytest.raises(ValueError):
+        splinepy.helpme.create.swept(
+            cross_section, trajectory, cross_section_normal=[0, 0, 0]
+        )
+
+
+def _line_cross_section():
+    return splinepy.BSpline(
+        degrees=[1],
+        knot_vectors=[[0, 0, 1, 1]],
+        control_points=[[-1.0, 0.0], [1.0, 0.0]],
+    )
+
+
+@pytest.mark.parametrize("twist", [np.pi, -np.pi / 2, 3 * np.pi])
+def test_swept_twist_grows_linearly_along_trajectory(twist):
+    trajectory = splinepy.BSpline(
+        degrees=[1],
+        knot_vectors=[[0, 0, 1, 1]],
+        control_points=[[0, 0, 0], [0, 0, 4]],
+    )
+    trajectory.insert_knots(0, np.linspace(0, 1, 13)[1:-1])
+    cross_section = _line_cross_section()
+
+    untwisted = splinepy.helpme.create.swept(
+        cross_section, trajectory, anchor="parametric"
+    )
+    twisted = splinepy.helpme.create.swept(
+        cross_section, trajectory, anchor="parametric", twist=twist
+    )
+
+    def section_angles(spline):
+        sections = spline.control_points.reshape(-1, 2, 3)
+        direction = sections[:, 1] - sections[:, 0]
+        return np.arctan2(direction[:, 1], direction[:, 0])
+
+    relative = np.unwrap(section_angles(twisted) - section_angles(untwisted))
+    relative -= relative[0]
+    # right-hand rule around the travel direction (+z), linear in arc length
+    assert np.allclose(relative, np.linspace(0, twist, len(relative)))
+    # sections stay centered on the trajectory
+    assert np.allclose(
+        twisted.control_points.reshape(-1, 2, 3).mean(axis=1),
+        trajectory.control_points,
+    )
+
+
+def test_swept_twist_defaults_and_validation():
+    trajectory = splinepy.BSpline(
+        degrees=[2],
+        knot_vectors=[[0, 0, 0, 1, 1, 1]],
+        control_points=[[0, 0, 0], [1, 1, 0], [2, 0, 1]],
+    )
+    cross_section = _line_cross_section()
+    reference = splinepy.helpme.create.swept(cross_section, trajectory)
+    assert np.allclose(
+        splinepy.helpme.create.swept(
+            cross_section, trajectory, twist=0
+        ).control_points,
+        reference.control_points,
+    )
+    with pytest.raises(TypeError):
+        splinepy.helpme.create.swept(cross_section, trajectory, twist="abc")
+
+
+def test_swept_twist_on_closed_trajectory():
+    trajectory = splinepy.helpme.create.circle(2.0, n_knot_spans=4).nurbs
+    trajectory = trajectory.create.embedded(3)
+    trajectory.control_points[:, 2] = [0, 1, 0, -1, 0, 1, 0, -1, 0]
+    cross_section = _line_cross_section()
+
+    full_turn = splinepy.helpme.create.swept(
+        cross_section, trajectory, anchor="parametric", twist=2 * np.pi
+    )
+    sections = full_turn.control_points.reshape(-1, 2, 3)
+    assert np.allclose(sections[0], sections[-1])
+
+    half_turn = splinepy.helpme.create.swept(
+        cross_section, trajectory, anchor="parametric", twist=np.pi
+    )
+    sections = half_turn.control_points.reshape(-1, 2, 3)
+    # half a turn flips the last section relative to the first one
+    assert np.allclose(sections[0], sections[-1][::-1])

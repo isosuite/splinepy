@@ -1,10 +1,11 @@
 #include "nb_spline_extensions.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <optional>
 #include <string>
-#include <vector>
+#include <tuple>
 
 #include "nb_common.hpp"
 #include "nb_spline.hpp"
@@ -13,12 +14,15 @@
 #include "splinepy/core/bezier/derivative_spline.hpp"
 #include "splinepy/core/bezier/multiply.hpp"
 #include "splinepy/core/bezier/split.hpp"
+#include "splinepy/core/error.hpp"
+#include "splinepy/core/manipulation/axis_map.hpp"
 #include "splinepy/core/manipulation/extract.hpp"
 #include "splinepy/core/manipulation/insert_knots.hpp"
 #include "splinepy/core/manipulation/remove_knots.hpp"
+#include "splinepy/core/memory/dynamic_buffer.hpp"
+#include "splinepy/core/microstructure/plan.hpp"
 #include "splinepy/core/multipatch/interfaces.hpp"
 #include "splinepy/core/queries/evaluate.hpp"
-#include "splinepy/utils/print.hpp"
 
 namespace splinepy::py {
 
@@ -26,76 +30,72 @@ namespace {
 
 nb::object
 InsertKnots(nb::handle spline, int para_dim, nb::object knots, double tol) {
-  PySplineHolder holder(spline);
+  const SplineArrays holder = Pin(spline);
   ContiguousAdapter<double> knots_adapter(knots, "float64");
   const double* knots_ptr = knots_adapter.data();
   const int n_knots = static_cast<int>(knots_adapter.size());
 
-  std::vector<bool> successful(n_knots, false);
-  if (n_knots == 0)
-    return MakeNumPyArray1D(successful);
-
-  const int p = holder.view.degrees[para_dim];
-  const int max_mult = p + 1;
-
-  std::vector<double> current_kv;
-  if (holder.view.HasKnotVectors()) {
-    current_kv.assign(holder.view.knot_vectors[para_dim].begin(),
-                      holder.view.knot_vectors[para_dim].end());
-  } else {
-    current_kv.resize(2 * (p + 1));
-    for (int i = 0; i <= p; ++i) {
-      current_kv[i] = 0.0;
-      current_kv[p + 1 + i] = 1.0;
-    }
+  // a knot is inserted unless it is out of bounds or its multiplicity, in
+  // the knot vector and among the knots accepted before it, is full
+  const auto& view = holder.view;
+  if (para_dim < 0 || para_dim >= view.para_dim) {
+    throw splinepy::core::SplinepyException(
+        "InsertKnots: axis out of range [0, para_dim).",
+        splinepy::core::Status::kOutOfBounds);
   }
+  const int p = view.degrees[para_dim];
+  const splinepy::core::AxisKnots axis_knots(view, para_dim);
+  const splinepy::core::Span<const double> kv = axis_knots;
+  const double u_min = kv[p];
+  const double u_max = kv[kv.size() - p - 1];
 
-  const double u_min = current_kv.front();
-  const double u_max = current_kv.back();
-
-  std::vector<double> valid_knots;
-  valid_knots.reserve(n_knots);
-
+  // candidates by value, then by position, so equal knots are accepted in
+  // the order given
+  splinepy::core::Buffer<int> order(n_knots);
+  splinepy::core::Buffer<double> snapped(n_knots);
+  int n_candidates = 0;
   for (int i = 0; i < n_knots; ++i) {
     const double u = knots_ptr[i];
+    if (!std::isfinite(u)) {
+      throw nb::value_error("Insertion knots must be finite.");
+    }
     if (u < u_min - tol || u > u_max + tol) {
-      successful[i] = false;
       continue;
     }
+    snapped[i] = std::clamp(u, u_min, u_max);
+    order[n_candidates++] = i;
+  }
+  std::sort(order.begin(), order.begin() + n_candidates, [&](int a, int b) {
+    return snapped[a] != snapped[b] ? snapped[a] < snapped[b] : a < b;
+  });
 
-    int mult = 0;
-    for (double k : current_kv) {
-      if (std::abs(k - u) <= tol) {
-        ++mult;
+  splinepy::core::Buffer<bool> successful(n_knots, false);
+  splinepy::core::DynamicBuffer<double> valid_knots(n_candidates);
+  for (int first = 0; first < n_candidates;) {
+    const double u = snapped[order[first]];
+    const auto present = std::equal_range(kv.begin(), kv.end(), u);
+    auto room = static_cast<int>(p + 1 - (present.second - present.first));
+    for (; first < n_candidates && snapped[order[first]] == u; ++first) {
+      if (room-- > 0) {
+        successful[order[first]] = true;
+        valid_knots.push_back(u);
       }
-    }
-
-    if (mult >= max_mult) {
-      successful[i] = false;
-    } else {
-      successful[i] = true;
-      valid_knots.push_back(u);
-      auto it = std::upper_bound(current_kv.begin(), current_kv.end(), u);
-      current_kv.insert(it, u);
     }
   }
 
   if (!valid_knots.empty()) {
-    splinepy::core::Span<const double> knot_span(valid_knots.data(),
-                                                 valid_knots.size());
-    auto new_data =
-        splinepy::core::InsertKnots(holder.view, para_dim, knot_span);
-    SetSplineData(spline, std::move(new_data));
+    SetSplineData(
+        spline,
+        splinepy::core::InsertKnots(view, para_dim, valid_knots.cspan()));
   }
-
-  return MakeNumPyArray1D(successful);
+  return MakeNumPyArray1D<bool>(successful.cspan());
 }
 
 nb::list RemoveKnots(nb::handle spline,
                      int para_dim,
                      nb::object knots,
                      double tolerance) {
-  PySplineHolder holder(spline);
+  const SplineArrays holder = Pin(spline);
   splinepy::core::Options options;
   options.tolerance = tolerance;
   ContiguousAdapter<double> knots_adapter(knots, "float64");
@@ -114,61 +114,34 @@ nb::list RemoveKnots(nb::handle spline,
 }
 
 nb::object Multiply(nb::handle a, nb::handle b) {
-  PySplineHolder holder_a(a);
-  PySplineHolder holder_b(b);
+  const SplineArrays holder_a = Pin(a);
+  const SplineArrays holder_b = Pin(b);
   auto result = splinepy::core::Multiply(holder_a.view, holder_b.view);
   return SplineFromData(std::move(result));
 }
 
 nb::object Add(nb::handle a, nb::handle b) {
-  PySplineHolder holder_a(a);
-  PySplineHolder holder_b(b);
+  const SplineArrays holder_a = Pin(a);
+  const SplineArrays holder_b = Pin(b);
   auto result = splinepy::core::Add(holder_a.view, holder_b.view);
   return SplineFromData(std::move(result));
 }
 
 nb::object Compose(nb::handle outer, nb::handle inner) {
-  PySplineHolder holder_outer(outer);
-  PySplineHolder holder_inner(inner);
+  const SplineArrays holder_outer = Pin(outer);
+  const SplineArrays holder_inner = Pin(inner);
   auto result = splinepy::core::Compose(holder_outer.view, holder_inner.view);
   return SplineFromData(std::move(result));
 }
 
-/// Views of a Python list of splines. The holders keep a reference into
-/// themselves, so they are not movable and live on the heap.
-struct ViewList {
-  std::vector<std::unique_ptr<PySplineHolder>> holders;
-  std::vector<splinepy::core::SplineView> views;
-
-  explicit ViewList(nb::list splines) {
-    for (nb::handle h : splines) {
-      holders.push_back(std::make_unique<PySplineHolder>(h));
-      views.push_back(holders.back()->view);
-    }
-  }
-
-  splinepy::core::SplineBatchView Batch() const {
-    return splinepy::core::SplineBatchView(views.data(), views.size());
-  }
-  size_t size() const { return views.size(); }
-};
-
 splinepy::core::MicrostructurePlan
 PrepareMicrostructure(nb::handle outer,
-                      nb::list tiles,
                       nb::list additional_knots,
                       double tolerance,
                       int nthreads) {
   namespace core = splinepy::core;
-  PySplineHolder holder(outer);
+  const SplineArrays holder = Pin(outer);
   auto macro = core::SplineData::FromView(holder.view);
-  core::Buffer<core::SplineData> owned_tiles(tiles.size());
-  core::Buffer<core::SplineView> tile_views(tiles.size());
-  for (std::size_t i = 0; i < tiles.size(); ++i) {
-    PySplineHolder tile(tiles[i]);
-    owned_tiles[i] = core::SplineData::FromView(tile.view);
-    tile_views[i] = owned_tiles[i].View();
-  }
   core::Buffer<core::Buffer<double>> owned_knots(additional_knots.size());
   core::Buffer<core::Span<const double>> knots(additional_knots.size());
   for (std::size_t i = 0; i < knots.size(); ++i) {
@@ -182,39 +155,7 @@ PrepareMicrostructure(nb::handle outer,
   options.tolerance = tolerance;
   options.nthreads = nthreads;
   nb::gil_scoped_release release;
-  return core::MicrostructurePlan(macro.View(), tile_views, knots, options);
-}
-
-splinepy::core::SplineBatchData ApplyMicrostructurePlan(
-    const splinepy::core::MicrostructurePlan& plan,
-    nb::handle control_points,
-    int nthreads,
-    splinepy::core::Buffer<splinepy::core::SplineBatchData>* fields = nullptr) {
-  ContiguousAdapter<double> points(control_points, "float64");
-  if (points.ndim() != 2
-      || points.shape(0) != static_cast<size_t>(plan.NumControlPoints())
-      || points.shape(1) != static_cast<size_t>(plan.Dim())) {
-    throw nb::value_error(
-        "Control points must have the prepared (n, dim) shape.");
-  }
-  splinepy::core::Options options;
-  options.nthreads = nthreads;
-  splinepy::core::Buffer<double> snapshot;
-  snapshot.assign(points.data(), points.data() + points.size());
-  nb::gil_scoped_release release;
-  return fields ? plan.ApplyWithMacroSensitivities(snapshot, *fields, options)
-                : plan.Apply(snapshot, options);
-}
-
-nb::list ApplyFixedTile(const splinepy::core::MicrostructurePlan& plan,
-                        nb::handle control_points,
-                        int nthreads) {
-  auto patches = ApplyMicrostructurePlan(plan, control_points, nthreads);
-  nb::list result;
-  for (auto& patch : patches) {
-    result.append(SplineFromData(std::move(patch)));
-  }
-  return result;
+  return core::MicrostructurePlan(macro.View(), knots, options);
 }
 
 nb::tuple WrapSensitivityResult(
@@ -237,16 +178,6 @@ nb::tuple WrapSensitivityResult(
   return nb::make_tuple(geometry, fields);
 }
 
-nb::tuple ApplyFixedTileWithMacroSensitivities(
-    const splinepy::core::MicrostructurePlan& plan,
-    nb::handle control_points,
-    int nthreads) {
-  splinepy::core::Buffer<splinepy::core::SplineBatchData> sensitivities;
-  auto patches =
-      ApplyMicrostructurePlan(plan, control_points, nthreads, &sensitivities);
-  return WrapSensitivityResult(patches, sensitivities);
-}
-
 /// result[o][i] from a flat list ordered o * n_inner + i
 template<typename Convert>
 nb::list ToGrid(size_t n_outer, size_t n_inner, Convert&& convert) {
@@ -261,62 +192,147 @@ nb::list ToGrid(size_t n_outer, size_t n_inner, Convert&& convert) {
   return out;
 }
 
-class PairedComposition {
+/// The cells of a plan, each filled with the patches of a tile template and
+/// its control points, composed in one call.
+class CellComposition {
 public:
-  explicit PairedComposition(nb::list outers)
-      : outers_(outers.size()),
-        offsets_(outers.size() + 1) {
-    for (std::size_t i = 0; i < outers_.size(); ++i) {
-      PySplineHolder outer(outers[i]);
-      outers_[i] = splinepy::core::SplineData::FromView(outer.view);
-    }
-  }
-
-  PairedComposition(const splinepy::core::MicrostructurePlan& plan,
-                    nb::handle control_points,
-                    int nthreads)
-      : outers_(ApplyMicrostructurePlan(plan, control_points, nthreads)),
-        offsets_(outers_.size() + 1),
-        plan_(plan) {}
-
-  void AddTiles(nb::handle tiles) {
-    if (finished_ || cells_ == outers_.size()) {
-      throw nb::value_error("Too many tile groups for paired composition.");
-    }
-    for (nb::handle tile : nb::iter(tiles)) {
-      PySplineHolder holder(tile);
-      tiles_.push_back(splinepy::core::SplineData::FromView(holder.view));
-    }
-    offsets_[++cells_] = tiles_.size();
-  }
-
-  void AddTilesWithSensitivities(nb::handle tiles,
-                                 nb::handle support,
-                                 nb::handle derivatives) {
-    const std::size_t cell = cells_;
-    AddTiles(tiles);
-    ContiguousAdapter<int64_t> indices(support, "int64");
-    if (indices.size() == 0) {
-      return;
-    }
-    std::size_t i = 0;
-    for (nb::handle derivative : nb::iter(derivatives)) {
-      if (i == indices.size() || indices.data()[i] < 0) {
-        throw nb::value_error("Invalid support for tile sensitivities.");
-      }
-      DerivativeGroup group{cell,
-                            static_cast<std::size_t>(indices.data()[i++]),
-                            {}};
-      for (nb::handle patch : nb::iter(derivative)) {
-        PySplineHolder holder(patch);
-        group.patches.push_back(
-            splinepy::core::SplineData::FromView(holder.view));
-      }
-      derivatives_.push_back(std::move(group));
-    }
-    if (i != indices.size()) {
+  CellComposition(const splinepy::core::MicrostructurePlan& plan,
+                  nb::handle control_points,
+                  nb::handle weights,
+                  int nthreads)
+      : plan_(plan) {
+    ContiguousAdapter<double> points(control_points, "float64");
+    if (points.ndim() != 2
+        || points.shape(0) != static_cast<size_t>(plan.NumControlPoints())
+        || points.shape(1) != static_cast<size_t>(plan.Dim())) {
       throw nb::value_error(
-          "Expected one tile derivative group per active parameter.");
+          "Control points must have the prepared (n, dim) shape.");
+    }
+    if (weights.is_none() == plan.IsRational()) {
+      throw nb::value_error("Weights are needed exactly for a rational outer.");
+    }
+    splinepy::core::Buffer<double> snapshot;
+    snapshot.assign(points.data(), points.data() + points.size());
+    if (!weights.is_none()) {
+      ContiguousAdapter<double> w(weights, "float64");
+      weights_.assign(w.data(), w.data() + w.size());
+    }
+    splinepy::core::Options options;
+    options.nthreads = nthreads;
+    {
+      nb::gil_scoped_release release;
+      cells_ = plan.Apply(snapshot, weights_, options);
+    }
+    tiles_ =
+        splinepy::core::Buffer<splinepy::core::SplineBatchData>(cells_.size());
+    set_ = splinepy::core::Buffer<uint8_t>(cells_.size());
+  }
+
+  /// cells get the template with control points (n or 1, n_cps, dim);
+  /// sensitivities (cells, parameters, points (m, n_cps, dim)) are the
+  /// nonzero derivatives of those control points.
+  void SetCells(nb::handle cells,
+                nb::list templates,
+                nb::handle control_points,
+                nb::handle sensitivities) {
+    namespace core = splinepy::core;
+    if (finished_) {
+      throw nb::value_error("The composition is finished.");
+    }
+    ContiguousAdapter<int64_t> ids(cells, "int64");
+    // everything is checked before any cell is set
+    core::Buffer<uint8_t> in_call(cells_.size());
+    for (std::size_t i = 0; i < ids.size(); ++i) {
+      const auto cell = ids.data()[i];
+      if (cell < 0 || static_cast<std::size_t>(cell) >= cells_.size()
+          || set_[cell] || in_call[cell]) {
+        throw nb::value_error("Each cell must be set exactly once.");
+      }
+      in_call[cell] = 1;
+    }
+    const std::size_t n_patches = templates.size();
+    core::SplineBatchData layout(n_patches);
+    core::Buffer<std::size_t> first(n_patches + 1);
+    for (std::size_t k = 0; k < n_patches; ++k) {
+      const SplineArrays holder = Pin(templates[k]);
+      if (holder.view.HasKnotVectors()
+          || holder.view.dim != cells_[0].para_dim) {
+        throw nb::value_error("Tile patches must be Bézier splines in the "
+                              "outer's parametric dimension.");
+      }
+      layout[k] = core::SplineData::FromView(holder.view);
+      layout[k].control_points = core::Buffer<double>();
+      first[k + 1] = first[k] + holder.view.num_control_points;
+    }
+    if (n_patches == 0) {
+      throw nb::value_error("A tile needs at least one patch.");
+    }
+    const std::size_t dim = layout[0].dim;
+    const std::size_t row = first[n_patches] * dim;
+    const auto check = [&](const ContiguousAdapter<double>& points,
+                           std::size_t n,
+                           bool shared) {
+      if (points.ndim() != 3 || points.shape(1) != first[n_patches]
+          || points.shape(2) != dim
+          || (points.shape(0) != n && !(shared && points.shape(0) == 1))) {
+        throw nb::value_error(
+            "Tile control points must have shape (n or 1, n_cps, dim).");
+      }
+      if (!std::all_of(points.data(),
+                       points.data() + points.size(),
+                       [](double value) { return std::isfinite(value); })) {
+        throw nb::value_error("Tile control points must be finite.");
+      }
+      return points.shape(0) == 1 ? 0 : row;
+    };
+    const auto make = [&](const double* points) {
+      core::SplineBatchData patches(n_patches);
+      for (std::size_t k = 0; k < n_patches; ++k) {
+        patches[k] = layout[k];
+        patches[k].control_points.assign(points + first[k] * dim,
+                                         points + first[k + 1] * dim);
+      }
+      return patches;
+    };
+
+    ContiguousAdapter<double> points(control_points, "float64");
+    const auto stride = check(points, ids.size(), true);
+
+    std::optional<ContiguousAdapter<int64_t>> sensitivity_cells, parameters;
+    std::optional<ContiguousAdapter<double>> derivatives;
+    std::size_t n = 0, derivative_stride = 0;
+    if (!sensitivities.is_none()) {
+      const auto parts = nb::cast<nb::tuple>(sensitivities);
+      sensitivity_cells.emplace(parts[0], "int64");
+      parameters.emplace(parts[1], "int64");
+      derivatives.emplace(parts[2], "float64");
+      n = sensitivity_cells->size();
+      derivative_stride = check(*derivatives, n, false);
+      if (parameters->size() != n) {
+        throw nb::value_error("Expected one derivative per (cell, parameter).");
+      }
+      for (std::size_t i = 0; i < n; ++i) {
+        const auto cell = sensitivity_cells->data()[i];
+        if (cell < 0 || static_cast<std::size_t>(cell) >= cells_.size()
+            || !in_call[cell] || parameters->data()[i] < 0) {
+          throw nb::value_error("A sensitivity needs a parameter and a cell "
+                                "of the same call.");
+        }
+      }
+    }
+
+    for (std::size_t i = 0; i < ids.size(); ++i) {
+      const auto cell = ids.data()[i];
+      tiles_[cell] = make(points.data() + i * stride);
+      set_[cell] = 1;
+    }
+    for (std::size_t i = 0; i < n; ++i) {
+      const auto cell = sensitivity_cells->data()[i];
+      const auto parameter = parameters->data()[i];
+      derivatives_.push_back(
+          {static_cast<std::size_t>(cell),
+           static_cast<std::size_t>(parameter),
+           make(derivatives->data() + i * derivative_stride)});
     }
   }
 
@@ -349,34 +365,45 @@ private:
         splinepy::core::Buffer<splinepy::core::SplineBatchData>* fields,
         std::size_t parameter_count,
         bool macro_sensitivities) {
-    if (finished_ || cells_ != outers_.size()) {
-      throw nb::value_error("Expected one tile group per outer patch.");
-    }
-    if (macro_sensitivities && (!plan_ || !fields)) {
-      throw nb::value_error(
-          "Macro sensitivities require a prepared extraction plan.");
-    }
-    finished_ = true;
-    auto outers = std::move(outers_);
-    auto tiles = std::move(tiles_);
     namespace core = splinepy::core;
-    core::Buffer<core::SplineView> outer_views(outers.size());
-    core::Buffer<core::SplineView> tile_views(
-        plan_ && parameter_count == 0 ? 0 : tiles.size());
-    for (std::size_t i = 0; i < outers.size(); ++i) {
-      outer_views[i] = outers[i].View();
+    if (finished_ || std::find(set_.begin(), set_.end(), 0) != set_.end()) {
+      throw nb::value_error("Expected tiles for every cell, once.");
     }
-    if (!plan_ || parameter_count > 0) {
-      for (std::size_t i = 0; i < tiles.size(); ++i) {
-        tile_views[i] = tiles[i].View();
+    for (const auto& group : derivatives_.cspan()) {
+      if (group.parameter >= parameter_count) {
+        throw nb::value_error("Sensitivity parameter out of range.");
       }
     }
+    finished_ = true;
+    core::Buffer<std::size_t> offsets(cells_.size() + 1);
+    for (std::size_t i = 0; i < cells_.size(); ++i) {
+      offsets[i + 1] = offsets[i] + tiles_[i].size();
+    }
+    core::SplineBatchData tiles(offsets.back());
+    for (std::size_t i = 0; i < cells_.size(); ++i) {
+      std::move(tiles_[i].begin(), tiles_[i].end(), tiles.begin() + offsets[i]);
+    }
+    auto derivatives = std::move(derivatives_).Finish();
+    std::sort(derivatives.begin(),
+              derivatives.end(),
+              [](const auto& a, const auto& b) {
+                return std::tie(a.cell, a.parameter)
+                       < std::tie(b.cell, b.parameter);
+              });
 
+    core::Buffer<core::SplineView> cell_views(cells_.size());
+    for (std::size_t i = 0; i < cells_.size(); ++i) {
+      cell_views[i] = cells_[i].View();
+    }
+    core::Buffer<core::SplineView> tile_views(tiles.size());
+    for (std::size_t i = 0; i < tiles.size(); ++i) {
+      tile_views[i] = tiles[i].View();
+    }
     core::Buffer<core::Buffer<core::SplineView>> derivative_views(
-        derivatives_.size());
-    core::Buffer<core::TileParameterDerivative> groups(derivatives_.size());
-    for (std::size_t i = 0; i < derivatives_.size(); ++i) {
-      auto& group = derivatives_[i];
+        derivatives.size());
+    core::Buffer<core::TileParameterDerivative> groups(derivatives.size());
+    for (std::size_t i = 0; i < derivatives.size(); ++i) {
+      auto& group = derivatives[i];
       auto& views = derivative_views[i];
       views.resize(group.patches.size());
       for (std::size_t j = 0; j < views.size(); ++j) {
@@ -389,18 +416,16 @@ private:
     options.nthreads = nthreads;
     core::Buffer<core::SplineBatchData> macro_fields;
     nb::gil_scoped_release release;
-    auto patches =
-        plan_
-            ? plan_->ApplyPaired(outer_views,
+    auto patches = plan_.Compose(cell_views,
                                  tiles,
-                                 offsets_,
+                                 offsets,
+                                 weights_,
                                  options,
-                                 macro_sensitivities ? &macro_fields : nullptr)
-            : core::ComposePaired(outer_views, tile_views, offsets_, options);
+                                 macro_sensitivities ? &macro_fields : nullptr);
     if (parameter_count > 0) {
-      *fields = core::ComposeParameterFields(outer_views,
+      *fields = core::ComposeParameterFields(cell_views,
                                              tile_views,
-                                             offsets_,
+                                             offsets,
                                              patches,
                                              groups,
                                              parameter_count,
@@ -415,12 +440,12 @@ private:
     return patches;
   }
 
-  std::vector<DerivativeGroup> derivatives_;
-  splinepy::core::SplineBatchData outers_;
-  splinepy::core::SplineBatchData tiles_;
-  splinepy::core::Buffer<std::size_t> offsets_;
-  std::optional<splinepy::core::MicrostructurePlan> plan_;
-  std::size_t cells_{0};
+  splinepy::core::MicrostructurePlan plan_;
+  splinepy::core::Buffer<double> weights_;
+  splinepy::core::SplineBatchData cells_;
+  splinepy::core::Buffer<splinepy::core::SplineBatchData> tiles_;
+  splinepy::core::Buffer<uint8_t> set_;
+  splinepy::core::DynamicBuffer<DerivativeGroup> derivatives_;
   bool finished_{false};
 };
 
@@ -472,8 +497,8 @@ nb::list CompositionDerivativeBatch(nb::list outers,
 }
 
 nb::list ComposeSensitivities(nb::handle outer, nb::handle inner) {
-  PySplineHolder holder_outer(outer);
-  PySplineHolder holder_inner(inner);
+  const SplineArrays holder_outer = Pin(outer);
+  const SplineArrays holder_inner = Pin(inner);
   auto sensitivities = splinepy::core::ComposeSensitivities(holder_outer.view,
                                                             holder_inner.view);
 
@@ -485,7 +510,7 @@ nb::list ComposeSensitivities(nb::handle outer, nb::handle inner) {
 }
 
 nb::object DerivativeSpline(nb::handle spline, nb::object orders) {
-  PySplineHolder holder(spline);
+  const SplineArrays holder = Pin(spline);
   ContiguousAdapter<int32_t> orders_adapter(orders, "int32");
   splinepy::core::Span<const int32_t> orders_span(orders_adapter.data(),
                                                   orders_adapter.size());
@@ -494,14 +519,13 @@ nb::object DerivativeSpline(nb::handle spline, nb::object orders) {
 }
 
 nb::list Split(nb::handle spline, int para_dim, nb::object locations) {
-  PySplineHolder holder(spline);
+  const SplineArrays holder = Pin(spline);
   ContiguousAdapter<double> locs_adapter(locations, "float64");
-  std::vector<double> locs(locs_adapter.data(),
-                           locs_adapter.data() + locs_adapter.size());
-  std::sort(locs.begin(), locs.end());
-
-  splinepy::core::Span<const double> locs_span(locs.data(), locs.size());
-  auto split_result = splinepy::core::Split(holder.view, para_dim, locs_span);
+  // Split sorts the locations itself
+  auto split_result =
+      splinepy::core::Split(holder.view,
+                            para_dim,
+                            {locs_adapter.data(), locs_adapter.size()});
 
   nb::list result;
   for (auto& s : split_result) {
@@ -511,7 +535,7 @@ nb::list Split(nb::handle spline, int para_dim, nb::object locations) {
 }
 
 nb::list ExtractBezierPatches(nb::handle spline) {
-  PySplineHolder holder(spline);
+  const SplineArrays holder = Pin(spline);
   auto patches = splinepy::core::ExtractBezierPatches(holder.view);
 
   nb::list result;
@@ -522,16 +546,13 @@ nb::list ExtractBezierPatches(nb::handle spline) {
 }
 
 nb::list ExtractBoundaries(nb::handle spline, nb::handle boundary_ids) {
-  PySplineHolder holder(spline);
+  const SplineArrays holder = Pin(spline);
   const int para_dim = holder.view.para_dim;
 
-  std::vector<int> bids;
-  if (!boundary_ids.is_none()) {
-    if (nb::isinstance<nb::sequence>(boundary_ids)) {
-      auto seq = nb::cast<nb::sequence>(boundary_ids);
-      for (size_t i = 0; i < nb::len(seq); ++i) {
-        bids.push_back(nb::cast<int>(seq[i]));
-      }
+  splinepy::core::DynamicBuffer<int> bids;
+  if (!boundary_ids.is_none() && nb::isinstance<nb::sequence>(boundary_ids)) {
+    for (nb::handle bid : boundary_ids) {
+      bids.push_back(nb::cast<int>(bid));
     }
   }
 
@@ -544,7 +565,8 @@ nb::list ExtractBoundaries(nb::handle spline, nb::handle boundary_ids) {
   } else {
     for (int bid : bids) {
       if (bid < 0 || bid >= 2 * para_dim) {
-        splinepy::utils::PrintAndThrowError(
+        splinepy::core::ThrowError(
+            splinepy::core::Status::kOutOfBounds,
             "Requested Boundary ID exceeds admissible range.");
       }
       auto bnd = splinepy::core::ExtractBoundary(holder.view, bid);
@@ -555,7 +577,7 @@ nb::list ExtractBoundaries(nb::handle spline, nb::handle boundary_ids) {
 }
 
 nb::object ExtractDim(nb::handle spline, int phys_dim) {
-  PySplineHolder holder(spline);
+  const SplineArrays holder = Pin(spline);
   auto result = splinepy::core::ExtractDim(holder.view, phys_dim);
   return SplineFromData(std::move(result));
 }
@@ -563,9 +585,9 @@ nb::object ExtractDim(nb::handle spline, int phys_dim) {
 nb::object CompositionDerivative(nb::handle outer,
                                  nb::handle inner,
                                  nb::handle inner_derivative) {
-  PySplineHolder holder_outer(outer);
-  PySplineHolder holder_inner(inner);
-  PySplineHolder holder_inner_der(inner_derivative);
+  const SplineArrays holder_outer = Pin(outer);
+  const SplineArrays holder_inner = Pin(inner);
+  const SplineArrays holder_inner_der = Pin(inner_derivative);
   auto result = splinepy::core::CompositionDerivative(holder_outer.view,
                                                       holder_inner.view,
                                                       holder_inner_der.view);
@@ -573,7 +595,7 @@ nb::object CompositionDerivative(nb::handle outer,
 }
 
 nb::object SameSplineWithKnotVectors(nb::handle spline) {
-  PySplineHolder holder(spline);
+  const SplineArrays holder = Pin(spline);
   if (holder.view.HasKnotVectors()) {
     return nb::borrow(spline);
   }
@@ -594,42 +616,68 @@ nb::object SameSplineWithKnotVectors(nb::handle spline) {
   return SplineFromData(std::move(data));
 }
 
-nb::object EvaluateBoundaryCenters(nb::handle spline) {
-  PySplineHolder holder(spline);
-  const int para_dim = holder.view.para_dim;
-  const int dim = holder.view.dim;
-
-  const size_t n_centers = 2 * para_dim;
-  OutArray<double> result(nb::none(), {n_centers, static_cast<size_t>(dim)});
-  double* out_ptr = result.data();
-
-  auto bounds = splinepy::core::ParametricBounds(holder.view);
-
-  std::vector<double> center_param(para_dim);
-  for (int32_t d = 0; d < para_dim; ++d) {
-    center_param[d] = 0.5 * (bounds[d] + bounds[para_dim + d]);
-  }
-
-  std::vector<double> pt(para_dim);
-  for (int bid = 0; bid < 2 * para_dim; ++bid) {
-    const int axis = bid / 2;
-    const bool is_upper = (bid % 2 != 0);
-
-    pt = center_param;
-    pt[axis] = is_upper ? bounds[para_dim + axis] : bounds[axis];
-
-    splinepy::core::Evaluate(
-        holder.view,
-        splinepy::core::Span<const double>(pt.data(), para_dim),
-        splinepy::core::Span<double>(&out_ptr[bid * dim], dim));
-  }
-
-  return result.result();
-}
-
 } // namespace
 
 void init_nb_spline_extensions(nb::module_& m) {
+  m.def("_knot_insertion_rows",
+        [](nb::handle knots,
+           int32_t degree,
+           nb::handle insertions,
+           bool beziers) {
+          namespace core = splinepy::core;
+          const ContiguousAdapter<double> kv(knots, "float64");
+          const ContiguousAdapter<double> added(insertions, "float64");
+          if (kv.ndim() != 1 || added.ndim() != 1) {
+            throw nb::value_error(
+                "Expected one-dimensional knots and insertions.");
+          }
+          core::AxisMap map;
+          core::Buffer<int64_t> starts;
+          {
+            nb::gil_scoped_release release;
+            const core::Span<const double> old(kv.data(), kv.size());
+            const core::Span<const double> extra(added.data(), added.size());
+            if (beziers) {
+              map = core::BezierDecompositionMap(old, degree, extra);
+              starts = core::BezierElementStarts(map.knots, degree);
+            } else {
+              map = core::KnotInsertionMap(old, degree, extra);
+            }
+          }
+          // rows [begin, end) of the map as CSR without explicit zeros
+          const auto csr = [&](int64_t begin, int64_t end) {
+            const auto rows = static_cast<size_t>(end - begin);
+            core::DynamicBuffer<double> values(rows * map.width);
+            core::DynamicBuffer<int64_t> columns(rows * map.width);
+            core::Buffer<int64_t> offsets(rows + 1);
+            for (int64_t i = begin; i < end; ++i) {
+              for (int32_t k = 0; k < map.width; ++k) {
+                if (map.Row(i)[k] != 0.0) {
+                  values.push_back(map.Row(i)[k]);
+                  columns.push_back(map.first[i] + k);
+                }
+              }
+              offsets[i - begin + 1] = static_cast<int64_t>(values.size());
+            }
+            const size_t total = values.size();
+            auto value_buffer = std::move(values).Finish();
+            auto column_buffer = std::move(columns).Finish();
+            return nb::make_tuple(TakeNumPyBuffer(value_buffer, {total}),
+                                  TakeNumPyBuffer(column_buffer, {total}),
+                                  TakeNumPyBuffer(offsets, {rows + 1}),
+                                  rows,
+                                  kv.size() - degree - 1);
+          };
+          nb::list result;
+          if (beziers) {
+            for (const int64_t start : starts) {
+              result.append(csr(start, start + degree + 1));
+            }
+          } else {
+            result.append(csr(0, map.Rows()));
+          }
+          return result;
+        });
   m.def("insert_knots",
         &InsertKnots,
         nb::arg("spline"),
@@ -645,31 +693,27 @@ void init_nb_spline_extensions(nb::module_& m) {
   m.def("multiply", &Multiply, nb::arg("a"), nb::arg("b"));
   m.def("add", &Add, nb::arg("a"), nb::arg("b"));
   nb::class_<splinepy::core::MicrostructurePlan>(m, "_MicrostructurePlan")
-      .def("apply",
-           &ApplyFixedTile,
-           nb::arg("control_points"),
-           nb::arg("nthreads"))
-      .def("apply_with_macro_sensitivities",
-           &ApplyFixedTileWithMacroSensitivities,
-           nb::arg("control_points"),
-           nb::arg("nthreads"))
       .def("_num_reused_bases",
            &splinepy::core::MicrostructurePlan::NumReusedBases);
   m.def("_prepare_microstructure", &PrepareMicrostructure);
-  nb::class_<PairedComposition>(m, "_PairedComposition")
-      .def(nb::init<nb::list>(), nb::arg("outers"))
+  nb::class_<CellComposition>(m, "_CellComposition")
       .def(nb::init<const splinepy::core::MicrostructurePlan&,
+                    nb::handle,
                     nb::handle,
                     int>(),
            nb::arg("plan"),
            nb::arg("control_points"),
+           nb::arg("weights").none(),
            nb::arg("nthreads"))
-      .def("add_tiles", &PairedComposition::AddTiles, nb::arg("tiles"))
-      .def("add_tiles_with_sensitivities",
-           &PairedComposition::AddTilesWithSensitivities)
-      .def("finish", &PairedComposition::Finish, nb::arg("nthreads"))
+      .def("set_cells",
+           &CellComposition::SetCells,
+           nb::arg("cells"),
+           nb::arg("template"),
+           nb::arg("control_points"),
+           nb::arg("sensitivities").none() = nb::none())
+      .def("finish", &CellComposition::Finish, nb::arg("nthreads"))
       .def("finish_with_sensitivities",
-           &PairedComposition::FinishWithSensitivities);
+           &CellComposition::FinishWithSensitivities);
 
   m.def("compose", &Compose, nb::arg("outer"), nb::arg("inner"));
   m.def("compose_batch",
@@ -715,7 +759,6 @@ void init_nb_spline_extensions(nb::module_& m) {
   m.def("same_spline_with_knot_vectors",
         &SameSplineWithKnotVectors,
         nb::arg("spline"));
-  m.def("boundary_centers", &EvaluateBoundaryCenters, nb::arg("spline"));
 }
 
 } // namespace splinepy::py

@@ -85,26 +85,32 @@ TEST(BernsteinTest, DeCasteljauSplit1D) {
   EXPECT_NEAR(eval_left, eval_orig, 1e-13);
 }
 
-TEST(BernsteinTest, DerivativesPartitionOfUnityDerivative) {
-  // Sum of derivative values must be identically 0.0 because sum of basis = 1.0
-  constexpr int32_t kDegree = 3;
+// d/dt B_i^p = p (B_{i-1}^{p-1} - B_i^{p-1}), applied twice for the second
+// derivative; terms with an index outside [0, p - k] vanish.
+TEST(BernsteinTest, DerivativesMatchLowerDegreeRecurrence) {
+  constexpr int32_t kDegree = 4;
   constexpr int32_t kMaxOrder = 2;
-  std::vector<double> ders((kMaxOrder + 1) * (kDegree + 1));
+  constexpr int32_t n = kDegree + 1;
+  std::vector<double> ders((kMaxOrder + 1) * n);
+  std::vector<double> b1(kDegree), b2(kDegree - 1), b0(n);
 
-  for (double t = 0.1; t < 0.9; t += 0.2) {
+  for (const double t : {0.0, 0.13, 0.5, 0.71, 1.0}) {
     EvaluateBernsteinDerivatives(kDegree, t, kMaxOrder, Span<double>(ders));
-    // 1st derivative row
-    double sum_d1 = 0.0;
-    for (int32_t i = 0; i <= kDegree; ++i) {
-      sum_d1 += ders[1 * (kDegree + 1) + i];
+    EvaluateBernstein(kDegree, t, Span<double>(b0));
+    EvaluateBernstein(kDegree - 1, t, Span<double>(b1));
+    EvaluateBernstein(kDegree - 2, t, Span<double>(b2));
+    const auto at = [](const std::vector<double>& b, int32_t i) {
+      return i < 0 || i >= static_cast<int32_t>(b.size()) ? 0.0 : b[i];
+    };
+    for (int32_t i = 0; i < n; ++i) {
+      EXPECT_NEAR(ders[i], b0[i], 1e-14) << "t=" << t << " i=" << i;
+      EXPECT_NEAR(ders[n + i], kDegree * (at(b1, i - 1) - at(b1, i)), 1e-12)
+          << "t=" << t << " i=" << i;
+      EXPECT_NEAR(ders[2 * n + i],
+                  kDegree * (kDegree - 1)
+                      * (at(b2, i - 2) - 2.0 * at(b2, i - 1) + at(b2, i)),
+                  1e-11)
+          << "t=" << t << " i=" << i;
     }
-    EXPECT_NEAR(sum_d1, 0.0, 1e-12);
-
-    // 2nd derivative row
-    double sum_d2 = 0.0;
-    for (int32_t i = 0; i <= kDegree; ++i) {
-      sum_d2 += ders[2 * (kDegree + 1) + i];
-    }
-    EXPECT_NEAR(sum_d2, 0.0, 1e-12);
   }
 }

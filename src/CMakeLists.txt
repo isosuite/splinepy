@@ -1,10 +1,10 @@
 # Core library target (zero Python dependencies)
 add_library(
   splinepy_core_lib STATIC
+  splinepy/core/concurrency/thread_pool.cpp
   splinepy/core/validate/validator.cpp
   splinepy/core/hierarchy/key.cpp
   splinepy/core/hierarchy/hierarchy.cpp
-  splinepy/core/hierarchy/refinement.cpp
   splinepy/core/hierarchy/queries.cpp
   splinepy/core/hierarchy/refine.cpp
   splinepy/core/hierarchy/coarsen.cpp
@@ -17,6 +17,7 @@ add_library(
   splinepy/core/queries/derivative.cpp
   splinepy/core/queries/jacobian.cpp
   splinepy/core/queries/basis.cpp
+  splinepy/core/manipulation/axis_map.cpp
   splinepy/core/manipulation/insert_knots.cpp
   splinepy/core/manipulation/remove_knots.cpp
   splinepy/core/manipulation/elevate_degree.cpp
@@ -27,12 +28,18 @@ add_library(
   splinepy/core/bezier/multiply.cpp
   splinepy/core/bezier/derivative_spline.cpp
   splinepy/core/bezier/compose.cpp
+  splinepy/core/microstructure/plan.cpp
   splinepy/core/multipatch/interfaces.cpp
   splinepy/core/multipatch/orientations.cpp
   splinepy/core/multipatch/boundary.cpp
   splinepy/core/multipatch/continuity.cpp
   splinepy/core/spatial/element_bvh.cpp
   splinepy/proximity/proximity.cpp
+  splinepy/proximity/search.cpp
+  splinepy/proximity/starts.cpp
+  splinepy/proximity/dogleg.cpp
+  splinepy/proximity/slsqp_solver.cpp
+  splinepy/proximity/newton_lm.cpp
   splinepy/proximity/grid_guess.cpp
   splinepy/proximity/slsqp.c)
 
@@ -69,13 +76,15 @@ endif()
 # Benchmarks
 option(SPLINEPY_CORE_BUILD_BENCHMARKS "Build splinepy core benchmarks" ON)
 if(SPLINEPY_CORE_BUILD_BENCHMARKS)
-  add_executable(core_benchmarks benchmarks/benchmark_queries.cpp)
-  target_link_libraries(core_benchmarks PRIVATE splinepy::core)
-  if(MSVC)
-    target_compile_options(core_benchmarks PRIVATE /W4)
-  else()
-    target_compile_options(core_benchmarks PRIVATE -Wall -Wextra)
-  endif()
+  foreach(name queries compose)
+    add_executable(${name}_benchmarks benchmarks/benchmark_${name}.cpp)
+    target_link_libraries(${name}_benchmarks PRIVATE splinepy::core)
+    if(MSVC)
+      target_compile_options(${name}_benchmarks PRIVATE /W4)
+    else()
+      target_compile_options(${name}_benchmarks PRIVATE -Wall -Wextra)
+    endif()
+  endforeach()
 endif()
 
 # python?

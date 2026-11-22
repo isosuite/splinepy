@@ -24,9 +24,4 @@ SplineBatchData BoundaryMultipatch(const SplineBatchView& patches,
                                    int32_t boundary_id = -1,
                                    const Options& options = {});
 
-/// Extracts all boundary splines from patches with interfaces < 0.
-SplineBatchData ExtractAllBoundarySplines(const SplineBatchView& patches,
-                                          Span<const int32_t> interfaces,
-                                          const Options& options = {});
-
 } // namespace splinepy::core

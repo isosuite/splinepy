@@ -7,17 +7,15 @@ import numpy as _np
 
 __all__ = ["KnotVector"]
 
-_TOLERANCE = 1e-10
-
-
 class KnotVector(_np.ndarray):
     """
     One dimensional, non-decreasing array of float64 knots.
 
-    It is a regular :class:`numpy.ndarray` with some knot vector specific
-    helpers. Inplace changes are written to the array itself, so a knot vector
-    returned by a spline modifies the spline. Mutation through item assignment
-    is checked to keep the knots non-decreasing.
+    It is a :class:`numpy.ndarray` with some knot vector specific helpers.
+    The array is read-only: knots change only through item assignment and
+    the methods here, which write in place (so a knot vector returned by a
+    spline modifies the spline) and keep the knots non-decreasing. To edit
+    knots freely, use :meth:`Spline.edit_knot_vectors`.
 
     Parameters
     ----------
@@ -33,19 +31,37 @@ class KnotVector(_np.ndarray):
             arr = arr.copy()
         kv = arr.view(cls)
         kv._check()
+        kv.flags.writeable = False
         return kv
 
+    def _writable(self):
+        """A writable plain view of the knots, for the methods here."""
+        if isinstance(self.base, KnotVector):
+            raise ValueError(
+                "A part of a knot vector cannot be edited; edit the whole "
+                "knot vector, e.g. kv[1:3] = values."
+            )
+        self.flags.writeable = True
+        try:
+            return self.view(_np.ndarray)
+        finally:
+            self.flags.writeable = False
+
     def _check(self):
-        if len(self) > 1 and _np.any(_np.diff(_np.asarray(self)) < -_TOLERANCE):
+        if not _np.isfinite(self).all():
+            raise ValueError("Knot vector must contain finite values.")
+        a = _np.asarray(self)
+        if len(a) > 1 and _np.any(a[1:] < a[:-1]):
             raise ValueError("Knot vector must be non-decreasing.")
 
     def __setitem__(self, key, value):
-        backup = _np.asarray(self).copy()
-        super().__setitem__(key, value)
+        a = self._writable()
+        backup = a.copy()
         try:
+            a[key] = value
             self._check()
         except ValueError:
-            _np.asarray(self)[:] = backup
+            a[:] = backup
             raise
 
     def numpy(self):
@@ -62,7 +78,7 @@ class KnotVector(_np.ndarray):
         return _np.array(self, dtype="float64", copy=True).view(_np.ndarray)
 
     def unique(self):
-        """Returns unique knots (within tolerance).
+        """Returns the distinct knots, preserving every nonzero span.
 
         Parameters
         ----------
@@ -76,7 +92,7 @@ class KnotVector(_np.ndarray):
         a = _np.asarray(self)
         if len(a) == 0:
             return a.copy()
-        keep = _np.concatenate(([True], _np.abs(_np.diff(a)) > _TOLERANCE))
+        keep = _np.concatenate(([True], a[1:] != a[:-1]))
         return a[keep].copy()
 
     def multiplicities(self):
@@ -95,7 +111,7 @@ class KnotVector(_np.ndarray):
         if len(a) == 0:
             return _np.empty(0, dtype="int32")
         starts = _np.flatnonzero(
-            _np.concatenate(([True], _np.abs(_np.diff(a)) > _TOLERANCE))
+            _np.concatenate(([True], a[1:] != a[:-1]))
         )
         return _np.diff(_np.append(starts, len(a))).astype("int32")
 
@@ -113,13 +129,16 @@ class KnotVector(_np.ndarray):
         -------
         None
         """
-        a = _np.asarray(self)
+        if not (_np.isfinite(minimum) and _np.isfinite(maximum)):
+            raise ValueError("Knot bounds must be finite.")
+        a = self._writable()
         if len(a) == 0 or minimum >= maximum:
             return None
         current_range = a[-1] - a[0]
-        if abs(current_range) < 1e-12:
+        if current_range == 0:
             return None
-        a[:] = minimum + (a - a[0]) * (maximum - minimum) / current_range
+        position = (a - a[0]) / current_range
+        a[:] = (1 - position) * minimum + position * maximum
 
     def find_span(self, u):
         """Returns the index i of the knot span with knots[i] <= u < knots[i+1].

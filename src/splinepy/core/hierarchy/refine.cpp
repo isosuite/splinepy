@@ -36,13 +36,13 @@ struct Plan {
 };
 
 Plan SplitLeaves(MemoryArena& arena,
-                 const SplineView& spline,
+                 const HierarchicalSplineView& spline,
                  const ThbCacheData& cache,
                  Span<const uint8_t> marks,
                  const Options& options) {
   auto scope = arena.CreateScope();
-  const auto& source = *spline.hierarchy;
-  const auto dim = spline.degrees.size();
+  const auto& source = spline.hierarchy;
+  const auto dim = spline.tensor.degrees.size();
   const auto n_leaves = source.leaves.size();
   const auto n_levels = source.level_knots.size();
   bool append = false;
@@ -63,8 +63,8 @@ Plan SplitLeaves(MemoryArena& arena,
         const auto previous = source.level_knots[level][axis];
         knots[axis].assign(previous.begin(), previous.end());
       } else {
-        knots[axis] =
-            DyadicKnots(spline.degrees[axis], source.level_knots.back()[axis]);
+        knots[axis] = DyadicKnots(spline.tensor.degrees[axis],
+                                  source.level_knots.back()[axis]);
       }
     }
   }
@@ -72,10 +72,11 @@ Plan SplitLeaves(MemoryArena& arena,
   plan.levels.resize(hierarchy.level_knots.size());
   plan.axes.resize(CheckedProduct(plan.levels.size(), dim));
   hierarchy.View(plan.levels, plan.axes);
-  const auto grid = BuildGrid<Traits>(arena, spline.degrees, plan.levels);
+  const auto grid =
+      BuildGrid<Traits>(arena, spline.tensor.degrees, plan.levels);
   const auto threads =
       std::min(n_leaves,
-               static_cast<std::size_t>(std::max(1, options.nthreads)));
+               static_cast<std::size_t>(ResolveThreadCount(options.nthreads)));
   auto workspace =
       arena.AllocateSpan<int32_t>(CheckedProduct(threads, 3 * dim));
   auto offsets = arena.AllocateSpan<std::size_t>(n_leaves + 1, 0);
@@ -152,11 +153,11 @@ Plan SplitLeaves(MemoryArena& arena,
     plan.parents[i] = tagged[i].parent;
   }
   auto view = plan.View();
-  auto active = BuildActiveSets({&spline.degrees, 1}, {&view, 1}, options);
+  const Span<const int32_t> degrees = spline.tensor.degrees;
+  auto active = BuildActiveSets({&degrees, 1}, {&view, 1}, options);
   hierarchy.active = std::move(active[0]);
   view.active = hierarchy.active;
-  auto target = spline;
-  target.hierarchy = &view;
+  const HierarchicalSplineView target{spline.tensor, view};
   auto caches = BuildThbCaches({&target, 1}, options);
   plan.result.extraction = std::move(caches[0]);
   return plan;
@@ -167,7 +168,7 @@ int32_t MaxActiveLevel(const ThbCacheData& cache, std::size_t leaf) {
 }
 
 bool GrowMarks(MemoryArena& arena,
-               const SplineView& spline,
+               const HierarchicalSplineView& spline,
                const ThbCacheData& source,
                const Plan& plan,
                Span<uint8_t> marks,
@@ -175,8 +176,9 @@ bool GrowMarks(MemoryArena& arena,
   auto scope = arena.CreateScope();
   const auto& cache = plan.result.extraction;
   const auto active = plan.result.hierarchy.active.cspan();
-  const auto grid = BuildGrid<Traits>(arena, spline.degrees, plan.levels);
-  const auto dim = spline.degrees.size();
+  const auto grid =
+      BuildGrid<Traits>(arena, spline.tensor.degrees, plan.levels);
+  const auto dim = spline.tensor.degrees.size();
   auto seen = arena.AllocateSpan<uint8_t>(active.size(), 0);
   auto lower = arena.AllocateSpan<double>(dim);
   auto upper = arena.AllocateSpan<double>(dim);
@@ -200,7 +202,7 @@ bool GrowMarks(MemoryArena& arena,
         const auto basis = index % count;
         index /= count;
         const auto knots = plan.levels[level][axis];
-        const auto degree = spline.degrees[axis];
+        const auto degree = spline.tensor.degrees[axis];
         lower[axis] = std::max(knots[basis], knots[degree]);
         upper[axis] = std::min(knots[basis + degree + 1], knots[count]);
       }
@@ -225,12 +227,12 @@ bool GrowMarks(MemoryArena& arena,
 }
 
 Span<uint8_t> MarkLeaves(MemoryArena& arena,
-                         const SplineView& spline,
+                         const HierarchicalSplineView& spline,
                          const ThbCacheData& cache,
                          Span<const std::size_t> marked,
                          int32_t admissible) {
-  if (!spline.hierarchy || spline.hierarchy->key_format != KeyFormat::kKey64
-      || cache.leaf_levels.size() != spline.hierarchy->leaves.size()
+  if (spline.hierarchy.key_format != KeyFormat::kKey64
+      || cache.leaf_levels.size() != spline.hierarchy.leaves.size()
       || admissible < 0) {
     throw SplinepyException("Invalid hierarchy refinement input");
   }
@@ -246,7 +248,7 @@ Span<uint8_t> MarkLeaves(MemoryArena& arena,
 }
 
 Plan MakePlan(MemoryArena& arena,
-              const SplineView& spline,
+              const HierarchicalSplineView& spline,
               const ThbCacheData& cache,
               Span<uint8_t> marks,
               int32_t admissible,
@@ -289,7 +291,7 @@ std::size_t CoordinateColumn(const ThbCacheData& cache, std::size_t row) {
 }
 
 template<bool Transpose>
-void ApplyStencil(const RefinementMatrix1D& stencil,
+void ApplyStencil(const AxisMap& stencil,
                   int32_t coarse_start,
                   int32_t fine_start,
                   int32_t axis_width,
@@ -302,14 +304,14 @@ void ApplyStencil(const RefinementMatrix1D& stencil,
   for (std::size_t fine = 0; fine < local_size; ++fine) {
     const auto local_axis = fine / stride % axis_width;
     const auto fine_row = fine_start + local_axis;
-    const auto first = stencil.first_column[fine_row];
-    for (int32_t col = 0; col < stencil.row_width; ++col) {
+    const auto first = stencil.first[fine_row];
+    for (int32_t col = 0; col < stencil.width; ++col) {
       const auto coarse_axis = first + col - coarse_start;
       if (coarse_axis < 0 || coarse_axis >= axis_width) {
         continue;
       }
       const auto coarse = fine - local_axis * stride + coarse_axis * stride;
-      const auto value = stencil.values[fine_row * stencil.row_width + col];
+      const auto value = stencil.values[fine_row * stencil.width + col];
       const auto from = Transpose ? fine : coarse;
       const auto to = Transpose ? coarse : fine;
       for (std::size_t component = 0; component < components; ++component) {
@@ -321,22 +323,25 @@ void ApplyStencil(const RefinementMatrix1D& stencil,
   std::swap(current, scratch);
 }
 
-void TransferHB(MemoryArena& arena, const SplineView& spline, Plan& plan) {
+void TransferHB(MemoryArena& arena,
+                const HierarchicalSplineView& spline,
+                Plan& plan) {
   auto scope = arena.CreateScope();
-  const auto& original = *spline.hierarchy;
+  const auto& original = spline.hierarchy;
   auto& result = plan.result;
   const auto& cache = result.extraction;
   const auto old_grid =
-      BuildGrid<Traits>(arena, spline.degrees, original.level_knots);
-  const auto new_grid = BuildGrid<Traits>(arena, spline.degrees, plan.levels);
-  const auto dim = spline.degrees.size();
-  const auto physical = static_cast<std::size_t>(spline.dim);
+      BuildGrid<Traits>(arena, spline.tensor.degrees, original.level_knots);
+  const auto new_grid =
+      BuildGrid<Traits>(arena, spline.tensor.degrees, plan.levels);
+  const auto dim = spline.tensor.degrees.size();
+  const auto physical = static_cast<std::size_t>(spline.tensor.dim);
   const auto count = result.hierarchy.active.size();
   const auto local_size = cache.local_size;
   const auto active = result.hierarchy.active.cspan();
 
   result.control_points.resize(CheckedProduct(count, physical));
-  if (spline.IsRational()) {
+  if (spline.tensor.IsRational()) {
     result.weights.resize(count);
   }
   auto assigned = arena.AllocateSpan<uint8_t>(count, 0);
@@ -344,21 +349,21 @@ void TransferHB(MemoryArena& arena, const SplineView& spline, Plan& plan) {
   std::size_t stride = 1;
   for (std::size_t axis = 0; axis < dim; ++axis) {
     strides[axis] = stride;
-    stride *= spline.degrees[axis] + 1;
+    stride *= spline.tensor.degrees[axis] + 1;
   }
   auto window =
       arena.AllocateSpan<int32_t>(CheckedProduct(new_grid.levels, dim));
   auto current = arena.AllocateSpan<long double>(local_size);
   auto scratch = arena.AllocateSpan<long double>(local_size);
   auto point = arena.AllocateSpan<long double>(physical);
-  Buffer<RefinementMatrix1D> stencils(CheckedProduct(new_grid.levels - 1, dim));
+  Buffer<AxisMap> stencils(CheckedProduct(new_grid.levels - 1, dim));
 
   for (std::size_t leaf = 0; leaf < plan.parents.size(); ++leaf) {
     const auto leaf_level = cache.leaf_levels[leaf];
     for (int32_t level = 0; level <= leaf_level; ++level) {
       for (std::size_t axis = 0; axis < dim; ++axis) {
         const auto knots = plan.levels[level][axis];
-        const auto degree = spline.degrees[axis];
+        const auto degree = spline.tensor.degrees[axis];
         const auto lower = cache.bounds[2 * leaf * dim + axis];
         const auto next = std::upper_bound(knots.begin() + degree,
                                            knots.end() - degree - 1,
@@ -386,8 +391,9 @@ void TransferHB(MemoryArena& arena, const SplineView& spline, Plan& plan) {
           }
           int64_t index = 0;
           for (std::size_t axis = dim; axis-- > 0;) {
-            const auto basis = window[level * dim + axis]
-                               + i / strides[axis] % (spline.degrees[axis] + 1);
+            const auto basis =
+                window[level * dim + axis]
+                + i / strides[axis] % (spline.tensor.degrees[axis] + 1);
             index = index * new_grid.At(level)[axis].functions + basis;
           }
           const auto key =
@@ -399,10 +405,12 @@ void TransferHB(MemoryArena& arena, const SplineView& spline, Plan& plan) {
           }
           const auto old = OldActiveIndex(original, old_grid, level, index);
           if (old >= 0) {
-            const long double coefficient = current[i] * spline.Weight(old);
+            const long double coefficient =
+                current[i] * spline.tensor.Weight(old);
             weight += coefficient;
             for (std::size_t component = 0; component < physical; ++component) {
-              point[component] += coefficient * spline.Point(old, component);
+              point[component] +=
+                  coefficient * spline.tensor.Point(old, component);
             }
           }
         }
@@ -414,19 +422,17 @@ void TransferHB(MemoryArena& arena, const SplineView& spline, Plan& plan) {
         }
         for (std::size_t axis = 0; axis < dim; ++axis) {
           auto& stencil = stencils[(level - 1) * dim + axis];
-          if (!stencil.coarse_size) {
-            stencil =
-                detail::BuildRefinementMatrix1D(arena,
-                                                spline.degrees[axis],
-                                                plan.levels[level - 1][axis],
-                                                plan.levels[level][axis]);
+          if (stencil.Rows() == 0) {
+            stencil = BuildRefinementMatrix1D(spline.tensor.degrees[axis],
+                                              plan.levels[level - 1][axis],
+                                              plan.levels[level][axis]);
           }
           const auto coarse_start = window[(level - 1) * dim + axis];
           const auto fine_start = window[level * dim + axis];
           ApplyStencil<true>(stencil,
                              coarse_start,
                              fine_start,
-                             spline.degrees[axis] + 1,
+                             spline.tensor.degrees[axis] + 1,
                              strides[axis],
                              1,
                              current,
@@ -434,12 +440,12 @@ void TransferHB(MemoryArena& arena, const SplineView& spline, Plan& plan) {
         }
       }
 
-      if (spline.IsRational()) {
+      if (spline.tensor.IsRational()) {
         result.weights[target] = weight;
       }
       for (std::size_t component = 0; component < physical; ++component) {
         result.control_points[target * physical + component] =
-            spline.IsRational()
+            spline.tensor.IsRational()
                 ? (weight == 0.0L ? 0.0L : point[component] / weight)
                 : point[component];
       }
@@ -453,25 +459,26 @@ void TransferHB(MemoryArena& arena, const SplineView& spline, Plan& plan) {
 }
 
 void TransferTHB(MemoryArena& arena,
-                 const SplineView& spline,
+                 const HierarchicalSplineView& spline,
                  const ThbCacheData& source,
                  const ThbGeometryData& geometry,
                  Plan& plan) {
   auto scope = arena.CreateScope();
-  const auto& original = *spline.hierarchy;
+  const auto& original = spline.hierarchy;
   auto& result = plan.result;
   const auto& cache = result.extraction;
   const auto old_grid =
-      BuildGrid<Traits>(arena, spline.degrees, original.level_knots);
-  const auto new_grid = BuildGrid<Traits>(arena, spline.degrees, plan.levels);
-  const auto dim = spline.degrees.size();
-  const auto physical = static_cast<std::size_t>(spline.dim);
-  const auto width = physical + spline.IsRational();
+      BuildGrid<Traits>(arena, spline.tensor.degrees, original.level_knots);
+  const auto new_grid =
+      BuildGrid<Traits>(arena, spline.tensor.degrees, plan.levels);
+  const auto dim = spline.tensor.degrees.size();
+  const auto physical = static_cast<std::size_t>(spline.tensor.dim);
+  const auto width = physical + spline.tensor.IsRational();
   const auto local_size = cache.local_size;
   const auto count = result.hierarchy.active.size();
 
   result.control_points.resize(CheckedProduct(count, physical));
-  if (spline.IsRational()) {
+  if (spline.tensor.IsRational()) {
     result.weights.resize(count);
   }
   auto assigned = arena.AllocateSpan<uint8_t>(count, 0);
@@ -484,22 +491,22 @@ void TransferTHB(MemoryArena& arena,
     if (old < 0) {
       continue;
     }
-    if (spline.IsRational()) {
-      result.weights[i] = spline.Weight(old);
+    if (spline.tensor.IsRational()) {
+      result.weights[i] = spline.tensor.Weight(old);
     }
     for (std::size_t component = 0; component < physical; ++component) {
       result.control_points[i * physical + component] =
-          spline.Point(old, component);
+          spline.tensor.Point(old, component);
     }
     assigned[i] = 1;
   }
 
-  Buffer<RefinementMatrix1D> stencils(CheckedProduct(new_grid.levels - 1, dim));
+  Buffer<AxisMap> stencils(CheckedProduct(new_grid.levels - 1, dim));
   auto strides = arena.AllocateSpan<std::size_t>(dim);
   std::size_t stride = 1;
   for (std::size_t axis = 0; axis < dim; ++axis) {
     strides[axis] = stride;
-    stride *= spline.degrees[axis] + 1;
+    stride *= spline.tensor.degrees[axis] + 1;
   }
   const auto local_values = CheckedProduct(local_size, width);
   if (local_values > SIZE_MAX / sizeof(long double)) {
@@ -530,12 +537,12 @@ void TransferTHB(MemoryArena& arena,
     for (std::size_t col = 0; col < local_size; ++col) {
       const auto index = parent * local_size + col;
       const long double weight =
-          spline.IsRational() ? geometry.weights[index] : 1.0;
+          spline.tensor.IsRational() ? geometry.weights[index] : 1.0;
       for (std::size_t component = 0; component < physical; ++component) {
         local[col * width + component] =
             geometry.points[index * physical + component] * weight;
       }
-      if (spline.IsRational()) {
+      if (spline.tensor.IsRational()) {
         local[col * width + physical] = weight;
       }
     }
@@ -543,19 +550,17 @@ void TransferTHB(MemoryArena& arena,
     if (source.leaf_levels[parent] != level) {
       for (std::size_t axis = 0; axis < dim; ++axis) {
         auto& stencil = stencils[(level - 1) * dim + axis];
-        if (!stencil.coarse_size) {
-          stencil =
-              detail::BuildRefinementMatrix1D(arena,
-                                              spline.degrees[axis],
-                                              plan.levels[level - 1][axis],
-                                              plan.levels[level][axis]);
+        if (stencil.Rows() == 0) {
+          stencil = BuildRefinementMatrix1D(spline.tensor.degrees[axis],
+                                            plan.levels[level - 1][axis],
+                                            plan.levels[level][axis]);
         }
         const auto coarse_start = source.first_knots[parent * dim + axis];
         const auto fine_start = cache.first_knots[leaf * dim + axis];
         ApplyStencil<false>(stencil,
                             coarse_start,
                             fine_start,
-                            spline.degrees[axis] + 1,
+                            spline.tensor.degrees[axis] + 1,
                             strides[axis],
                             width,
                             local,
@@ -570,8 +575,9 @@ void TransferTHB(MemoryArena& arena,
       }
       const auto col = CoordinateColumn(cache, row);
       const auto values = local.subspan(col * width, width);
-      const long double weight = spline.IsRational() ? values[physical] : 1.0L;
-      if (spline.IsRational()) {
+      const long double weight =
+          spline.tensor.IsRational() ? values[physical] : 1.0L;
+      if (spline.tensor.IsRational()) {
         if (!(weight > 0.0L)) {
           throw SplinepyException(
               "Refinement produced a nonpositive THB weight");
@@ -607,7 +613,7 @@ bool IsThbAdmissible(const ThbCacheData& cache, int32_t admissible) {
   return true;
 }
 
-Buffer<std::size_t> ThbAdmissibleClosure(const SplineView& spline,
+Buffer<std::size_t> ThbAdmissibleClosure(const HierarchicalSplineView& spline,
                                          const ThbCacheData& cache,
                                          Span<const std::size_t> marked,
                                          int32_t admissible,
@@ -638,7 +644,7 @@ Buffer<std::size_t> ThbAdmissibleClosure(const SplineView& spline,
   return result;
 }
 
-ThbRefinementData RefineThb(const SplineView& spline,
+ThbRefinementData RefineThb(const HierarchicalSplineView& spline,
                             const ThbCacheData& cache,
                             const ThbGeometryData& geometry,
                             Span<const std::size_t> marked,
@@ -649,16 +655,16 @@ ThbRefinementData RefineThb(const SplineView& spline,
   auto scope = arena.CreateScope();
   auto marks = MarkLeaves(arena, spline, cache, marked, admissible);
   const auto size = CheckedProduct(cache.leaf_levels.size(), cache.local_size);
-  if (spline.dim <= 0
-      || geometry.points.size() != CheckedProduct(size, spline.dim)
-      || geometry.weights.size() != (spline.IsRational() ? size : 0)) {
+  if (spline.tensor.dim <= 0
+      || geometry.points.size() != CheckedProduct(size, spline.tensor.dim)
+      || geometry.weights.size() != (spline.tensor.IsRational() ? size : 0)) {
     throw SplinepyException("Invalid geometry cache for hierarchy refinement");
   }
-  auto transfer = [&](const SplineView& source,
+  auto transfer = [&](const HierarchicalSplineView& source,
                       const ThbCacheData& extraction,
                       const ThbGeometryData& local,
                       Plan& target) {
-    if (marked.empty() || source.hierarchy->truncate) {
+    if (marked.empty() || source.hierarchy.truncate) {
       TransferTHB(arena, source, extraction, local, target);
     } else {
       TransferHB(arena, source, target);
@@ -675,16 +681,15 @@ ThbRefinementData RefineThb(const SplineView& spline,
   while (grade && !IsThbAdmissible(plan.result.extraction, grade)) {
     auto pass_scope = arena.CreateScope();
     const auto view = plan.View();
-    auto source = spline;
-    source.hierarchy = &view;
-    source.knot_vectors = view.level_knots.front();
-    source.num_control_points = view.active.size();
-    source.control_points_data = plan.result.control_points.data();
-    source.cp_stride = source.dim;
-    source.dim_stride = 1;
-    source.weights_data =
-        spline.IsRational() ? plan.result.weights.data() : nullptr;
-    source.weight_stride = 1;
+    HierarchicalSplineView source{spline.tensor, view};
+    source.tensor.knot_vectors = view.level_knots.front();
+    source.tensor.num_control_points = view.active.size();
+    source.tensor.control_points_data = plan.result.control_points.data();
+    source.tensor.cp_stride = source.tensor.dim;
+    source.tensor.dim_stride = 1;
+    source.tensor.weights_data =
+        spline.tensor.IsRational() ? plan.result.weights.data() : nullptr;
+    source.tensor.weight_stride = 1;
 
     const auto& extraction = plan.result.extraction;
     auto additional = arena.AllocateSpan<uint8_t>(view.leaves.size(), 0);

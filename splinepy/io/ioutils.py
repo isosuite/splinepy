@@ -30,9 +30,7 @@ def make_meaningful(line, comment="#"):
 def next_line(f, comment="#"):
     """
     Strips and returns next meaningful line from the opened, readable file.
-    It tries 513 times before it says it is the end. If it is end, it
-    will return None.
-    This is to prevent never ending while loop.
+    Returns None at the end of the file.
 
     Parameters
     -----------
@@ -44,15 +42,11 @@ def next_line(f, comment="#"):
     --------
     next_meaningful_str: str
     """
-    line = f.readline().strip()
-    counter = 0
-    while line.startswith(comment) or len(line) == 0:
-        counter += 1
-        if counter >= 513:
-            return None
-        line = f.readline().strip()
-
-    return line
+    for line in iter(f.readline, ""):
+        line = line.strip()  # noqa: PLW2901
+        if line and not line.startswith(comment):
+            return line
+    return None
 
 
 def form_lines(*args):
@@ -67,11 +61,7 @@ def form_lines(*args):
     --------
     line_separated_str: str
     """
-    line_separated_str = ""
-    for a in args:
-        line_separated_str += a + "\n"
-
-    return line_separated_str
+    return "".join(a + "\n" for a in args)
 
 
 def abs_fname(fname):
@@ -87,16 +77,7 @@ def abs_fname(fname):
     abs_fname: str
       Maybe same to fname, maybe not.
     """
-    if _os.path.isabs(fname):
-        pass
-
-    elif "~" in fname:
-        fname = _os.path.expanduser(fname)
-
-    else:
-        fname = _os.path.abspath(fname)
-
-    return fname
+    return _os.path.abspath(_os.path.expanduser(fname))
 
 
 def expand_tabs(fname, overwrite=True, tab_expand=2):
@@ -115,20 +96,16 @@ def expand_tabs(fname, overwrite=True, tab_expand=2):
     -------
     None
     """
-    import os.path as _op
-
-    # Safe guard in case an absolute path is handed to the function
     if overwrite:
         out_name = fname
     else:
-        dir, file = _op.split(fname)
-        out_name = dir + "copy_" + file
+        directory, file = _os.path.split(fname)
+        out_name = _os.path.join(directory, "copy_" + file)
 
-    with open(fname) as inputFile:
-        file_contents = inputFile.read()
-    file_contents.replace("\t", " " * tab_expand)
-    with open(out_name, "w") as exportFile:
-        exportFile.write(file_contents)
+    with open(fname) as f:
+        file_contents = f.read()
+    with open(out_name, "w") as f:
+        f.write(file_contents.replace("\t", " " * tab_expand))
 
 
 def dict_to_spline(spline_dictionary):

@@ -38,10 +38,11 @@ double SquaredDistance(Span<const double> a, Span<const double> b) {
 
 } // namespace
 
-HierarchyProximityData BuildHierarchyProximity(const SplineView& spline,
-                                               const ThbCacheData& extraction,
-                                               const ThbGeometryData& geometry,
-                                               const Options& options) {
+HierarchyProximityData
+BuildHierarchyProximity(const HierarchicalSplineView& spline,
+                        const ThbCacheData& extraction,
+                        const ThbGeometryData& geometry,
+                        const Options& options) {
   HierarchyProximityData result;
   result.bezier = BezierLeafGeometry(spline, extraction, geometry, options);
   for (const auto weight : result.bezier.weights) {
@@ -50,8 +51,8 @@ HierarchyProximityData BuildHierarchyProximity(const SplineView& spline,
           "Proximity requires positive finite Bezier weights");
     }
   }
-  result.bvh = ElementBvh(spline.para_dim,
-                          spline.dim,
+  result.bvh = ElementBvh(spline.tensor.para_dim,
+                          spline.tensor.dim,
                           extraction.local_size,
                           extraction.bounds,
                           result.bezier.points);
@@ -62,7 +63,7 @@ HierarchyProximityData BuildHierarchyProximity(const SplineView& spline,
 }
 
 HierarchyProximityResult
-HierarchyProximities(const SplineView& spline,
+HierarchyProximities(const HierarchicalSplineView& spline,
                      const ThbCacheData& extraction,
                      const HierarchyProximityData& data,
                      Span<const double> queries,
@@ -72,14 +73,15 @@ HierarchyProximities(const SplineView& spline,
                      bool tight_bounds,
                      bool verbose,
                      const Options& options) {
-  if (!data.bvh.IsValid() || spline.para_dim <= 0 || spline.dim <= 0
-      || data.bvh.ParaDim() != spline.para_dim || data.bvh.Dim() != spline.dim
-      || !std::isfinite(tolerance) || tolerance <= 0) {
+  if (!data.bvh.IsValid() || spline.tensor.para_dim <= 0
+      || spline.tensor.dim <= 0 || data.bvh.ParaDim() != spline.tensor.para_dim
+      || data.bvh.Dim() != spline.tensor.dim || !std::isfinite(tolerance)
+      || tolerance <= 0) {
     throw SplinepyException("Invalid hierarchy proximity options");
   }
   proximity::ValidateIterationBudget(max_iterations);
-  const auto pd = static_cast<std::size_t>(spline.para_dim);
-  const auto dim = static_cast<std::size_t>(spline.dim);
+  const auto pd = static_cast<std::size_t>(spline.tensor.para_dim);
+  const auto dim = static_cast<std::size_t>(spline.tensor.dim);
   if (queries.size() % dim || resolutions.size() != pd
       || std::any_of(resolutions.begin(),
                      resolutions.end(),
@@ -175,18 +177,18 @@ HierarchyProximities(const SplineView& spline,
   const auto sample_values = CheckedProduct(sample_count, dim);
   const auto leaves = static_cast<std::size_t>(data.bvh.NumElements());
   auto local_view = [&](std::size_t leaf) {
-    auto view = spline;
-    view.hierarchy = nullptr;
+    auto view = spline.tensor;
     view.knot_vectors = {};
     view.num_control_points = extraction.local_size;
-    view.cp_stride = spline.dim;
+    view.cp_stride = spline.tensor.dim;
     view.dim_stride = 1;
     view.weight_stride = 1;
     view.control_points_data =
         data.bezier.points.data() + leaf * extraction.local_size * dim;
-    view.weights_data = spline.IsRational() ? data.bezier.weights.data()
-                                                  + leaf * extraction.local_size
-                                            : nullptr;
+    view.weights_data =
+        spline.tensor.IsRational()
+            ? data.bezier.weights.data() + leaf * extraction.local_size
+            : nullptr;
     return view;
   };
   if (count >= (leaves + 3) / 4 && count > 1
@@ -204,19 +206,13 @@ HierarchyProximities(const SplineView& spline,
         });
   }
 
-  const auto threads =
-      std::min(count, static_cast<std::size_t>(std::max(1, options.nthreads)));
-  // Separate query scratch from the workspaces of nested tensor kernels.
-  Workspace default_workspace(MemoryArena::kDefaultBlockSize, 1);
-  auto& workspace = options.workspace ? *options.workspace : default_workspace;
-  workspace.GetThreadArena(static_cast<int>(threads - 1));
-  ParallelForWithThreadId(
-      std::size_t{0},
+  ParallelForScratch(
       count,
       options.nthreads,
-      [&](std::size_t q, int thread) {
-        auto& arena = workspace.GetThreadArena(thread);
-        auto scope = arena.CreateScope();
+      options,
+      [&](std::size_t q, const Scratch& scratch) {
+        auto& arena = scratch.arena;
+        const auto nested = scratch.Nested(local_options);
         const auto query = queries.subspan(q * dim, dim);
         auto parameters = result.parameters.span().subspan(q * pd, pd);
         auto candidate = arena.AllocateSpan<double>(pd);
@@ -244,7 +240,7 @@ HierarchyProximities(const SplineView& spline,
                 solver.SetInitialGuess(std::make_unique<SamplingStep>(step));
               }
               if (sampled.empty()) {
-                Evaluate(view, unit_queries, physical_samples, local_options);
+                Evaluate(view, unit_queries, physical_samples, nested);
               }
               const auto values =
                   sampled.empty()
@@ -316,7 +312,7 @@ HierarchyProximities(const SplineView& spline,
                                    : (0.5 * mapped[axis] - 0.5 * lo)
                                          / (0.5 * hi - 0.5 * lo);
                 }
-                Evaluate(view, unit, point, local_options);
+                Evaluate(view, unit, point, nested);
                 const auto squared = SquaredDistance(point, query);
                 if (!std::isnan(squared) && (!found || squared < best)) {
                   found = true;
@@ -366,7 +362,7 @@ HierarchyProximities(const SplineView& spline,
           auto first = result.first_derivatives.span().subspan(q * first_size
                                                                    + axis * dim,
                                                                dim);
-          Derivative(view, best_unit, order, first, local_options);
+          Derivative(view, best_unit, order, first, nested);
           for (auto& x : first) {
             if (x != 0.0) {
               x *= scale[axis];
@@ -377,7 +373,7 @@ HierarchyProximities(const SplineView& spline,
             auto second = result.second_derivatives.span().subspan(
                 q * second_size + (axis * pd + other) * dim,
                 dim);
-            Derivative(view, best_unit, order, second, local_options);
+            Derivative(view, best_unit, order, second, nested);
             for (auto& x : second) {
               if (x != 0.0) {
                 x = (x * scale[axis]) * scale[other];
