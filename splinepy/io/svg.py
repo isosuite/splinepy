@@ -203,7 +203,7 @@ def _export_spline_field(spline, svg_element, box_min_x, box_max_y, **kwargs):
         values = _np.linalg.norm(values, axis=1)
     rgb = _colormap(
         values,
-        spline.show_options.get("cmap", "jet"),
+        spline.show_options.get("cmap", "plasma"),
         vmin=kwargs.get("vmin", spline.show_options.get("vmin", None)),
         vmax=kwargs.get("vmax", spline.show_options.get("vmax", None)),
         n_colors=kwargs.get("n_colors"),
@@ -246,7 +246,7 @@ def _export_gustaf_object(
             values = gus_object.vertex_data[data_name]
             v_min = gus_object.show_options.get("vmin", _np.min(values))
             v_max = gus_object.show_options.get("vmax", _np.max(values))
-            cmap_style = gus_object.show_options.get("cmap", "jet")
+            cmap_style = gus_object.show_options.get("cmap", "plasma")
             colors = [
                 _rgb_2_hex(r, g, b)
                 for r, g, b in _colormap(
@@ -583,7 +583,7 @@ def _quiver_plot(
     else:
         v_min = spline.show_options.get("vmin", _np.min(arrow_length))
         v_max = spline.show_options.get("vmax", _np.max(arrow_length))
-        cmap_style = spline.show_options.get("cmap", "jet")
+        cmap_style = spline.show_options.get("cmap", "plasma")
         colors = [
             _rgb_2_hex(*rgb)
             for rgb in _colormap(arrow_length, cmap_style, vmin=v_min, vmax=v_max)
@@ -643,7 +643,7 @@ def _add_scalar_bar(svg_element, box_size, **kwargs):
       - n_ticks : (int) Number of Tick mars
       - vmin : (float) Minimum Value - Required for colorbar
       - vmax : (float) Maximum Value - Required for colorbar
-      - cmap : (color map string) Defaults to "jet"
+      - cmap : (color map string) Defaults to "plasma"
       - scalarbar_width : (float) Width of the colorbar relative to picture
       - scalarbar_aspect_ratio : (float) Aspect ratio of colorbar
       - scalarbar_offset : (float) reserved space below picture
@@ -667,7 +667,7 @@ def _add_scalar_bar(svg_element, box_size, **kwargs):
     number_of_ticks = kwargs.get("n_ticks", 3)
     vmin = kwargs["vmin"]
     vmax = kwargs["vmax"]
-    cmap = kwargs.get("cmap", "jet")
+    cmap = kwargs.get("cmap", "plasma")
 
     scalarbar_width = kwargs.get("scalarbar_width", 0.4)
     scalarbar_aspect_ratio = kwargs.get("scalarbar_aspect_ratio", 10)
@@ -1217,7 +1217,7 @@ def export(
       - n_ticks : (int) Number of Tick mars
       - vmin : (float) Minimum Value - Required for colorbar
       - vmax : (float) Maximum Value - Required for colorbar
-      - cmap : (color map string) Defaults to "jet"
+      - cmap : (color map string) Defaults to "plasma"
       - scalarbar_width : (float) Width of the colorbar relative to picture
       - scalarbar_aspect_ratio : (float) Aspect ratio of colorbar
       - scalarbar_offset : (float) reserved space below picture

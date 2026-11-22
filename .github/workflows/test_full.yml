@@ -16,7 +16,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        # the oldest and newest supported python; 3.12 runs in the minimal
+        # build, 3.13 in the wheel test and every version in release wheels
+        python-version: ["3.10", "3.14"]
         os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:

@@ -61,7 +61,7 @@ COLORMAP_STOPS = {
 }
 
 
-def colormap(values, name="viridis", vmin=None, vmax=None, n_colors=None):
+def colormap(values, name="plasma", vmin=None, vmax=None, n_colors=None):
     """Maps values to RGB colors, like the viewer does.
 
     Parameters
@@ -69,7 +69,7 @@ def colormap(values, name="viridis", vmin=None, vmax=None, n_colors=None):
     values : array-like
         Scalar values.
     name : str, optional
-        One of :data:`COLORMAP_STOPS`. Unknown names use viridis.
+        One of :data:`COLORMAP_STOPS`. Unknown names use plasma.
     vmin, vmax : float, optional
         Value range mapped to the ends of the colormap. Default: data range.
     n_colors : int, optional
@@ -81,8 +81,8 @@ def colormap(values, name="viridis", vmin=None, vmax=None, n_colors=None):
         Colors with components in [0, 1].
     """
     if name not in COLORMAP_STOPS:
-        _log.warning(f"colormap '{name}' unknown, using viridis.")
-        name = "viridis"
+        _log.warning(f"colormap '{name}' unknown, using plasma.")
+        name = "plasma"
     values = _np.asarray(values, dtype=float).ravel()
     lo = values.min() if vmin is None else vmin
     hi = values.max() if vmax is None else vmax
@@ -183,10 +183,10 @@ def translate(kwargs):
             value = css
         elif key == "colormap" and value not in COLORMAPS:
             _log.warning(
-                f"Viewer: colormap '{value}' unknown, using viridis. "
+                f"Viewer: colormap '{value}' unknown, using plasma. "
                 f"Available: {COLORMAPS}"
             )
-            value = "viridis"
+            value = "plasma"
         elif key == "axes" and not isinstance(value, bool):
             value = True  # vedo axes dict
         elif key == "lighting" and value not in (None, *LIGHTING):

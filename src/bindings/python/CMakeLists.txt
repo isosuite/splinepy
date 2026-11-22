@@ -4,13 +4,8 @@ find_package(
   REQUIRED)
 find_package(nanobind CONFIG REQUIRED)
 
-nanobind_add_module(
-  splinepy_core
-  splinepy_core.cpp
-  nb_spline.cpp
-  nb_multipatch.cpp
-  nb_spline_extensions.cpp
-  nb_hierarchy.cpp)
+nanobind_add_module(splinepy_core splinepy_core.cpp nb_spline.cpp
+                    nb_multipatch.cpp nb_spline_extensions.cpp nb_hierarchy.cpp)
 
 target_link_libraries(splinepy_core PRIVATE splinepy::core)
 

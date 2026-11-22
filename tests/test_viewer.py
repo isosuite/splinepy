@@ -290,7 +290,7 @@ def test_vedo_names_are_aliases():
          "scalarbar": True, "knot_lw": 3, "arrow_data": "v"}
     )  # fmt: skip
     assert out == {
-        "color": "#ff0000", "opacity": 0.5, "colormap": "viridis",
+        "color": "#ff0000", "opacity": 0.5, "colormap": "plasma",
         "axes": True, "arrows": "v", "knot_line_width": 3,
     }  # fmt: skip
     sc = viewer.show(_surface(), c="red", alpha=0.5, cmap="plasma").scene

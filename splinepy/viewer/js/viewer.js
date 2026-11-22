@@ -14,7 +14,7 @@ const COLORMAPS = {
 };
 
 function sample(name, t) {
-  const stops = (COLORMAPS[name] || COLORMAPS.viridis).map((c) => new THREE.Color(c));
+  const stops = (COLORMAPS[name] || COLORMAPS.plasma).map((c) => new THREE.Color(c));
   const x = Math.min(Math.max(t, 0), 1) * (stops.length - 1);
   const i = Math.min(Math.floor(x), stops.length - 2);
   return stops[i].clone().lerp(stops[i + 1], x - i);
@@ -169,7 +169,7 @@ function makeArrows(layer, pos, vec, diag) {
 function colorbarEl(layer, lo, hi) {
   const bar = document.createElement("div");
   bar.style.cssText = "position:absolute;right:12px;top:calc(12px + var(--spv-top, 0px));font:11px sans-serif;color:#333;text-align:right;pointer-events:none";
-  const stops = (COLORMAPS[layer.colormap] || COLORMAPS.viridis).slice().reverse().join(",");
+  const stops = (COLORMAPS[layer.colormap] || COLORMAPS.plasma).slice().reverse().join(",");
   bar.innerHTML = `<div>${hi.toPrecision(3)}</div><div style="width:14px;height:140px;margin:4px 0 4px auto;background:linear-gradient(${stops});border:1px solid #888"></div><div>${lo.toPrecision(3)}</div>`;
   return bar;
 }
