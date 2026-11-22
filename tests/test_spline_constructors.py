@@ -264,3 +264,54 @@ def test_native_knot_edit_keeps_knot_vector_type():
     knots = spline.knot_vectors[0]
     assert isinstance(knots, splinepy.KnotVector)
     np.testing.assert_array_equal(knots.unique(), [0, 0.5, 1])
+
+
+@pytest.mark.parametrize("assignment", [False, True])
+def test_degree_inputs_cannot_change_stored_layout(assignment):
+    degrees = np.array([1, 2], dtype=np.int32)
+    spline = splinepy.Bezier([1, 2], np.arange(6.0).reshape(-1, 1))
+    if assignment:
+        spline.degrees = degrees
+    else:
+        spline = splinepy.Bezier(degrees, spline.control_points)
+    queries = [[0.25, 0.75]]
+    expected = spline.evaluate(queries)
+    degrees[:] = [2, 1]
+    np.testing.assert_array_equal(spline.degrees, [1, 2])
+    np.testing.assert_array_equal(spline.evaluate(queries), expected)
+    np.testing.assert_array_equal(spline.copy().evaluate(queries), expected)
+    for result in (spline, spline.derivative_spline([0, 0])):
+        with pytest.raises(ValueError):
+            result.degrees.setflags(write=True)
+
+
+@pytest.mark.parametrize("points", [0.0, [0, 1], np.zeros((2, 3, 1))])
+def test_control_points_require_two_dimensions(points):
+    spline = splinepy.Bezier([1], [[0], [1]])
+    with pytest.raises(ValueError, match="shape"):
+        spline.control_points = points
+    np.testing.assert_array_equal(spline.evaluate([[0], [1]]), [[0], [1]])
+
+
+@pytest.mark.parametrize("degrees", [1, [], [[1]]])
+def test_degrees_require_a_nonempty_vector(degrees):
+    with pytest.raises(ValueError, match="Degrees"):
+        splinepy.Bezier(degrees, [[0], [1]])
+
+
+def test_knots_require_one_dimension():
+    with pytest.raises(ValueError, match="one-dimensional"):
+        splinepy.BSpline([1], [np.array([[0, 0], [1, 1]])], [[0], [1]])
+
+
+@pytest.mark.parametrize("value", [np.nan, np.inf, -np.inf])
+def test_nonfinite_knots_are_rejected_atomically(value):
+    with pytest.raises(ValueError, match="finite"):
+        splinepy.BSpline([1], [[0, 0, value, 1, 1]], [[0], [1], [2]])
+    spline = splinepy.BSpline([1], [[0, 0, 0.5, 1, 1]], [[0], [1], [2]])
+    knots = spline.knot_vectors[0]
+    for edit in (lambda: knots.__setitem__(2, value), lambda: knots.scale(0, value)):
+        with pytest.raises(ValueError, match="finite"):
+            edit()
+        np.testing.assert_array_equal(knots, [0, 0, 0.5, 1, 1])
+        assert not knots.flags.writeable

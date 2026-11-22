@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <stdexcept>
 
 #include "splinepy/core/math/binomial.hpp"
 
@@ -30,4 +31,10 @@ TEST(BinomialTest, PascalRecurrence) {
 
 TEST(BinomialTest, HighOrderFloat) {
   EXPECT_NEAR(BinomialDouble(60, 30), 1.1826458156486142e+17, 1e10);
+}
+
+TEST(BinomialTest, ExactFallbackChecksOverflow) {
+  EXPECT_EQ(Binomial(64, 32), 1832624140942590534LL);
+  EXPECT_EQ(Binomial(66, 33), 7219428434016265740LL);
+  EXPECT_THROW(Binomial(67, 33), std::overflow_error);
 }

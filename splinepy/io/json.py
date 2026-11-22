@@ -26,12 +26,12 @@ def _hierarchy_types():
 
 
 def _hierarchy_record(spline):
-    data, cache = spline._state
-    degrees, levels, _, _, points, weights, _ = data
+    degrees, levels = spline.degrees, spline.levels
+    points, weights = spline.control_points, spline.weights
     record = {
         "degrees": degrees.tolist(),
         "levels": [[axis.tolist() for axis in level] for level in levels],
-        "leaf_cells": spline._cells(degrees, levels, cache.extraction()).tolist(),
+        "leaf_cells": spline._cells(degrees, levels, spline.extraction).tolist(),
         "control_points": points.tolist(),
     }
     if weights is not None:

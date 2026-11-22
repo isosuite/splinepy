@@ -11,32 +11,20 @@ all_2D_splinetypes = (
 
 
 @pytest.mark.parametrize("splinetype", all_2D_splinetypes)
-def test_c_contiguous_array_input(splinetype, request):
-    """Test whether cpp sides receives contiguous array"""
-
-    # define spline and its properties
+def test_f_contiguous_control_points_are_stored_c_contiguous(
+    splinetype, request
+):
+    """An F-contiguous array given to the setter is stored C-contiguous and
+    used by the core with the right values"""
     spl = request.getfixturevalue(splinetype)
-    properties = spl.todict()
+    queries = np.random.default_rng(0).random((5, spl.para_dim))
+    expected = spl.evaluate(queries) * 2
 
-    # make f contiguous
-    f_contig_orig = np.asarray(properties["control_points"], order="F")
-    assert not f_contig_orig.flags["C_CONTIGUOUS"]
-    assert f_contig_orig.flags["F_CONTIGUOUS"]
+    f_contig = np.asarray(spl.cps * 2, order="F")
+    assert not f_contig.flags["C_CONTIGUOUS"]
 
-    # set non contiguous array as prop
-    properties["control_points"] = f_contig_orig
-
-    # check round_trip cps
-    round_trip_cps = spl.cps
-
-    # they should be the same
-    assert np.allclose(round_trip_cps, properties["control_points"])
-
-    # test setter
-    # make sure this array is still not c contiguous
-    assert not f_contig_orig.flags["C_CONTIGUOUS"]
-
-    spl.cps = f_contig_orig  # setter
+    spl.cps = f_contig
 
     assert spl.cps.flags["C_CONTIGUOUS"]
-    assert np.allclose(spl.cps, properties["control_points"])
+    assert np.array_equal(spl.cps, f_contig)
+    assert np.allclose(spl.evaluate(queries), expected)

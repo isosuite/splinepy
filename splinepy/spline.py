@@ -2,7 +2,7 @@
 Abstract Spline
 """
 
-import copy as _copy
+import contextlib as _contextlib
 import os as _os
 
 import numpy as _np
@@ -210,29 +210,14 @@ _PROPERTY_KEYS = ("degrees", "knot_vectors", "control_points", "weights")
 
 
 def _knot_vector_arrays(knot_vectors):
-    """Normalize knot vectors, sharing compatible writable input arrays."""
-    # Ordering is checked by core validation.
-    return [
-        _np.require(kv, dtype="float64", requirements=["C", "A", "W"]).view(_KnotVector)
-        for kv in knot_vectors
-    ]
-
-
-def _spline_from_native(properties):
-    """Construct a spline from NumPy arrays that own native result buffers."""
-    name = (
-        ("NURBS" if "weights" in properties else "BSpline")
-        if "knot_vectors" in properties
-        else ("RationalBezier" if "weights" in properties else "Bezier")
-    )
-    spline = _settings.NAME_TO_TYPE[name]()
-    if "knot_vectors" in properties:
-        properties["knot_vectors"] = [
-            kv.view(_KnotVector) for kv in properties["knot_vectors"]
-        ]
-    spline._validate_properties(properties)
-    spline._data = properties
-    return spline
+    """Read-only KnotVector copies. Knots are layout, so they never share
+    storage with an input another reference could write to."""
+    out = []
+    for knot_vector in knot_vectors:
+        kv = _np.array(knot_vector, dtype="float64", order="C").view(_KnotVector)
+        kv.flags.writeable = False  # ordering is checked by core validation
+        out.append(kv)
+    return out
 
 
 def _proximity_resolutions(spline, resolutions):
@@ -309,12 +294,13 @@ class _PreparedProximity:
 
     __slots__ = ("_handle",)
 
-    def __init__(self, spline, resolutions, guess, nthreads):
+    def __init__(self, spline, resolutions, guess, nthreads, max_starts):
         self._handle = _core.ProximityHandle(
             spline,
             _proximity_resolutions(spline, resolutions),
             guess=guess,
             nthreads=nthreads,
+            max_starts=max_starts,
         )
 
     def query(
@@ -340,7 +326,7 @@ class _PreparedProximity:
         )
 
 
-class Spline(_SplinepyBase):
+class Spline(_core.SplineCore, _SplinepyBase):
     r"""
     Spline base class.
 
@@ -355,7 +341,7 @@ class Spline(_SplinepyBase):
 
     :code:`splinepy` generally supports different combinations of embeddings,
     that is different combinations of dimensionalities :math:`N_{param}` and
-    :math:`N_{phys}`, up to dimension 10.
+    :math:`N_{phys}`, with up to 8 parametric dimensions.
     The supported spline types differ in the way how the spline function
     :math:`M` is defined. For an overview of the mathematical theories for the
     different types of supported splines, we refer to the documentation of the
@@ -379,9 +365,10 @@ class Spline(_SplinepyBase):
 
     Notes
     -----
-    Compatible writable NumPy inputs share storage with the spline. Coordinate
-    and weight edits are visible through either reference. Use spline setters
-    for degree and knot changes so the spline can validate the new layout.
+    Compatible writable coordinate and weight inputs share storage with the
+    spline. Their edits are visible through either reference. Degrees and knots
+    own their storage. Use spline setters for layout changes so the spline can
+    validate the new layout.
     Operations that change the layout can replace the underlying arrays.
 
     Returns
@@ -390,7 +377,6 @@ class Spline(_SplinepyBase):
     """
 
     __slots__ = (
-        "_data",
         "_multi_index",
         "_show_options",
         "_spline_data",
@@ -400,19 +386,23 @@ class Spline(_SplinepyBase):
     __show_option__ = _visualize.SplineShowOption
 
     def __init__(self, spline=None, **kwargs):
-        self._data = {}
+        super().__init__()
         self._multi_index = None
 
-        # spline based init - shallow copy of the other spline's data
+        # spline based init - shares the other spline's current arrays
         if spline is not None:
-            self._data = spline._data.copy()
+            self._assign(
+                spline._degrees,
+                spline._knot_vectors,
+                spline._control_points,
+                spline._weights,
+                validate=False,
+            )
             return None
 
         # property based init. all at once, so validation happens only once
-        req_properties = self.required_properties
-        props = {k: v for k, v in kwargs.items() if k in req_properties}
-        if props:
-            self._set_properties(**props)
+        if any(v is not None for v in kwargs.values()):
+            self._set_properties(**kwargs)
 
     @staticmethod
     def _normalize_property(key, value):
@@ -421,7 +411,10 @@ class Spline(_SplinepyBase):
         dtype = "int32" if key == "degrees" else "float64"
         array = _np.require(value, dtype=dtype, requirements=["C", "A", "W"])
         if key == "degrees":
-            array = array.view()
+            # Layout must not change through a retained input or by unlocking
+            # a returned array. The immutable backing copy is tiny (one int
+            # per axis); coordinates and weights still share compatible inputs.
+            array = _np.frombuffer(array.tobytes(), dtype=dtype).reshape(array.shape)
         return array.reshape(-1, 1) if key == "weights" else array
 
     def _validate_properties(self, properties):
@@ -439,31 +432,49 @@ class Spline(_SplinepyBase):
                     f"len({first}) ({len(properties[first])}) should "
                     f"match len({second_name}) ({len(properties[second])})."
                 )
-        if all(key in properties for key in self.required_properties):
-            _core.validate_spline_properties(**properties)
+        return all(key in properties for key in self.required_properties)
+
+    def _commit(self, properties):
+        """Validate (once complete) and store properties in the native slots."""
+        kvs = properties.get("knot_vectors")
+        self._assign(
+            properties.get("degrees"),
+            None if kvs is None else tuple(kvs),
+            properties.get("control_points"),
+            properties.get("weights"),
+            validate=self._validate_properties(properties),
+        )
+
+    def _properties(self):
+        """Stored properties as a dict, omitting absent ones."""
+        values = (
+            self._degrees,
+            self._knot_vectors,
+            self._control_points,
+            self._weights,
+        )
+        pairs = zip(_PROPERTY_KEYS, values, strict=True)
+        return {k: v for k, v in pairs if v is not None}
 
     def _set_properties(self, **kwargs):
         """Normalize and commit a complete replacement or staged geometry."""
-        properties = {
-            key: self._normalize_property(key, kwargs[key])
-            for key in _PROPERTY_KEYS
-            if kwargs.get(key) is not None
-        }
-        self._validate_properties(properties)
-        self._data = properties
+        self._commit(
+            {
+                key: self._normalize_property(key, kwargs[key])
+                for key in _PROPERTY_KEYS
+                if kwargs.get(key) is not None
+            }
+        )
 
     def _set_property(self, key, value):
         if value is None:
             self.clear()
             return
-        if value is self._data.get(key):
+        properties = self._properties()
+        if value is properties.get(key):
             return
-        properties = {
-            name: self._data[name] for name in _PROPERTY_KEYS if name in self._data
-        }
         properties[key] = self._normalize_property(key, value)
-        self._validate_properties(properties)
-        self._data[key] = properties[key]
+        self._commit(properties)
 
     @property
     def required_properties(self):
@@ -487,38 +498,6 @@ class Spline(_SplinepyBase):
                 "Returning maximal set of properties."
             )
             return RequiredProperties.union()
-
-    @property
-    def para_dim(self):
-        """
-        Returns parametric dimension.
-
-        Parameters
-        -----------
-        None
-
-        Returns
-        --------
-        para_dim: int
-        """
-        degrees = self._data.get("degrees", None)
-        return 0 if degrees is None else len(degrees)
-
-    @property
-    def dim(self):
-        """
-        Returns physical dimension.
-
-        Parameters
-        -----------
-        None
-
-        Returns
-        --------
-        dim: int
-        """
-        cps = self._data.get("control_points", None)
-        return 0 if cps is None else cps.shape[-1]
 
     @property
     def whatami(self):
@@ -553,37 +532,6 @@ class Spline(_SplinepyBase):
         name: str
         """
         return self.whatami
-
-    @property
-    def has_knot_vectors(self):
-        """
-        Returns True iff spline has knot vectors. Bezier splines don't.
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        has_knot_vectors: bool
-        """
-        kvs = self._data.get("knot_vectors", None)
-        return kvs is not None and len(kvs) > 0
-
-    @property
-    def is_rational(self):
-        """
-        Returns True iff spline is rational. NURBS is rational, for example.
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        is_rational: bool
-        """
-        return self._data.get("weights", None) is not None
 
     @property
     def extract(self):
@@ -706,7 +654,7 @@ class Spline(_SplinepyBase):
         -------
         None
         """
-        self._data = {}
+        self._assign(None, None, None, None, validate=False)
 
     @property
     def degrees(self):
@@ -721,12 +669,8 @@ class Spline(_SplinepyBase):
         --------
         degrees: (para_dim,) np.ndarray
         """
-        ds = self._data.get("degrees", None)
-        if ds is not None:
-            # changing degrees alters the number of control points. Use setter
-            ds.flags.writeable = False
-
-        return ds
+        # read-only: changing degrees alters the layout, use the setter
+        return self._degrees
 
     @degrees.setter
     def degrees(self, degrees):
@@ -756,7 +700,7 @@ class Spline(_SplinepyBase):
         --------
         knot_vectors: list
         """
-        return self._data.get("knot_vectors") if self.has_knot_vectors else None
+        return list(self._knot_vectors) if self.has_knot_vectors else None
 
     @knot_vectors.setter
     def knot_vectors(self, knot_vectors):
@@ -773,6 +717,31 @@ class Spline(_SplinepyBase):
         """
         self._set_property("knot_vectors", knot_vectors)
 
+    @_contextlib.contextmanager
+    def edit_knot_vectors(self):
+        """
+        Edit knot vectors freely, as writable copies. On exit they are
+        checked and set as the new knot vectors; if the block raises, the
+        spline is left unchanged.
+
+        Examples
+        --------
+        .. code-block:: python
+
+            with spline.edit_knot_vectors() as kvs:
+                kvs[0][2] = 0.3
+                kvs[1] = [0, 0, 0.5, 1, 1]
+
+        Yields
+        ------
+        knot_vectors: list of numpy.ndarray
+        """
+        if not self.has_knot_vectors:
+            raise ValueError(f"{self.whatami} has no knot vectors.")
+        knot_vectors = [_np.array(kv) for kv in self._knot_vectors]
+        yield knot_vectors
+        self.knot_vectors = knot_vectors
+
     @property
     def unique_knots(self):
         """
@@ -787,16 +756,7 @@ class Spline(_SplinepyBase):
         --------
         unique_knots: list
         """
-        if not self.has_knot_vectors:
-            self._logd("Returning parametric_bounds as Bezier spline's unique knots.")
-            return list(self.parametric_bounds.T)
-
-        else:
-            self._logd("Retrieving unique knots")
-            return [
-                kv[d : len(kv) - d].unique()
-                for kv, d in zip(self.knot_vectors, self.degrees, strict=False)
-            ]
+        return _core.unique_knots(self)
 
     @property
     def knot_multiplicities(self):
@@ -817,8 +777,7 @@ class Spline(_SplinepyBase):
             return [_np.array([d + 1, d + 1]) for d in self.degrees]
 
         else:
-            self._logd("Retrieving knot multiplicities")
-            return [k.multiplicities() for k in self.knot_vectors]
+                return [k.multiplicities() for k in self.knot_vectors]
 
     @property
     def parametric_bounds(self):
@@ -833,18 +792,7 @@ class Spline(_SplinepyBase):
         --------
         parametric_bounds: (2, para_dim) np.ndarray
         """
-        if not self.has_knot_vectors:
-            return _np.vstack((_np.zeros(self.para_dim), _np.ones(self.para_dim)))
-
-        kvs = self._data["knot_vectors"]
-        degrees = self._data["degrees"]
-        return _np.array(
-            [
-                [kv[d] for kv, d in zip(kvs, degrees, strict=False)],
-                [kv[-d - 1] for kv, d in zip(kvs, degrees, strict=False)],
-            ],
-            dtype="float64",
-        )
+        return _core.parametric_bounds(self)
 
     @property
     def control_points(self):
@@ -859,7 +807,7 @@ class Spline(_SplinepyBase):
         --------
         control_points_: (n, dim) np.ndarray
         """
-        return self._data.get("control_points", None)
+        return self._control_points
 
     @control_points.setter
     def control_points(self, control_points):
@@ -906,16 +854,7 @@ class Spline(_SplinepyBase):
         --------
         control_mesh_resolutions: (para_dim) np.ndarray
         """
-        degrees = self._data["degrees"]
-        if self.has_knot_vectors:
-            return _np.array(
-                [
-                    len(kv) - d - 1
-                    for kv, d in zip(self._data["knot_vectors"], degrees, strict=False)
-                ],
-                dtype="int32",
-            )
-        return (degrees + 1).astype("int32")
+        return _core.control_mesh_resolutions(self)
 
     def mapper(self, reference):
         """Retrieve a mapper that can be used to get physical derivatives such
@@ -961,7 +900,7 @@ class Spline(_SplinepyBase):
         """
         Index the control mesh using NumPy indexing syntax.
 
-        The helper is reused while the control mesh resolutions match.
+        The helper is reused until degrees or knot vectors change.
         A retained helper continues to index the shape it was built for.
 
         Parameters
@@ -972,10 +911,13 @@ class Spline(_SplinepyBase):
         -------
         multi_index_helper: MultiIndex
         """
-        shape = tuple(self.control_mesh_resolutions)
-        if self._multi_index is None or self._multi_index[0] != shape:
-            self._multi_index = (shape, _helpme.multi_index.MultiIndex(shape))
-        return self._multi_index[1]
+        # the shape follows from degrees and knots, which the layout counts
+        cached = getattr(self, "_multi_index", None)
+        if cached is None or cached[0] != self._layout:
+            shape = tuple(self.control_mesh_resolutions)
+            cached = (self._layout, _helpme.multi_index.MultiIndex(shape))
+            self._multi_index = cached
+        return cached[1]
 
     @property
     def weights(self):
@@ -990,7 +932,7 @@ class Spline(_SplinepyBase):
         --------
         self._weights: (n, 1) array-like
         """
-        return self._data.get("weights", None)
+        return self._weights
 
     @weights.setter
     def weights(self, weights):
@@ -1006,6 +948,19 @@ class Spline(_SplinepyBase):
         None
         """
         self._set_property("weights", weights)
+
+    def validate(self):
+        """Validate the complete layout, control points and weights.
+
+        Queries check the values they use; this explicit check also finds
+        invalid values outside the queried supports after arbitrary edits.
+
+        Returns
+        -------
+        valid : bool
+            True if valid; otherwise raises ValueError.
+        """
+        return _core.validate(self)
 
     def evaluate(self, queries, nthreads=None, out=None):
         """
@@ -1024,8 +979,6 @@ class Spline(_SplinepyBase):
         --------
         results: (n, dim) np.ndarray
         """
-        self._logd("Evaluating spline")
-
         return _core.evaluate(
             self,
             queries,
@@ -1053,8 +1006,6 @@ class Spline(_SplinepyBase):
         """
         resolutions = _utils.data._enforce_len(resolutions, self.para_dim)
 
-        self._logd(f"Sampling {_np.prod(resolutions)} points from spline.")
-
         return _core.sample(
             self,
             resolutions,
@@ -1081,8 +1032,6 @@ class Spline(_SplinepyBase):
         results: (n, m, dim) np.ndarray
           Iff m == 1, it will have (n, dim) shape.
         """
-        self._logd("Evaluating derivatives of the spline")
-
         return _core.derivative(
             self,
             queries=queries,
@@ -1109,8 +1058,6 @@ class Spline(_SplinepyBase):
         --------
         results: (n, para_dim, dim) np.ndarray
         """
-        self._logd("Determining spline jacobians")
-
         return _core.jacobian(
             self,
             queries,
@@ -1136,7 +1083,6 @@ class Spline(_SplinepyBase):
         --------
         support: (n, prod(degrees + 1)) np.ndarray
         """
-        self._logd("Evaluating support ids")
         return _core.support(
             self,
             queries=queries,
@@ -1162,7 +1108,6 @@ class Spline(_SplinepyBase):
         --------
         basis: (n, prod(degrees + 1)) np.ndarray
         """
-        self._logd("Evaluating basis functions")
         return _core.basis(
             self,
             queries=queries,
@@ -1190,7 +1135,6 @@ class Spline(_SplinepyBase):
         basis: (n, prod(degrees + 1)) np.ndarray
         support: (n, prod(degrees + 1)) np.ndarray
         """
-        self._logd("Evaluating basis functions and support")
         return _core.basis_and_support(
             self,
             queries=queries,
@@ -1219,7 +1163,6 @@ class Spline(_SplinepyBase):
         basis_derivatives: (n, m, prod(degrees + 1)) np.ndarray
           Iff m == 1, it will have (n, prod(degrees + 1)) shape.
         """
-        self._logd("Evaluating basis function derivatives")
         return _core.basis_derivative(
             self,
             queries=queries,
@@ -1251,7 +1194,6 @@ class Spline(_SplinepyBase):
           Iff m == 1, it will have (n, prod(degrees + 1)) shape.
         supports: (n, prod(degrees + 1)) np.ndarray
         """
-        self._logd("Evaluating basis function derivatives")
         return _core.basis_derivative_and_support(
             self,
             queries=queries,
@@ -1271,6 +1213,7 @@ class Spline(_SplinepyBase):
         nthreads=None,
         return_verbose=False,
         out=None,
+        max_starts=4,
     ):
         """
         Given physical coordinate, finds a parametric coordinate that maps to
@@ -1299,6 +1242,11 @@ class Spline(_SplinepyBase):
         out: optional
           Writable C-contiguous float64 result array, or a tuple of seven
           such arrays in the order below when return_verbose is True.
+        max_starts: int
+          Default is 4. Most initial guesses the search starts from per
+          query; further ones are tried only where a closer point is still
+          possible. Raise it, together with the sample resolutions, for
+          geometry that folds over itself.
 
         Returns
         --------
@@ -1322,6 +1270,7 @@ class Spline(_SplinepyBase):
                 self,
                 _proximity_resolutions(self, initial_guess_sample_resolutions),
                 nthreads=_default_if_none(nthreads, _settings.NTHREADS),
+                max_starts=max_starts,
             ),
             queries,
             tolerance,
@@ -1333,7 +1282,12 @@ class Spline(_SplinepyBase):
         )
 
     def prepare_proximity(
-        self, initial_guess_sample_resolutions=None, *, guess="bvh", nthreads=None
+        self,
+        initial_guess_sample_resolutions=None,
+        *,
+        guess="bvh",
+        nthreads=None,
+        max_starts=4,
     ):
         """Return a reusable proximity search over a copy of this geometry.
 
@@ -1349,6 +1303,8 @@ class Spline(_SplinepyBase):
             Strategy for finding initial guesses.
         nthreads : int, optional
             Number of worker threads.
+        max_starts : int, optional
+            Most initial guesses a query starts from. See :meth:`proximities`.
 
         Returns
         -------
@@ -1362,6 +1318,7 @@ class Spline(_SplinepyBase):
             initial_guess_sample_resolutions,
             guess,
             _default_if_none(nthreads, _settings.NTHREADS),
+            max_starts,
         )
 
     def elevate_degrees(self, parametric_dimensions):
@@ -1481,10 +1438,10 @@ class Spline(_SplinepyBase):
         --------
         dict_spline: dict
         """
-        self._logd("Preparing dict_spline")
         dict_spline = {}
+        properties = self._properties()
         for p in self.required_properties:
-            value = self._data.get(p, None)
+            value = properties.get(p, None)
             if value is not None:
                 if p == "knot_vectors":
                     value = [kv.copy() for kv in value]
@@ -1514,18 +1471,24 @@ class Spline(_SplinepyBase):
         --------
         new_spline: type(self)
         """
-        new = type(self)(**self.todict())
+        new = type(self)()
+        if self._degrees is not None:
+            # valid as it is: copied without being checked again
+            kvs, weights = self._knot_vectors, self._weights
+            new._assign(
+                self._normalize_property("degrees", self._degrees),
+                None if kvs is None else tuple(_knot_vector_arrays(kvs)),
+                self._control_points.copy(),
+                None if weights is None else weights.copy(),
+                validate=False,
+            )
 
         if saved_data:
-            required_properties = self.required_properties
-            for k, v in self._data.items():
-                if k in required_properties:
-                    continue
-                new._data[k] = _copy.deepcopy(v)
-
-            # copy show_options and shallow copy spline_data
-            self.show_options.copy_valid_options(new.show_options)
-            new.spline_data._saved = self.spline_data._saved.copy()
+            # copy show_options and shallow copy spline_data, where they exist
+            if getattr(self, "_show_options", None) is not None:
+                self.show_options.copy_valid_options(new.show_options)
+            if getattr(self, "_spline_data", None) is not None:
+                new.spline_data._saved = self.spline_data._saved.copy()
 
         return new
 

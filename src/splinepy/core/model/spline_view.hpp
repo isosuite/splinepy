@@ -2,13 +2,13 @@
 
 #include <cassert>
 #include <cstdint>
+#include <type_traits>
 
 #include "splinepy/core/common.hpp"
 #include "splinepy/core/memory/span.hpp"
+#include "splinepy/core/model/axis_array.hpp"
 
 namespace splinepy::core {
-
-struct HierarchyView;
 
 /// Non-owning lightweight view of a spline geometry.
 /// Does not own or manage memory.
@@ -20,13 +20,14 @@ struct SplineView {
   /// Dimension of the physical coordinate space (e.g. 2 for 2D, 3 for 3D).
   int32_t dim{0};
 
-  /// Degrees per parametric dimension, length must be para_dim.
-  Span<const int32_t> degrees{};
+  /// Degrees per parametric dimension, length must be para_dim. Stored
+  /// inline, so a view is trivially copyable and never allocates.
+  AxisArray<int32_t> degrees{};
 
   /// Knot vectors per parametric dimension, length must be para_dim.
   /// If empty, the spline is treated as a Bezier spline (implicit open knots
-  /// [0...0, 1...1]).
-  Span<const Span<const double>> knot_vectors{};
+  /// [0...0, 1...1]). The spans are stored inline; the knots are not owned.
+  AxisArray<Span<const double>> knot_vectors{};
 
   /// Pointer to control points data.
   const double* control_points_data{nullptr};
@@ -48,9 +49,6 @@ struct SplineView {
 
   /// Stride between consecutive weights (in number of doubles). Default = 1.
   int64_t weight_stride{1};
-
-  /// Optional hierarchy, owned by the caller alongside this geometry.
-  const HierarchyView* hierarchy{nullptr};
 
   // ---------------------------------------------------------------------------
   // Observers and Queries (Google C++ Style)
@@ -126,6 +124,8 @@ struct SplineView {
     return *(weights_data + cp_idx * weight_stride);
   }
 };
+
+static_assert(std::is_trivially_copyable_v<SplineView>);
 
 /// Batch of spline views. Every kernel natively operates on a batch.
 using SplineBatchView = Span<const SplineView>;

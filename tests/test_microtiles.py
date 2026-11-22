@@ -205,9 +205,6 @@ def test_tile_closure(tile_class):
     """
     tile_name = tile_class.__name__
 
-    # Skip tile if if does not support closure
-    if tile_class._closure_directions is None:
-        skip(f"Tile {tile_name} does not have a closure implementation. Skip")
     tile_creator = tile_class()
     # Go through all implemented closure directions
     for closure_direction in tile_creator._closure_directions:
@@ -273,9 +270,6 @@ def test_tile_derivatives(
         Stepsizes and weights for finite difference scheme. Defined in conftest.py
     """
     tile_creator = tile_class()
-    # Skip test if tile class has no implemented sensitivities
-    if not tile_creator._sensitivities_implemented:
-        skip(f"Tile {tile_class.__name__} has no sensitivities implemented")
 
     def generate_random_parameters(tile_creator, np_rng):
         """Generate random parameters within bounds"""
@@ -460,3 +454,31 @@ def test_invalid_parameter_values(tile_class, big_perturbation):
         f"Tile class {tile_class.__name__} must call TileBase.check_params() and raise",
         " a TypeError if the given parameters have the wrong shape",
     )
+
+
+@mark.parametrize("tile_class", all_tile_classes)
+def test_affine_flag(tile_class, np_rng):
+    """`_affine` tiles have control points b + A p at random parameters, for
+    every closure."""
+    tile_creator = tile_class()
+    bounds = make_bounds_feasible(tile_creator._parameter_bounds)
+    if not tile_creator._affine or len(bounds) == 0:
+        skip(f"{tile_class.__name__} is not affine")
+
+    def points(parameters, closure):
+        patches, _ = tile_creator.create_tile(
+            parameters=parameters.reshape(tile_creator._parameters_shape),
+            closure=closure,
+        )
+        return np.vstack([patch.control_points for patch in patches]).ravel()
+
+    samples = bounds[:, 0] + np_rng.random((len(bounds) + 3, len(bounds))) * (
+        np.ptp(bounds, axis=1)
+    )
+    design = np.hstack([samples, np.ones((len(samples), 1))])
+    for closure in [None, *(tile_creator._closure_directions or [])]:
+        values = np.array([points(sample, closure) for sample in samples])
+        coefficients, *_ = np.linalg.lstsq(design, values, rcond=None)
+        assert np.allclose(design @ coefficients, values, atol=1e-12), (
+            f"{tile_class.__name__} is not affine for closure {closure}"
+        )

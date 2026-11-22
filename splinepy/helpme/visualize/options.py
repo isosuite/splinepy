@@ -27,7 +27,7 @@ _common_options = {
     "axes": (bool, dict),
     "knots": (bool,),
     "knot_c": _color,
-    "knot_lw": (float,),
+    "knot_lw": _number,
     "knot_alpha": _number,
     "control_points": (bool,),
     "control_point_r": _number,
@@ -37,6 +37,7 @@ _common_options = {
     "control_mesh": (bool,),
     "control_mesh_c": _color,
     "control_mesh_lw": _number,
+    "control_mesh_alpha": _number,
     "resolutions": (int, list, tuple, _np.ndarray),
     "lw": _number,
 }
@@ -116,10 +117,3 @@ class SplineShowOption(_ShowOption):
         "fitting_queries": (bool,),
         "arrow_data_on": (list, tuple, _np.ndarray),
     }
-
-
-class MultipatchShowOption(_ShowOption):
-    """Show options for multipatches."""
-
-    __slots__ = ()
-    _helps = "Multipatch"

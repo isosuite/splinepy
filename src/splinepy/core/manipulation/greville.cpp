@@ -1,14 +1,13 @@
 #include "splinepy/core/manipulation/greville.hpp"
 
 #include <cmath>
-#include <vector>
 
 #include "splinepy/core/validate/validator.hpp"
 
 namespace splinepy::core {
 
-std::vector<Buffer<double>> GrevilleAbscissaeList(const SplineView& spline,
-                                                  const Options& options) {
+Buffer<Buffer<double>> GrevilleAbscissaeList(const SplineView& spline,
+                                             const Options& options) {
   if (options.validate) {
     ThrowIfInvalid(spline);
   }
@@ -18,7 +17,7 @@ std::vector<Buffer<double>> GrevilleAbscissaeList(const SplineView& spline,
     return {};
   }
 
-  std::vector<Buffer<double>> xi(para_dim);
+  Buffer<Buffer<double>> xi(para_dim);
 
   for (int32_t d = 0; d < para_dim; ++d) {
     const int64_t n_d = spline.NumControlPointsPerAxis(d);
@@ -79,7 +78,7 @@ Buffer<double> GrevilleAbscissae(const SplineView& spline,
     return Buffer<double>();
   }
 
-  std::vector<int64_t> n(para_dim);
+  Buffer<int64_t> n(para_dim);
   for (int32_t d = 0; d < para_dim; ++d) {
     n[d] = xi[d].size();
   }

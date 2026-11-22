@@ -1,73 +1,116 @@
 #include <gtest/gtest.h>
 
-#include <cmath>
-#include <fstream>
 #include <string>
 #include <vector>
 
 #include "splinepy/core/manipulation/manipulation.hpp"
+#include "splinepy/core/memory/workspace.hpp"
 #include "splinepy/core/queries/queries.hpp"
-
-#ifndef TEST_DATA_DIR
-#define TEST_DATA_DIR "tests/data/golden/bin"
-#endif
+#include "test_utils.hpp"
 
 namespace splinepy::core {
-namespace {
+using namespace test;
 
-template<typename T>
-std::vector<T> LoadBin(const std::string& filename) {
-  const std::string full_path = std::string(TEST_DATA_DIR) + "/" + filename;
-  std::ifstream is(full_path, std::ios::binary | std::ios::ate);
-  if (!is) {
-    throw std::runtime_error("Could not open binary test data file: "
-                             + full_path);
+TEST(ManipulationKernelsTest, InsertionMapRowsArePartitionsOfUnity) {
+  Buffer<double> knots(1003);
+  knots[0] = knots[1] = knots[2] = 0.;
+  for (std::size_t i = 3; i < 1000; ++i) {
+    knots[i] = static_cast<double>(i - 2) / 998.;
   }
-  const std::streamsize size = is.tellg();
-  is.seekg(0, std::ios::beg);
-  std::vector<T> buffer(static_cast<std::size_t>(size) / sizeof(T));
-  if (!is.read(reinterpret_cast<char*>(buffer.data()), size)) {
-    throw std::runtime_error("Failed to read binary test data file: "
-                             + full_path);
+  knots[1000] = knots[1001] = knots[1002] = 1.;
+  const double added[] = {0.1251, 0.5001, 0.8751};
+  const auto map = KnotInsertionMap(knots.cspan(), 2, {added, 3});
+  ASSERT_EQ(map.Rows(), 1003);
+  ASSERT_EQ(map.width, 3);
+  std::size_t nonzero = 0;
+  for (int64_t i = 0; i < map.Rows(); ++i) {
+    double sum = 0.;
+    for (int32_t k = 0; k < map.width; ++k) {
+      EXPECT_GE(map.Row(i)[k], 0.);
+      nonzero += map.Row(i)[k] != 0.;
+      sum += map.Row(i)[k];
+    }
+    EXPECT_NEAR(sum, 1., 1e-15);
   }
-  return buffer;
+  EXPECT_LE(nonzero, 1020u);
 }
 
-double MaxAbsDiff(Span<const double> a, Span<const double> b) {
-  EXPECT_EQ(a.size(), b.size());
-  double max_diff = 0.0;
-  for (std::size_t i = 0; i < std::min(a.size(), b.size()); ++i) {
-    const double diff = std::abs(a[i] - b[i]);
-    if (diff > max_diff) {
-      max_diff = diff;
+/// A random spline of each kind keeps its geometry under every axis map,
+/// also at knots of full multiplicity (C^-1).
+TEST(ManipulationKernelsTest, AxisMapsKeepTheGeometry) {
+  const double kv_data[] =
+      {0., 0., 0., 0., 0.2, 0.2, 0.5, 0.5, 0.5, 0.5, 0.7, 1., 1., 1., 1.};
+  const Span<const double> kv(kv_data, 15);
+  const int32_t p = 3;
+  const int64_t n = 11;
+  for (const bool rational : {false, true}) {
+    SplineData spline;
+    spline.para_dim = 2;
+    spline.dim = 2;
+    spline.degrees = {p, p};
+    spline.knot_vectors = Buffer<Buffer<double>>(2);
+    spline.knot_vectors[0].assign(kv.begin(), kv.end());
+    spline.knot_vectors[1].assign(kv.begin(), kv.end());
+    spline.control_points = Buffer<double>(n * n * 2);
+    uint64_t state = 12345;
+    const auto random = [&] {
+      state = state * 6364136223846793005ull + 1442695040888963407ull;
+      return static_cast<double>(state >> 11) / 9007199254740992.;
+    };
+    for (auto& value : spline.control_points) {
+      value = random();
+    }
+    if (rational) {
+      spline.weights = Buffer<double>(n * n);
+      for (auto& value : spline.weights) {
+        value = 0.5 + random();
+      }
+    }
+    Buffer<double> queries(2 * 200);
+    for (auto& value : queries) {
+      value = random();
+    }
+    const auto expected = Evaluate(spline.View(), queries.cspan());
+    const auto check = [&](const SplineData& changed) {
+      const auto actual = Evaluate(changed.View(), queries.cspan());
+      for (std::size_t i = 0; i < expected.size(); ++i) {
+        ASSERT_NEAR(actual[i], expected[i], 1e-12);
+      }
+    };
+    const double added[] = {0.9, 0.2, 0.2, 0.2, 0.35, 0.5, 0.0, 1.0, 0.35};
+    const auto inserted = InsertKnots(spline.View(), 1, {added, 9});
+    // 0.2 gains two, to multiplicity p + 1; 0.5, 0 and 1 are full already
+    EXPECT_EQ(inserted.knot_vectors[1].size(), kv.size() + 5);
+    check(inserted);
+    const auto elevated = ElevateDegree(spline.View(), 0, 2);
+    EXPECT_EQ(elevated.degrees[0], p + 2);
+    EXPECT_EQ(elevated.knot_vectors[0].size(), kv.size() + 2 * 5);
+    check(elevated);
+    const auto patches = ExtractBezierPatches(spline.View());
+    ASSERT_EQ(patches.size(), 16u);
+    // element (1, 2) covers [0.2, 0.5] x [0.5, 0.7]
+    Buffer<double> local(2 * 50), global(2 * 50);
+    for (std::size_t i = 0; i < 50; ++i) {
+      local[2 * i] = random();
+      local[2 * i + 1] = random();
+      global[2 * i] = 0.2 + 0.3 * local[2 * i];
+      global[2 * i + 1] = 0.5 + 0.2 * local[2 * i + 1];
+    }
+    const auto on_patch = Evaluate(patches[1 + 4 * 2].View(), local.cspan());
+    const auto on_spline = Evaluate(spline.View(), global.cspan());
+    for (std::size_t i = 0; i < on_patch.size(); ++i) {
+      ASSERT_NEAR(on_patch[i], on_spline[i], 1e-12);
     }
   }
-  return max_diff;
 }
 
-} // namespace
-
 TEST(ManipulationKernelsTest, InsertKnotsBSpline) {
-  auto orig_degrees = LoadBin<int32_t>("operations_bspline_orig_degrees.bin");
-  auto orig_kv_0 = LoadBin<double>("operations_bspline_orig_kv_0.bin");
-  auto orig_kv_1 = LoadBin<double>("operations_bspline_orig_kv_1.bin");
-  auto orig_cps = LoadBin<double>("operations_bspline_orig_cps.bin");
+  const GoldenSpline orig("operations_bspline_orig", 2);
 
   auto exp_ins_kv_0 = LoadBin<double>("operations_bspline_ins_kv_0.bin");
   auto exp_ins_kv_1 = LoadBin<double>("operations_bspline_ins_kv_1.bin");
   auto exp_ins_cps = LoadBin<double>("operations_bspline_ins_cps.bin");
-
-  Span<const double> orig_kvs[2] = {Span<const double>(orig_kv_0),
-                                    Span<const double>(orig_kv_1)};
-  SplineView orig_spline;
-  orig_spline.para_dim = 2;
-  orig_spline.dim = 2;
-  orig_spline.degrees = Span<const int32_t>(orig_degrees);
-  orig_spline.knot_vectors = Span<const Span<const double>>(orig_kvs, 2);
-  orig_spline.control_points_data = orig_cps.data();
-  orig_spline.num_control_points = orig_cps.size() / 2;
-  orig_spline.cp_stride = 2;
-  orig_spline.dim_stride = 1;
+  const SplineView orig_spline = orig.View();
 
   // Insert [0.3, 0.7] on axis 0
   const double knots_0[2] = {0.3, 0.7};
@@ -100,22 +143,8 @@ TEST(ManipulationKernelsTest, InsertKnotsBSpline) {
 }
 
 TEST(ManipulationKernelsTest, RemoveKnotsBSpline) {
-  auto orig_degrees = LoadBin<int32_t>("operations_bspline_orig_degrees.bin");
-  auto orig_kv_0 = LoadBin<double>("operations_bspline_orig_kv_0.bin");
-  auto orig_kv_1 = LoadBin<double>("operations_bspline_orig_kv_1.bin");
-  auto orig_cps = LoadBin<double>("operations_bspline_orig_cps.bin");
-
-  Span<const double> orig_kvs[2] = {Span<const double>(orig_kv_0),
-                                    Span<const double>(orig_kv_1)};
-  SplineView orig_spline;
-  orig_spline.para_dim = 2;
-  orig_spline.dim = 2;
-  orig_spline.degrees = Span<const int32_t>(orig_degrees);
-  orig_spline.knot_vectors = Span<const Span<const double>>(orig_kvs, 2);
-  orig_spline.control_points_data = orig_cps.data();
-  orig_spline.num_control_points = orig_cps.size() / 2;
-  orig_spline.cp_stride = 2;
-  orig_spline.dim_stride = 1;
+  const GoldenSpline orig("operations_bspline_orig", 2);
+  const SplineView orig_spline = orig.View();
 
   // Insert knots
   const double knots_0[2] = {0.3, 0.7};
@@ -140,38 +169,24 @@ TEST(ManipulationKernelsTest, RemoveKnotsBSpline) {
 
   // Knot vectors and control points should match original
   EXPECT_LT(MaxAbsDiff(rem1.spline.knot_vectors[0].cspan(),
-                       Span<const double>(orig_kv_0)),
+                       Span<const double>(orig.knots[0])),
             1e-14);
   EXPECT_LT(MaxAbsDiff(rem1.spline.knot_vectors[1].cspan(),
-                       Span<const double>(orig_kv_1)),
+                       Span<const double>(orig.knots[1])),
             1e-14);
   EXPECT_LT(MaxAbsDiff(rem1.spline.control_points.cspan(),
-                       Span<const double>(orig_cps)),
+                       Span<const double>(orig.cps)),
             1e-14);
 }
 
 TEST(ManipulationKernelsTest, ElevateAndReduceDegreeBSpline) {
-  auto orig_degrees = LoadBin<int32_t>("operations_bspline_orig_degrees.bin");
-  auto orig_kv_0 = LoadBin<double>("operations_bspline_orig_kv_0.bin");
-  auto orig_kv_1 = LoadBin<double>("operations_bspline_orig_kv_1.bin");
-  auto orig_cps = LoadBin<double>("operations_bspline_orig_cps.bin");
+  const GoldenSpline orig("operations_bspline_orig", 2);
 
   auto exp_ele_degrees = LoadBin<int32_t>("operations_bspline_ele_degrees.bin");
   auto exp_ele_kv_0 = LoadBin<double>("operations_bspline_ele_kv_0.bin");
   auto exp_ele_kv_1 = LoadBin<double>("operations_bspline_ele_kv_1.bin");
   auto exp_ele_cps = LoadBin<double>("operations_bspline_ele_cps.bin");
-
-  Span<const double> orig_kvs[2] = {Span<const double>(orig_kv_0),
-                                    Span<const double>(orig_kv_1)};
-  SplineView orig_spline;
-  orig_spline.para_dim = 2;
-  orig_spline.dim = 2;
-  orig_spline.degrees = Span<const int32_t>(orig_degrees);
-  orig_spline.knot_vectors = Span<const Span<const double>>(orig_kvs, 2);
-  orig_spline.control_points_data = orig_cps.data();
-  orig_spline.num_control_points = orig_cps.size() / 2;
-  orig_spline.cp_stride = 2;
-  orig_spline.dim_stride = 1;
+  const SplineView orig_spline = orig.View();
 
   // Elevate degrees by [1, 1]
   const int32_t amounts[2] = {1, 1};
@@ -204,37 +219,23 @@ TEST(ManipulationKernelsTest, ElevateAndReduceDegreeBSpline) {
   SplineData red0 = ReduceDegree(elevated.View(), 0, 1);
   SplineData red1 = ReduceDegree(red0.View(), 1, 1);
 
-  EXPECT_EQ(red1.degrees[0], orig_degrees[0]);
-  EXPECT_EQ(red1.degrees[1], orig_degrees[1]);
+  EXPECT_EQ(red1.degrees[0], orig.degrees[0]);
+  EXPECT_EQ(red1.degrees[1], orig.degrees[1]);
 
+  EXPECT_LT(MaxAbsDiff(red1.knot_vectors[0].cspan(),
+                       Span<const double>(orig.knots[0])),
+            1e-14);
+  EXPECT_LT(MaxAbsDiff(red1.knot_vectors[1].cspan(),
+                       Span<const double>(orig.knots[1])),
+            1e-14);
   EXPECT_LT(
-      MaxAbsDiff(red1.knot_vectors[0].cspan(), Span<const double>(orig_kv_0)),
-      1e-14);
-  EXPECT_LT(
-      MaxAbsDiff(red1.knot_vectors[1].cspan(), Span<const double>(orig_kv_1)),
-      1e-14);
-  EXPECT_LT(
-      MaxAbsDiff(red1.control_points.cspan(), Span<const double>(orig_cps)),
+      MaxAbsDiff(red1.control_points.cspan(), Span<const double>(orig.cps)),
       1e-14);
 }
 
 TEST(ManipulationKernelsTest, BatchElevateAndReduceMatchSingle) {
-  auto degrees = LoadBin<int32_t>("operations_bspline_orig_degrees.bin");
-  auto kv_0 = LoadBin<double>("operations_bspline_orig_kv_0.bin");
-  auto kv_1 = LoadBin<double>("operations_bspline_orig_kv_1.bin");
-  auto cps = LoadBin<double>("operations_bspline_orig_cps.bin");
-
-  Span<const double> kvs[2] = {Span<const double>(kv_0),
-                               Span<const double>(kv_1)};
-  SplineView spline;
-  spline.para_dim = 2;
-  spline.dim = 2;
-  spline.degrees = Span<const int32_t>(degrees);
-  spline.knot_vectors = Span<const Span<const double>>(kvs, 2);
-  spline.control_points_data = cps.data();
-  spline.num_control_points = cps.size() / 2;
-  spline.cp_stride = 2;
-  spline.dim_stride = 1;
+  const GoldenSpline golden("operations_bspline_orig", 2);
+  const SplineView spline = golden.View();
 
   // the same spline several times, so workers have something to share
   const std::vector<SplineView> batch(7, spline);
@@ -273,23 +274,51 @@ TEST(ManipulationKernelsTest, BatchElevateAndReduceMatchSingle) {
   }
 }
 
-TEST(ManipulationKernelsTest, ExtractBoundaryBSpline) {
-  auto orig_degrees = LoadBin<int32_t>("operations_bspline_orig_degrees.bin");
-  auto orig_kv_0 = LoadBin<double>("operations_bspline_orig_kv_0.bin");
-  auto orig_kv_1 = LoadBin<double>("operations_bspline_orig_kv_1.bin");
-  auto orig_cps = LoadBin<double>("operations_bspline_orig_cps.bin");
+TEST(ManipulationKernelsTest, BatchWithCallerWorkspaceMatchesSingle) {
+  const GoldenSpline golden("operations_bspline_orig", 2);
+  const SplineView spline = golden.View();
 
-  Span<const double> orig_kvs[2] = {Span<const double>(orig_kv_0),
-                                    Span<const double>(orig_kv_1)};
-  SplineView orig_spline;
-  orig_spline.para_dim = 2;
-  orig_spline.dim = 2;
-  orig_spline.degrees = Span<const int32_t>(orig_degrees);
-  orig_spline.knot_vectors = Span<const Span<const double>>(orig_kvs, 2);
-  orig_spline.control_points_data = orig_cps.data();
-  orig_spline.num_control_points = orig_cps.size() / 2;
-  orig_spline.cp_stride = 2;
-  orig_spline.dim_stride = 1;
+  const std::vector<SplineView> batch(9, spline);
+  const int32_t amounts[2] = {1, 1};
+  const double knots[2] = {0.3, 0.6};
+
+  const SplineData elevated_expected =
+      ElevateDegrees(spline, Span<const int32_t>(amounts, 2));
+  const SplineData inserted_expected =
+      InsertKnots(spline, 0, Span<const double>(knots, 2));
+
+  // A single arena: every worker beyond the first has to come from growth,
+  // and workers must not share it.
+  Workspace workspace(1024, 1);
+  Options options;
+  options.nthreads = 4;
+  options.workspace = &workspace;
+
+  for (int repeat = 0; repeat < 3; ++repeat) {
+    const auto elevated = ElevateDegrees(SplineBatchView(batch),
+                                         Span<const int32_t>(amounts, 2),
+                                         options);
+    const auto inserted = InsertKnots(SplineBatchView(batch),
+                                      0,
+                                      Span<const double>(knots, 2),
+                                      options);
+    ASSERT_EQ(elevated.size(), batch.size());
+    ASSERT_EQ(inserted.size(), batch.size());
+    for (std::size_t i = 0; i < batch.size(); ++i) {
+      EXPECT_EQ(MaxAbsDiff(elevated[i].control_points.cspan(),
+                           elevated_expected.control_points.cspan()),
+                0.0);
+      EXPECT_EQ(MaxAbsDiff(inserted[i].control_points.cspan(),
+                           inserted_expected.control_points.cspan()),
+                0.0);
+    }
+  }
+  EXPECT_GE(workspace.NumThreadArenas(), 4u);
+}
+
+TEST(ManipulationKernelsTest, ExtractBoundaryBSpline) {
+  const GoldenSpline orig("operations_bspline_orig", 2);
+  const SplineView orig_spline = orig.View();
 
   for (int32_t b_id = 0; b_id < 4; ++b_id) {
     SplineData bnd = ExtractBoundary(orig_spline, b_id);
@@ -308,22 +337,8 @@ TEST(ManipulationKernelsTest, ExtractBoundaryBSpline) {
 }
 
 TEST(ManipulationKernelsTest, ExtractBezierPatchesBSpline) {
-  auto orig_degrees = LoadBin<int32_t>("operations_bspline_orig_degrees.bin");
-  auto orig_kv_0 = LoadBin<double>("operations_bspline_orig_kv_0.bin");
-  auto orig_kv_1 = LoadBin<double>("operations_bspline_orig_kv_1.bin");
-  auto orig_cps = LoadBin<double>("operations_bspline_orig_cps.bin");
-
-  Span<const double> orig_kvs[2] = {Span<const double>(orig_kv_0),
-                                    Span<const double>(orig_kv_1)};
-  SplineView orig_spline;
-  orig_spline.para_dim = 2;
-  orig_spline.dim = 2;
-  orig_spline.degrees = Span<const int32_t>(orig_degrees);
-  orig_spline.knot_vectors = Span<const Span<const double>>(orig_kvs, 2);
-  orig_spline.control_points_data = orig_cps.data();
-  orig_spline.num_control_points = orig_cps.size() / 2;
-  orig_spline.cp_stride = 2;
-  orig_spline.dim_stride = 1;
+  const GoldenSpline orig("operations_bspline_orig", 2);
+  const SplineView orig_spline = orig.View();
 
   // Insert knots to match operations_bspline ins configuration
   const double knots_0[2] = {0.3, 0.7};
@@ -351,23 +366,9 @@ TEST(ManipulationKernelsTest, ExtractBezierPatchesBSpline) {
 }
 
 TEST(ManipulationKernelsTest, ExtractDimBSpline) {
-  auto orig_degrees = LoadBin<int32_t>("operations_bspline_orig_degrees.bin");
-  auto orig_kv_0 = LoadBin<double>("operations_bspline_orig_kv_0.bin");
-  auto orig_kv_1 = LoadBin<double>("operations_bspline_orig_kv_1.bin");
-  auto orig_cps = LoadBin<double>("operations_bspline_orig_cps.bin");
+  const GoldenSpline orig("operations_bspline_orig", 2);
   auto exp_b_dim0 = LoadBin<double>("operations_bspline_b_dim0_cps.bin");
-
-  Span<const double> orig_kvs[2] = {Span<const double>(orig_kv_0),
-                                    Span<const double>(orig_kv_1)};
-  SplineView orig_spline;
-  orig_spline.para_dim = 2;
-  orig_spline.dim = 2;
-  orig_spline.degrees = Span<const int32_t>(orig_degrees);
-  orig_spline.knot_vectors = Span<const Span<const double>>(orig_kvs, 2);
-  orig_spline.control_points_data = orig_cps.data();
-  orig_spline.num_control_points = orig_cps.size() / 2;
-  orig_spline.cp_stride = 2;
-  orig_spline.dim_stride = 1;
+  const SplineView orig_spline = orig.View();
 
   SplineData dim0 = ExtractDim(orig_spline, 0);
   EXPECT_EQ(dim0.para_dim, 2);
@@ -448,26 +449,8 @@ TEST(ManipulationKernelsTest, GrevilleAbscissae) {
 }
 
 TEST(ManipulationKernelsTest, NURBSKnotInsertionAndElevationInvariance) {
-  // Load 2D NURBS test dataset
-  auto degrees = LoadBin<int32_t>("eval_nurbs_degrees.bin");
-  auto kv0 = LoadBin<double>("eval_nurbs_kv_0.bin");
-  auto kv1 = LoadBin<double>("eval_nurbs_kv_1.bin");
-  auto cps = LoadBin<double>("eval_nurbs_cps.bin");
-  auto weights = LoadBin<double>("eval_nurbs_weights.bin");
-
-  Span<const double> nurbs_kvs[2] = {Span<const double>(kv0),
-                                     Span<const double>(kv1)};
-  SplineView nurbs_spline;
-  nurbs_spline.para_dim = 2;
-  nurbs_spline.dim = 2;
-  nurbs_spline.degrees = Span<const int32_t>(degrees);
-  nurbs_spline.knot_vectors = Span<const Span<const double>>(nurbs_kvs, 2);
-  nurbs_spline.control_points_data = cps.data();
-  nurbs_spline.num_control_points = cps.size() / 2;
-  nurbs_spline.cp_stride = 2;
-  nurbs_spline.dim_stride = 1;
-  nurbs_spline.weights_data = weights.data();
-  nurbs_spline.weight_stride = 1;
+  const GoldenSpline nurbs("eval_nurbs", 2, true);
+  const SplineView nurbs_spline = nurbs.View();
 
   // 1. Knot insertion invariance
   const double ins_knots_0[2] = {0.2, 0.6};
@@ -493,14 +476,14 @@ TEST(ManipulationKernelsTest, NURBSKnotInsertionAndElevationInvariance) {
   EXPECT_EQ(rem_nurbs.removed[0], 1);
   EXPECT_EQ(rem_nurbs.removed[1], 1);
   EXPECT_LT(MaxAbsDiff(rem_nurbs.spline.knot_vectors[0].cspan(),
-                       Span<const double>(kv0)),
+                       Span<const double>(nurbs.knots[0])),
             1e-14);
   EXPECT_LT(MaxAbsDiff(rem_nurbs.spline.control_points.cspan(),
-                       Span<const double>(cps)),
+                       Span<const double>(nurbs.cps)),
             1e-14);
-  EXPECT_LT(
-      MaxAbsDiff(rem_nurbs.spline.weights.cspan(), Span<const double>(weights)),
-      1e-14);
+  EXPECT_LT(MaxAbsDiff(rem_nurbs.spline.weights.cspan(),
+                       Span<const double>(nurbs.weights)),
+            1e-14);
 
   // 3. Degree elevation invariance
   const int32_t ele_amounts[2] = {1, 0};

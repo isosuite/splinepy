@@ -11,11 +11,12 @@ import json as _json
 
 import numpy as _np
 
-from splinepy.viewer import mesh as _mesh
+from splinepy import mesh as _mesh
+from splinepy.viewer.compat import COLORMAP_STOPS as _COLORMAP_STOPS
 from splinepy.viewer.compat import to_css as _to_css
 from splinepy.viewer.texture import to_data_url as _to_data_url
 
-COLORMAPS = ("viridis", "plasma", "coolwarm", "jet", "gray")
+COLORMAPS = tuple(_COLORMAP_STOPS)
 LIGHTING = (
     "default", "metallic", "plastic", "shiny", "glossy", "ambient", "off"
 )  # fmt: skip
@@ -83,19 +84,23 @@ def _arrow_locations(spline, source):
     return None
 
 
+def _data_values(data, queries):
+    """Values of a spline_data entry at queries."""
+    if hasattr(data, "as_vertex_data"):
+        if getattr(data, "has_locations", False):
+            return _np.asarray(data.as_vertex_data())
+        return _np.asarray(data.as_vertex_data(on=queries))
+    if hasattr(data, "evaluate"):
+        return _np.asarray(data.evaluate(queries))
+    return _np.asarray(data)
+
+
 def _eval_data(spline, source, queries, parent=None):
     """Evaluates data given as spline_data key or callable at queries."""
     if callable(source):
         return _np.asarray(source(queries))
     if hasattr(spline, "spline_data") and source in spline.spline_data._saved:
-        adaptor = spline.spline_data._saved[source]
-        if hasattr(adaptor, "as_vertex_data"):
-            if getattr(adaptor, "has_locations", False):
-                return _np.asarray(adaptor.as_vertex_data())
-            return _np.asarray(adaptor.as_vertex_data(on=queries))
-        elif hasattr(adaptor, "evaluate"):
-            return _np.asarray(adaptor.evaluate(queries))
-        return _np.asarray(adaptor)
+        return _data_values(spline.spline_data._saved[source], queries)
     if (
         parent is not None
         and hasattr(parent, "spline_data")
@@ -111,11 +116,7 @@ def _eval_data(spline, source, queries, parent=None):
                     f"Data '{source}' has no field for {spline}"
                 ) from None
             return _np.asarray(patch.evaluate(queries))
-        if hasattr(data, "as_vertex_data"):
-            return _np.asarray(data.as_vertex_data(on=queries))
-        elif hasattr(data, "evaluate"):
-            return _np.asarray(data.evaluate(queries))
-        return _np.asarray(data)
+        return _data_values(data, queries)
     raise _DataLookupError(f"Data '{source}' not found on {spline}")
 
 
@@ -128,13 +129,22 @@ def _scalar_values(values, count):
     return values.reshape(-1)
 
 
-def _surface_meshes(spline, res, scalars, uv=False, parent=None):
-    """Showable surface of a single patch as a list of meshes."""
+def _surface_meshes(spline, res, scalars, uv=False, parent=None, faces=None):
+    """Showable surface of a single patch as a list of meshes.
+
+    ``faces`` selects the faces of a volume to draw, in the face order of
+    ``Multipatch.interfaces`` (2 * axis + side). Default: all six.
+    """
     pdim = spline.para_dim
     bounds = spline.parametric_bounds
     cases = [{}]
     if pdim == 3:
-        cases = [{d: bounds[s][d]} for d in range(3) for s in (0, 1)]
+        cases = [
+            {d: bounds[s][d]}
+            for d in range(3)
+            for s in (0, 1)
+            if faces is None or faces[2 * d + s]
+        ]
 
     meshes = []
     for fixed in cases:
@@ -156,30 +166,40 @@ def _surface_meshes(spline, res, scalars, uv=False, parent=None):
     return meshes
 
 
-def _knot_lines(spline, res):
-    """Knot lines as a "line" mesh. For volumes only on the boundary."""
+def _knot_lines(spline, res, faces=None, seen=None):
+    """Knot lines as a "line" mesh. For volumes only on the drawn ``faces``.
+
+    ``seen`` collects the lines drawn so far (end points and mean, in single
+    precision), so that a line shared by neighboring patches is drawn once.
+    """
+    seen = set() if seen is None else seen
     pdim = spline.para_dim
     bounds = _np.asarray(spline.parametric_bounds)
     uks = [_np.asarray(k) for k in spline.unique_knots]
+    if pdim == 1:
+        return _mesh.make_mesh("vertex", spline.evaluate(uks[0].reshape(-1, 1)))
     pts, edges, off = [], [], 0
     for d in range(pdim):
         others = [o for o in range(pdim) if o != d]
         for vals in _itertools.product(*(uks[o] for o in others)):
             if pdim == 3 and not any(
-                v in (bounds[0][o], bounds[1][o])
-                for o, v in zip(others, vals, strict=False)
+                v == bounds[s][o] and (faces is None or faces[2 * o + s])
+                for o, v in zip(others, vals, strict=True)
+                for s in (0, 1)
             ):
                 continue
-            if pdim == 1:
+            q, shape = _query_grid(bounds, res, dict(zip(others, vals, strict=True)))
+            p = spline.evaluate(q)
+            a, b, m = (x.tobytes() for x in _np.float32([p[0], p[-1], p.mean(0)]) + 0)
+            key = (min(a, b), max(a, b), m)
+            if key in seen:
                 continue
-            q, shape = _query_grid(bounds, res, dict(zip(others, vals, strict=False)))
-            pts.append(spline.evaluate(q))
-            seg = _mesh.grid_edges(shape) + off
-            edges.append(seg)
+            seen.add(key)
+            pts.append(p)
+            edges.append(_mesh.grid_edges(shape) + off)
             off += len(q)
-    if pdim == 1:
-        pts = [spline.evaluate(uks[0].reshape(-1, 1))]
-        return _mesh.make_mesh("vertex", pts[0])
+    if not pts:
+        pts, edges = [_np.empty((0, spline.dim))], [_np.empty((0, 2), int)]
     return _mesh.make_mesh("line", _np.vstack(pts), _np.vstack(edges))
 
 
@@ -215,7 +235,7 @@ def scene_from_splines(
     control_points=True,
     control_mesh=True,
     control_point_ids=None,
-    colormap="viridis",
+    colormap="plasma",
     vmin=None,
     vmax=None,
     color=None,
@@ -228,9 +248,14 @@ def scene_from_splines(
     arrow_color=None,
     arrow_to_origin=False,
     knot_color=None,
+    knot_opacity=None,
+    knot_line_width=None,
     control_point_color=None,
     control_point_size=None,
+    control_point_opacity=None,
     control_mesh_color=None,
+    control_mesh_opacity=None,
+    control_mesh_line_width=None,
     line_width=None,
     fitting_queries=True,
 ):
@@ -241,7 +266,8 @@ def scene_from_splines(
     splines: Spline / Multipatch or list of them
     resolutions: int or sequence
         Samples per parametric direction. Default 100 (curves), 50
-        (surfaces/volumes), 10 per patch of multipatch objects.
+        (surfaces/volumes), 10 per patch of multipatch objects. Of a volume
+        multipatch only the faces without a neighbor are drawn.
     scalars: str or callable
         Key in ``spline.spline_data`` or ``f(parametric_queries) -> (n,)``.
     arrows: str or callable
@@ -282,8 +308,12 @@ def scene_from_splines(
         end (instead of start) at their location.
     knot_color, control_point_color, control_mesh_color : str, optional
         Colors of the respective layers.
+    knot_opacity, control_point_opacity, control_mesh_opacity : float, optional
+        Opacities of the respective layers.
     control_point_size, line_width : float, optional
         Sizes in pixels.
+    knot_line_width, control_mesh_line_width : float, optional
+        Line widths in pixels of knot lines and the control mesh.
     fitting_queries: bool
         Show ``spline._fitting_queries`` if the spline has any.
 
@@ -322,11 +352,15 @@ def scene_from_splines(
             for p in sub
         ]  # fmt: skip
         uv_needed = texture is not None
+        # of a volume multipatch, only the faces no other patch covers
+        faces = [None] * len(sub)
+        if multi and sub[0].para_dim == 3:
+            faces = s.interfaces < 0
         try:
             surface = _mesh.merge(
                 m
-                for p, res in zip(sub, patch_resolutions, strict=False)
-                for m in _surface_meshes(p, res, scalars, uv_needed, parent=s)
+                for p, res, f in zip(sub, patch_resolutions, faces, strict=True)
+                for m in _surface_meshes(p, res, scalars, uv_needed, s, f)
             )
         except _DataLookupError:
             if not multi or callable(scalars) or scalars not in s.spline_data._saved:
@@ -365,9 +399,11 @@ def scene_from_splines(
         )
 
         if knots:
+            seen = set()
             kn = [
-                _knot_lines(p, res)
-                for p, res in zip(sub, patch_resolutions, strict=False)
+                _knot_lines(p, res, f, seen)
+                for p, res, f in zip(sub, patch_resolutions, faces, strict=True)
+                if f is None or f.any()
             ]
             kn = [k for k in kn if len(k["vertices"])]
             if kn and kn[0]["element_type"] == "line":
@@ -376,13 +412,15 @@ def scene_from_splines(
                     _layer("lines", "knots", k["vertices"],
                            indices=k["connectivity"],
                            color=_color(knot_color, "#000000"),
-                           width=1.5)
+                           width=knot_line_width or 1.5,
+                           opacity=knot_opacity)
                 )  # fmt: skip
             elif kn:
                 k = _mesh.merge(kn)
                 layers.append(
                     _layer("points", "knots", k["vertices"],
-                           color=_color(knot_color, "#1b7f1b"), size=6)
+                           color=_color(knot_color, "#1b7f1b"), size=6,
+                           opacity=knot_opacity)
                 )  # fmt: skip
 
         if arrows is not None:
@@ -430,8 +468,8 @@ def scene_from_splines(
                 )
             )  # fmt: skip
 
+        cp = _np.vstack([p.control_points for p in sub])
         if control_points:
-            cp = _np.vstack([p.control_points for p in sub])
             layers.append(
                 _layer(
                     "points",
@@ -439,18 +477,17 @@ def scene_from_splines(
                     cp,
                     color=_color(control_point_color, "#d62728"),
                     size=control_point_size or 8,
+                    opacity=control_point_opacity,
                 )
             )
-        n_cp = sum(len(p.control_points) for p in sub)
-        if control_point_ids or (control_point_ids is None and n_cp <= 200):
+        if control_point_ids or (control_point_ids is None and len(cp) <= 200):
             text = [
                 f"{i}" if not multi else f"{k}:{i}"
                 for k, p in enumerate(sub)
                 for i in range(len(p.control_points))
             ]
-            cp_all = _np.vstack([p.control_points for p in sub])
             layers.append(
-                _layer("labels", "control_point_ids", cp_all, text=text,
+                _layer("labels", "control_point_ids", cp, text=text,
                        color="#8c1c1c",
                        visible=bool(control_point_ids))
             )  # fmt: skip
@@ -461,9 +498,11 @@ def scene_from_splines(
                 _layer("lines", "control_mesh", cm["vertices"],
                        indices=cm["connectivity"],
                        color=_color(control_mesh_color, "#d62728"),
-                       width=1.5, opacity=0.8)
+                       width=control_mesh_line_width or 1.5,
+                       opacity=0.8 if control_mesh_opacity is None
+                       else control_mesh_opacity)
             )  # fmt: skip
-        fq = getattr(p, "_fitting_queries", None) if len(sub) == 1 else None
+        fq = getattr(sub[0], "_fitting_queries", None) if len(sub) == 1 else None
         if fitting_queries and fq is not None:
             layers.append(
                 _layer("points", "fitting_queries", _np.asarray(fq),
@@ -487,43 +526,13 @@ def _assemble(layers, axes=True, background=None, camera=None):
     }
 
 
-def _gustaf_to_mesh(obj):
-    vertices = _np.ascontiguousarray(obj.vertices, dtype=_np.float64)
-    elements = getattr(obj, "elements", None)
-    whatami = getattr(obj, "whatami", "")
-    if elements is None or len(elements) == 0 or whatami == "vertices":
-        etype = "vertex"
-        connectivity = None
-    elif elements.shape[1] == 2:
-        etype = "line"
-        connectivity = elements
-    elif elements.shape[1] == 3:
-        etype = "triangle"
-        connectivity = elements
-    elif elements.shape[1] == 4:
-        etype = "tet" if whatami.startswith("tet") else "quad"
-        connectivity = elements
-    elif elements.shape[1] == 8:
-        etype = "hexa"
-        connectivity = elements
-    else:
-        etype = "vertex"
-        connectivity = None
-    vdata = {}
-    if hasattr(obj, "vertex_data"):
-        # Gustaf VertexData exposes keys() but does not support direct iteration.
-        for k in obj.vertex_data.keys():  # noqa: SIM118
-            vdata[k] = obj.vertex_data[k]
-    return _mesh.make_mesh(etype, vertices, connectivity, vertex_data=vdata)
-
-
 def scene_from_mesh(
     mesh,
     mode="edges",
     scalars=None,
     arrows=None,
     arrow_scale=None,
-    colormap="viridis",
+    colormap="plasma",
     vmin=None,
     vmax=None,
     color=None,
@@ -596,7 +605,7 @@ def scene_from_mesh(
     if lighting is not None and lighting not in LIGHTING:
         raise ValueError(f"lighting must be one of {LIGHTING}")
     if hasattr(mesh, "vertices") and not isinstance(mesh, dict):
-        mesh = _gustaf_to_mesh(mesh)
+        mesh = _mesh.from_gustaf(mesh)
     elif not isinstance(mesh, dict):
         mesh = _mesh.make_mesh("vertex", mesh)
     etype = mesh["element_type"]

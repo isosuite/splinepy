@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 from pytest import mark, skip
 
 import splinepy.microstructure as ms
@@ -17,6 +18,15 @@ tile_classes_with_closure = [
 TILING = [2, 2, 2]
 BOX_DIMENSIONS = [1, 1, 1]
 EPS = 1e-7
+
+
+def test_affine_tile_checks_parameters_in_every_cell():
+    generator = ms.Microstructure(
+        box(1, 1), [3, 1], ms.tiles.Cross2D(),
+        lambda points: np.where(points[:, :1] > 0.4, 0.8, 0.1),
+    )
+    with pytest.raises(ValueError, match="out of bounds"):
+        generator.create()
 
 # TODO(#458): the following tiles fail the closure test
 CLOSURE_FAILS = {
@@ -39,12 +49,6 @@ def test_closing_face(tile_class):
     tile_class: tile class in splinepy.microstructure.tiles
         Microtile
     """
-
-    # Skip tile if it doesn't support closure
-    if tile_class._closure_directions is None:
-        skip(
-            f"Tile {tile_class.__name__} does not have a closure implementation. Skip"
-        )
 
     # TODO: right now skip tiles which have faulty closures
     if tile_class in CLOSURE_FAILS:
@@ -87,11 +91,11 @@ def test_closing_face(tile_class):
         face_min_area = sum([volume(patch) for patch in min_patches.patches])
         face_max_area = sum([volume(patch) for patch in max_patches.patches])
 
-        assert face_min_area > 1.0 - EPS, (
+        assert abs(face_min_area - 1.0) < EPS, (
             f"The closure of the {closure_direction}_min surface is not complete. "
             f"Expected area of 1, instead got {face_min_area}"
         )
-        assert face_max_area > 1.0 - EPS, (
+        assert abs(face_max_area - 1.0) < EPS, (
             f"The closure of the {closure_direction}_max surface is not complete. "
             f"Expected area of 1, instead got {face_max_area}"
         )
@@ -210,60 +214,31 @@ def test_macro_sensitivities(tile_class, np_rng, h_eps, n_test_points):
                 )
 
 
-def test_fixed_tile_batch_matches_pairwise_composition():
-    from splinepy import Bezier
-
-    outer = box(2.0, 3.0)
-    tile = [
-        Bezier([1, 1], [[0, 0], [.5, 0], [0, 1], [.5, 1]]),
-        Bezier([1, 1], [[.5, 0], [1, 0], [.5, 1], [1, 1]]),
+def reference_patches(structure, tiles_of_cell=None):
+    """Outer Bézier cells composed with the tile patches, one by one."""
+    outer = structure.deformation_function
+    outer = outer.nurbs if outer.is_rational else outer.bspline
+    for axis, knots in enumerate(structure._additional_knots(True)):
+        outer.insert_knots(axis, knots)
+    cells = outer.extract.beziers()
+    if tiles_of_cell is None:
+        tiles, _ = structure.microtile.create_tile()
+        tiles_of_cell = [tiles] * len(cells)
+    return [
+        cell.compose(tile)
+        for cell, tiles in zip(cells, tiles_of_cell, strict=True)
+        for tile in tiles
     ]
-    generator = ms.microstructure.Microstructure(
-        deformation_function=outer, microtile=tile, tiling=[7, 5]
-    )
-    outers, *_ = generator._compute_tiling_prerequisites(
-        knot_span_wise=True, is_parametrized=False, macro_sensitivity=False
-    )
-    expected = [patch.compose(inner) for patch in outers for inner in tile]
-    actual = generator.create().patches
+
+
+def assert_same_patches(actual, expected):
     assert len(actual) == len(expected)
-    for patch, reference in zip(actual, expected, strict=True):
-        np.testing.assert_allclose(patch.cps, reference.cps, atol=1e-13)
+    for left, right in zip(actual, expected, strict=True):
+        np.testing.assert_array_equal(left.degrees, right.degrees)
+        np.testing.assert_allclose(left.control_points, right.control_points)
 
 
-def test_fixed_tile_macro_fields_match_per_tile_batches():
-    from splinepy import Bezier
-    from splinepy.microstructure.microstructure import _UserTile
-
-    class PerPatchTile(_UserTile):
-        pass
-
-    outer = box(2.0, 3.0).bspline
-    tile = Bezier([1, 1], [[0, 0], [.5, 0], [0, 1], [.5, 1]])
-    generator = ms.microstructure.Microstructure(
-        deformation_function=outer, microtile=tile, tiling=[3, 3]
-    )
-    batched = generator.create(macro_sensitivities=True, nthreads=2)
-    plan = generator._fixed_tile_cache[1]
-    epsilon = 1e-6
-    outer.control_points[0, 1] += epsilon
-    updated = generator.create(nthreads=2)
-    outer.control_points[0, 1] -= epsilon
-    assert generator._fixed_tile_cache[1] is plan
-    np.testing.assert_allclose(
-        (updated.control_points - batched.control_points) / epsilon,
-        batched.fields[1].control_points,
-        atol=1e-9,
-    )
-
-    generator.microtile = PerPatchTile(tile)
-    reference = generator.create(macro_sensitivities=True, nthreads=1)
-    np.testing.assert_allclose(batched.control_points, reference.control_points)
-    for field, expected in zip(batched.fields, reference.fields, strict=True):
-        np.testing.assert_allclose(field.control_points, expected.control_points)
-
-
-def test_fixed_tile_cache_reuses_maps_and_tracks_in_place_edits():
+def test_fixed_tile_matches_composition_and_reuses_bases():
     from splinepy import Bezier, BSpline
 
     rng = np.random.default_rng(43)
@@ -280,33 +255,59 @@ def test_fixed_tile_cache_reuses_maps_and_tracks_in_place_edits():
         deformation_function=macro, tiling=[2, 3], microtile=tile
     )
 
-    def check_result():
-        outers, *_ = structure._compute_tiling_prerequisites(True, False, False)
-        tiles, _ = structure.microtile.create_tile()
-        expected = [outer.compose(inner) for outer in outers for inner in tiles]
+    def check():
         actual = structure.create(nthreads=2)
         assert structure._microstructure is actual
-        assert len(actual.patches) == len(expected)
-        for left, right in zip(actual.patches, expected, strict=True):
-            np.testing.assert_array_equal(left.degrees, right.degrees)
-            np.testing.assert_allclose(left.control_points, right.control_points)
-        return structure._fixed_tile_cache[1]
+        assert_same_patches(actual.patches, reference_patches(structure))
+        return structure._plan_cache[1]
 
-    plan = check_result()
+    plan = check()
+    # the cells share one basis per tile patch
+    assert plan._num_reused_bases() == 0
     macro.control_points[:] = rng.random(macro.control_points.shape)
-    assert check_result() is plan
+    assert check() is plan
+    assert plan._num_reused_bases() == 2
 
     macro.knot_vectors[0][3:5] = 0.4
-    knot_plan = check_result()
+    knot_plan = check()
     assert knot_plan is not plan
 
     tiles, _ = structure.microtile.create_tile()
     tiles[0].control_points[0] += 0.05
-    tile_plan = check_result()
-    assert tile_plan is not knot_plan
+    assert check() is knot_plan
+    assert knot_plan._num_reused_bases() == 1
 
     structure.tiling[0] += 1
-    assert check_result() is not tile_plan
+    assert check() is not knot_plan
+
+
+@mark.parametrize("rational", [False, True])
+@mark.parametrize("knot_span_wise", [True, False])
+def test_macro_fields_match_finite_differences(rational, knot_span_wise):
+    rng = np.random.default_rng(3)
+    outer = box(1.0, 1.0).nurbs if rational else box(1.0, 1.0).bspline
+    outer.elevate_degrees([0, 1])
+    outer.insert_knots(0, [0.4])
+    outer.control_points[:] += 0.05 * rng.random(outer.control_points.shape)
+    if rational:
+        outer.weights[:] = rng.uniform(0.7, 1.3, outer.weights.shape)
+    structure = ms.Microstructure(
+        deformation_function=outer, tiling=[3, 2], microtile=ms.tiles.Cross2D()
+    )
+    joint = structure.create(
+        knot_span_wise=knot_span_wise, macro_sensitivities=True, nthreads=2
+    )
+    assert len(joint.fields) == outer.control_points.size
+    epsilon = 1e-6
+    for k in (0, 7, outer.control_points.size - 1):
+        outer.control_points[k // 2, k % 2] += epsilon
+        changed = structure.create(knot_span_wise=knot_span_wise, nthreads=2)
+        outer.control_points[k // 2, k % 2] -= epsilon
+        np.testing.assert_allclose(
+            (changed.control_points - joint.control_points) / epsilon,
+            joint.fields[k].control_points,
+            atol=1e-7,
+        )
 
 
 def test_global_tiling_keeps_empty_entries_for_axes_without_insertions():
@@ -327,7 +328,7 @@ def test_global_tiling_keeps_empty_entries_for_axes_without_insertions():
     np.testing.assert_allclose(start[:, 2], np.repeat([0, 1 / 3, 2 / 3], 2))
 
 
-def test_paired_tiles_preserve_closure_order_and_snapshot_reused_geometry():
+def test_closure_groups_and_reused_tile_objects():
     from splinepy import Bezier
 
     class ReusedTile:
@@ -337,65 +338,50 @@ def test_paired_tiles_preserve_closure_order_and_snapshot_reused_geometry():
 
         def __init__(self):
             self.patch = Bezier([1], [[0.0, 0.2], [0.9, 0.8]])
-            self.closures = []
 
         def create_tile(self, parameters, closure, **_kwargs):
-            self.closures.append(closure)
+            # mutates and returns the same object on every call
             self.patch.control_points[0, 0] = parameters[0, 0]
             patches = [self.patch]
             if closure == "x_min":
                 patches.append(Bezier([1], [[0, 0.5], [1, 0.5]]))
             return patches, None
 
-    tile = ReusedTile()
     parameter_shift = np.zeros(1)
     structure = ms.Microstructure(
         deformation_function=box(1.0, 1.0).bspline,
         tiling=[3, 1],
-        microtile=tile,
-        parametrization_function=lambda positions: positions[:, :1] + parameter_shift,
+        microtile=ReusedTile(),
+        parametrization_function=lambda positions: positions[:, :1]
+        + parameter_shift,
     )
-    patches = structure.create(closing_face="x", nthreads=2).patches
-    assert tile.closures == ["x_min", None, "x_max"]
-    assert len(patches) == 4
-    starts = [patch.evaluate([[0]])[0] for patch in patches]
+
+    def starts():
+        patches = structure.create(closing_face="x", nthreads=2).patches
+        return np.array([patch.evaluate([[0]])[0] for patch in patches])
+
+    first = starts()
     np.testing.assert_allclose(
-        starts, [[1 / 18, 0.2], [0, 0.5], [0.5, 0.2], [17 / 18, 0.2]]
+        first, [[1 / 18, 0.2], [0, 0.5], [0.5, 0.2], [17 / 18, 0.2]]
     )
-
-    cached = structure._paired_tile_cache
-    plan = cached[1]
-    assert plan._num_reused_bases() == 0
-
-    def starts_after_update():
-        updated = structure.create(closing_face="x", nthreads=2)
-        assert structure._paired_tile_cache is cached
-        return np.array([patch.evaluate([[0]])[0] for patch in updated.patches])
+    plan = structure._plan_cache[1]
 
     parameter_shift[0] = 0.03
     shifts = np.array([[0.01, 0], [0, 0], [0.01, 0], [0.01, 0]])
-    np.testing.assert_allclose(starts_after_update(), starts + shifts)
+    np.testing.assert_allclose(starts(), first + shifts)
     assert plan._num_reused_bases() == 1
 
     structure.deformation_function.control_points[:] += [1, 2]
-    np.testing.assert_allclose(starts_after_update(), starts + shifts + [1, 2])
+    np.testing.assert_allclose(starts(), first + shifts + [1, 2])
     assert plan._num_reused_bases() == 4
-
-    parameter_shift[0] = 0.06
-    structure.deformation_function.control_points[:] += [1, 2]
-    np.testing.assert_allclose(starts_after_update(), starts + 2 * shifts + [2, 4])
-    assert plan._num_reused_bases() == 1
-
-    structure.tiling[0] = 4
-    assert len(structure.create(closing_face="x", nthreads=2).patches) == 5
-    assert structure._paired_tile_cache is not cached
+    assert structure._plan_cache[1] is plan
 
 
-def test_concurrent_fixed_tile_updates_share_plan_and_keep_distinct_outputs():
+def test_concurrent_compositions_share_a_plan():
     from concurrent.futures import ThreadPoolExecutor
     from threading import Barrier
 
-    from splinepy import Bezier
+    from splinepy import Bezier, splinepy_core
 
     outer = box(1.0, 1.0).bspline
     tile = Bezier([1], [[0.1, 0.2], [0.8, 0.9]])
@@ -403,14 +389,17 @@ def test_concurrent_fixed_tile_updates_share_plan_and_keep_distinct_outputs():
         deformation_function=outer, tiling=[8, 8], microtile=tile
     )
     reference = structure.create(nthreads=2).control_points.copy()
-    plan = structure._fixed_tile_cache[1]
+    plan = structure._plan_cache[1]
     barrier = Barrier(2)
     translations = (np.array([1.0, 2.0]), np.array([-2.0, 1.0]))
 
     def update(translation):
-        points = outer.control_points + translation
+        composition = splinepy_core._CellComposition(
+            plan, outer.control_points + translation, None, 2
+        )
+        composition.set_cells(np.arange(64), [tile], tile.control_points[None])
         barrier.wait(timeout=5)
-        return np.vstack([patch.control_points for patch in plan.apply(points, 2)])
+        return np.vstack([p.control_points for p in composition.finish(2)])
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         outputs = list(executor.map(update, translations))
@@ -418,6 +407,46 @@ def test_concurrent_fixed_tile_updates_share_plan_and_keep_distinct_outputs():
     for output, translation in zip(outputs, translations, strict=True):
         np.testing.assert_allclose(output, reference + translation)
     np.testing.assert_array_equal(structure._microstructure.control_points, reference)
+
+
+def test_cell_composition_rejects_a_call_without_setting_cells():
+    from splinepy import Bezier, splinepy_core
+
+    outer = box(1.0, 1.0).bspline
+    tile = Bezier([1], [[0.1, 0.2], [0.8, 0.9]])
+    structure = ms.Microstructure(
+        deformation_function=outer, tiling=[2, 2], microtile=tile
+    )
+    structure.create()
+    composition = splinepy_core._CellComposition(
+        structure._plan_cache[1], outer.control_points, None, 1
+    )
+    points = tile.control_points[None]
+    derivative = np.ones((1, 2, 2))
+    failing = [
+        (np.array([0, 4]), [tile], points, None),
+        (np.array([0, 0]), [tile], points, None),
+        (np.array([0]), [Bezier([1], [[0.0], [1.0]])], np.zeros((1, 2, 1)), None),
+        (np.array([0]), [tile], np.full((1, 2, 2), np.nan), None),
+        # a sensitivity of a cell outside the call
+        (np.array([0]), [tile], points, (np.array([1]), np.array([0]), derivative)),
+    ]
+    for cells, template, control_points, sensitivities in failing:
+        with pytest.raises(ValueError):
+            composition.set_cells(cells, template, control_points, sensitivities)
+
+    # nothing was set: every cell can still be set, once
+    composition.set_cells(
+        np.arange(4),
+        [tile],
+        points,
+        (np.array([0]), np.array([1]), derivative),
+    )
+    with pytest.raises(ValueError, match="out of range"):
+        composition.finish_with_sensitivities(1, 1, False)
+    patches, fields = composition.finish_with_sensitivities(1, 2, False)
+    assert len(patches) == 4
+    assert len(fields) == 2
 
 
 def test_native_parameter_fields_match_finite_differences_with_sparse_support():
@@ -498,4 +527,66 @@ def test_native_parameter_fields_match_finite_differences_with_sparse_support():
             (updated.control_points - base.control_points) / epsilon,
             field.control_points,
             atol=1e-9,
+        )
+
+
+class _Cross2DWithTileDerivatives(ms.tiles.Cross2D):
+    _affine = False
+
+
+class _Cross2DWithoutDerivatives(ms.tiles.Cross2D):
+    _affine = False
+    _sensitivities_implemented = False
+
+
+@mark.parametrize(
+    "tile_class",
+    [
+        ms.tiles.Cross2D,
+        _Cross2DWithTileDerivatives,
+        _Cross2DWithoutDerivatives,
+        ms.tiles.Chi,
+        ms.tiles.CubeVoid,
+    ],
+)
+def test_parameter_fields_match_finite_differences(tile_class):
+    """Affine map, the tile's own derivatives and central differences."""
+    tile = tile_class()
+    design = np.array([0.0, 0.05])
+    default = np.broadcast_to(
+        np.asarray(tile._default_parameter_value, dtype=float),
+        tile._parameters_shape,
+    )[0]
+
+    def parameters(x):
+        return default + (design[0] + design[1] * x[:, :1])
+
+    def sensitivities(x):
+        out = np.zeros((len(x), tile._n_info_per_eval_point, 2))
+        out[:, :, 0] = 1
+        out[:, :, 1] = x[:, :1]
+        return out
+
+    structure = ms.Microstructure(
+        deformation_function=box(*[1.0] * tile._dim).bspline,
+        tiling=[2] * tile._dim,
+        microtile=tile,
+        parametrization_function=parameters,
+    )
+    structure.parameter_sensitivity_function = sensitivities
+    base = structure.create(nthreads=2)
+    assert len(base.fields) == 2
+
+    structure.parameter_sensitivity_function = None
+    epsilon = 1e-6
+    for i, field in enumerate(base.fields):
+        design[i] += epsilon
+        forward = structure.create(nthreads=2).control_points
+        design[i] -= 2 * epsilon
+        backward = structure.create(nthreads=2).control_points
+        design[i] += epsilon
+        np.testing.assert_allclose(
+            (forward - backward) / (2 * epsilon),
+            field.control_points,
+            atol=1e-6,
         )

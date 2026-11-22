@@ -1,5 +1,5 @@
 from splinepy import settings as _settings
-from splinepy import splinepy_core as _splinepy_core
+from splinepy import splinepy_core as _core
 from splinepy.bezier import BezierBase as _BezierBase
 
 
@@ -170,5 +170,5 @@ class RationalBezier(_BezierBase):
         spline : NURBS
         """
         return _settings.NAME_TO_TYPE["NURBS"](
-            spline=_splinepy_core.same_spline_with_knot_vectors(self)
+            spline=_core.same_spline_with_knot_vectors(self)
         )

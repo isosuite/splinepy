@@ -7,9 +7,6 @@ argument, else by ``splinepy.settings.SHOW_BACKEND``.
 
 from splinepy import settings as _settings
 from splinepy.helpme.visualize.options import (
-    MultipatchShowOption as MultipatchShowOption,
-)
-from splinepy.helpme.visualize.options import (
     SplineShowOption as SplineShowOption,
 )
 from splinepy.helpme.visualize.viewer_backend import show_viewer
@@ -121,4 +118,15 @@ def show(*objs, backend=None, **kwargs):
 
     import gustaf as _gus
 
-    return _gus.show(*objs, **kwargs)
+    return _gus.show(*(_as_gustaf(o) for o in objs), **kwargs)
+
+
+def _as_gustaf(obj):
+    """Mesh dicts, also inside show groups, as gustaf objects."""
+    from splinepy import mesh as _mesh
+
+    if isinstance(obj, dict) and "element_type" in obj:
+        return _mesh.to_gustaf(obj)
+    if isinstance(obj, (list, tuple)):
+        return type(obj)(_as_gustaf(o) for o in obj)
+    return obj

@@ -5,14 +5,15 @@
 #include <functional>
 #include <limits>
 #include <numeric>
-#include <vector>
 
 #include "nb_common.hpp"
 #include "nb_spline.hpp"
 #include "splinepy/core/concurrency/parallel_for.hpp"
+#include "splinepy/core/error.hpp"
 #include "splinepy/core/manipulation/elevate_degree.hpp"
 #include "splinepy/core/manipulation/extract.hpp"
 #include "splinepy/core/manipulation/insert_knots.hpp"
+#include "splinepy/core/math/uniform_grid.hpp"
 #include "splinepy/core/multipatch/boundary.hpp"
 #include "splinepy/core/multipatch/continuity.hpp"
 #include "splinepy/core/multipatch/interfaces.hpp"
@@ -21,9 +22,6 @@
 #include "splinepy/core/queries/evaluate.hpp"
 #include "splinepy/core/queries/jacobian.hpp"
 #include "splinepy/core/validate/validator.hpp"
-#include "splinepy/utils/grid_points.hpp"
-#include "splinepy/utils/nthreads.hpp"
-#include "splinepy/utils/print.hpp"
 
 namespace splinepy::py {
 
@@ -32,7 +30,7 @@ namespace {
 namespace core = splinepy::core;
 
 struct PatchViews {
-  core::Buffer<SplineViewWrapper> holders;
+  core::Buffer<SplineArrays> holders;
   core::Buffer<core::SplineView> views;
 
   explicit PatchViews(const nb::list& patches)
@@ -40,7 +38,7 @@ struct PatchViews {
         views(patches.size()),
         homogeneous(!views.empty()) {
     for (std::size_t i = 0; i < views.size(); ++i) {
-      holders[i] = SplineViewWrapper(patches[i]);
+      holders[i] = Pin(patches[i]);
       views[i] = holders[i].view;
       homogeneous &= views[i].para_dim == views[0].para_dim
                      && views[i].dim == views[0].dim;
@@ -59,7 +57,8 @@ struct PatchViews {
     for (const auto& patch : patches) {
       count += !patch.is_none();
     }
-    holders.resize(count);
+    // resize() copies; start from a fresh Buffer
+    holders = core::Buffer<SplineArrays>(count);
     views.resize(count);
     std::size_t next = 0;
     for (std::size_t i = 0; i < patches.size(); ++i) {
@@ -69,13 +68,18 @@ struct PatchViews {
         continue;
       }
       patch_indices[i] = next;
-      holders[next] = SplineViewWrapper(patch);
+      holders[next] = Pin(patch);
       views[next] = holders[next].view;
       homogeneous &= views[next].para_dim == layouts->views[0].para_dim
                      && views[next].dim == layouts->views[0].dim;
       ++next;
     }
   }
+
+  PatchViews(const PatchViews&) = delete;
+  PatchViews& operator=(const PatchViews&) = delete;
+  PatchViews(PatchViews&&) noexcept = default;
+  PatchViews& operator=(PatchViews&&) noexcept = default;
 
   bool Homogeneous() const { return homogeneous; }
   std::size_t size() const {
@@ -109,7 +113,7 @@ nb::dict SeamControlPoints(const PatchViews& batch,
       || orientation_rows.shape(1) != static_cast<std::size_t>(4 + 2 * dim)) {
     throw nb::value_error("Invalid seam orientation shape");
   }
-  std::vector<std::vector<core::SeamPoint>> groups;
+  core::SeamGroups groups;
   {
     nb::gil_scoped_release release;
     groups = core::SeamControlPoints(
@@ -119,10 +123,10 @@ nb::dict SeamControlPoints(const PatchViews& batch,
         tolerance);
   }
   nb::dict mapping;
-  for (const auto& group : groups) {
+  for (std::size_t g = 0; g + 1 < groups.offsets.size(); ++g) {
     nb::set members;
-    for (const auto& point : group) {
-      members.add(nb::make_tuple(point[0], point[1]));
+    for (auto i = groups.offsets[g]; i < groups.offsets[g + 1]; ++i) {
+      members.add(nb::make_tuple(groups.points[i][0], groups.points[i][1]));
     }
     for (const auto& member : members) {
       mapping[member] = members;
@@ -172,8 +176,11 @@ nb::object QueryMultipatch(const PatchViews& batch,
   const auto n_patches = batch.size();
   const bool routed = width != para_dim;
   const auto count = routed ? n_queries : n_queries * n_patches;
-  std::vector<std::size_t> shape{count};
-  shape.insert(shape.end(), row_shape.begin(), row_shape.end());
+  core::DynamicBuffer<std::size_t> shape(1 + row_shape.size());
+  shape.push_back(count);
+  for (const auto extent : row_shape) {
+    shape.push_back(extent);
+  }
   OutArray<double> output(out, {shape.data(), shape.size()});
   if (n_queries == 0) {
     return output.result();
@@ -419,7 +426,8 @@ nb::object SampleMultipatch(const PatchViews& batch,
     return nb::none();
   }
   if (resolution < 2) {
-    throw nb::value_error("Resolutions for GridPoints can't be less than 2.");
+    throw nb::value_error(
+        "Resolutions for a uniform grid can't be less than 2.");
   }
   const int para_dim = batch.View(0).para_dim;
   const auto dim = static_cast<std::size_t>(batch.View(0).dim);
@@ -430,7 +438,7 @@ nb::object SampleMultipatch(const PatchViews& batch,
     }
     points *= resolution;
   }
-  core::Buffer<int> resolutions(para_dim, resolution);
+  core::Buffer<int32_t> resolutions(para_dim, resolution);
   const auto count = batch.size() * static_cast<std::size_t>(points);
   OutArray<double> output(out, {count, dim});
   if (batch.views.empty()) {
@@ -450,7 +458,6 @@ nb::object SampleMultipatch(const PatchViews& batch,
     if (workers > 1) {
       options.nthreads = 1;
     }
-    core::Buffer<splinepy::utils::GridPoints> grids(workers);
     core::Buffer<core::Buffer<double>> queries_per_thread(workers);
     for (auto& queries : queries_per_thread) {
       queries = core::Buffer<double>::Uninitialized(
@@ -468,10 +475,13 @@ nb::object SampleMultipatch(const PatchViews& batch,
           }
           const auto& view = batch.View(i);
           const auto bounds = core::ParametricBounds(view);
-          auto& grid = grids[thread_id];
           auto& queries = queries_per_thread[thread_id];
-          grid.SetUp(para_dim, bounds.data(), resolutions.data());
-          grid.Fill(queries.data());
+          const core::UniformGrid grid(
+              para_dim,
+              bounds.cspan(),
+              core::Span<const int32_t>(resolutions.data(),
+                                        resolutions.size()));
+          grid.Fill(queries.span());
           core::Evaluate(view, queries, {destination, points * dim}, options);
         });
   }
@@ -479,6 +489,30 @@ nb::object SampleMultipatch(const PatchViews& batch,
 }
 
 } // namespace
+
+/// Centers of all boundary faces of all patches, (n_patches * 2 * para_dim,
+/// dim), in one call.
+nb::object BoundaryCenters(nb::handle patches, int nthreads) {
+  const ViewList list(patches);
+  splinepy::core::Buffer<double> centers;
+  if (list.size() == 0) {
+    return TakeNumPyBuffer(centers, {0, 0});
+  }
+  splinepy::core::Options options;
+  options.validate = false; // queries check the values they read
+  options.nthreads = nthreads;
+  {
+    nb::gil_scoped_release release;
+    for (size_t i = 0; i < list.size(); ++i) {
+      if (list[i].para_dim <= 0 || list[i].dim <= 0) {
+        splinepy::core::ThrowIfInvalid(list[i]);
+      }
+    }
+    centers = splinepy::core::ComputeBoundaryCenters(list.Batch(), options);
+  }
+  const auto dim = static_cast<size_t>(list[0].dim);
+  return TakeNumPyBuffer(centers, {centers.size() / dim, dim});
+}
 
 nb::object InterfacesFromBoundaryCenters(
     nb::ndarray<const double, nb::c_contig> py_center_vertices,
@@ -509,158 +543,16 @@ int AddBoundariesFromContinuity(
     nb::ndarray<int32_t, nb::c_contig> global_interfaces,
     double tolerance,
     int n_threads) {
-  const int n_boundary_patches = static_cast<int>(nb::len(boundary_splines));
-  if (n_boundary_patches == 0)
-    return 0;
-
-  const int n_faces_per_boundary_patch =
-      static_cast<int>(boundary_interfaces.shape(1));
-  const int para_dim = n_faces_per_boundary_patch / 2;
-
-  std::vector<PySplineHolder> holders;
-  holders.reserve(n_boundary_patches);
-  for (int i = 0; i < n_boundary_patches; ++i) {
-    holders.emplace_back(boundary_splines[i]);
-  }
-
-  const int dim = holders[0].view.dim;
-  const int32_t* boundary_interfaces_ptr = boundary_interfaces.data();
-  int32_t* global_interfaces_ptr = global_interfaces.data();
-
-  auto areG1 = [&tolerance, dim](const std::vector<double>& vec0,
-                                 const std::vector<double>& vec1) -> bool {
-    double norm0 = 0.0, norm1 = 0.0, dot_p = 0.0;
-    for (int i = 0; i < dim; ++i) {
-      norm0 += vec0[i] * vec0[i];
-      norm1 += vec1[i] * vec1[i];
-      dot_p += vec0[i] * vec1[i];
-    }
-    double denom = std::sqrt(norm0 * norm1);
-    if (denom == 0.0)
-      return false;
-    return (std::abs(1.0 - std::abs(dot_p) / denom) < tolerance);
-  };
-
-  auto tangential_vector = [&](int patch_id,
-                               int face_id) -> std::vector<double> {
-    std::vector<double> para_coord(para_dim, 0.0);
-    std::vector<int32_t> orders(para_dim, 0);
-    std::vector<double> tang_vec(dim, 0.0);
-
-    const int axis_dim = face_id / 2;
-    const int is_in_front = face_id % 2;
-
-    const auto& spline = holders[patch_id].view;
-    auto bounds = splinepy::core::ParametricBounds(spline);
-
-    for (int i = 0; i < para_dim; ++i) {
-      if (i == axis_dim) {
-        para_coord[i] = bounds[i + is_in_front * para_dim];
-        orders[i] = 1;
-      } else {
-        para_coord[i] = 0.5 * (bounds[i + para_dim] + bounds[i]);
-      }
-    }
-
-    splinepy::core::Derivative(
-        spline,
-        splinepy::core::Span<const double>(para_coord.data(), para_dim),
-        splinepy::core::Span<const int32_t>(orders.data(), para_dim),
-        splinepy::core::Span<double>(tang_vec.data(), dim));
-
-    return tang_vec;
-  };
-
-  std::vector<bool> faces_are_g1(n_faces_per_boundary_patch
-                                     * n_boundary_patches,
-                                 false);
-  auto precompute_tolerances = [&](int start, int end, int) {
-    for (int i = start; i < end; ++i) {
-      for (int j = 0; j < n_faces_per_boundary_patch; ++j) {
-        const int adjacent_global =
-            boundary_interfaces_ptr[i * n_faces_per_boundary_patch + j];
-        if (adjacent_global < 0)
-          continue;
-        const int adjacent_id = adjacent_global / n_faces_per_boundary_patch;
-        const int adjacent_face_id =
-            adjacent_global % n_faces_per_boundary_patch;
-        if (adjacent_id < i)
-          continue;
-
-        const std::vector<double> vec0 = tangential_vector(i, j);
-        const std::vector<double> vec1 =
-            tangential_vector(adjacent_id, adjacent_face_id);
-
-        const bool is_g1 = areG1(vec0, vec1);
-        faces_are_g1[i * n_faces_per_boundary_patch + j] = is_g1;
-        faces_are_g1[adjacent_id * n_faces_per_boundary_patch
-                     + adjacent_face_id] = is_g1;
-      }
-    }
-  };
-
-  {
-    nb::gil_scoped_release release;
-    splinepy::utils::NThreadExecution(precompute_tolerances,
-                                      n_boundary_patches,
-                                      n_threads);
-  }
-
-  std::vector<bool> is_assigned(n_boundary_patches, false);
-  std::vector<int> new_boundary_id(n_boundary_patches, 0);
-  std::vector<int> queued_splines;
-
-  int current_max_id = 1;
-  for (int i = 0; i < n_boundary_patches; ++i) {
-    if (is_assigned[i])
-      continue;
-
-    new_boundary_id[i] = current_max_id;
-    is_assigned[i] = true;
-    queued_splines.push_back(i);
-
-    while (!queued_splines.empty()) {
-      const int current_id = queued_splines.back();
-      queued_splines.pop_back();
-
-      for (int i_face = 0; i_face < n_faces_per_boundary_patch; ++i_face) {
-        const int combined_index =
-            current_id * n_faces_per_boundary_patch + i_face;
-        if (faces_are_g1[combined_index]) {
-          const int adjacent_global = boundary_interfaces_ptr[combined_index];
-          if (adjacent_global < 0)
-            continue;
-          const int adjacent_id = adjacent_global / n_faces_per_boundary_patch;
-          if (is_assigned[adjacent_id])
-            continue;
-
-          new_boundary_id[adjacent_id] = current_max_id;
-          is_assigned[adjacent_id] = true;
-          queued_splines.push_back(adjacent_id);
-        }
-      }
-    }
-    current_max_id++;
-  }
-
-  const int n_interfaces = static_cast<int>(global_interfaces.size());
-  int counter = 0;
-  for (int i = 0; i < n_interfaces; ++i) {
-    if (global_interfaces_ptr[i] < 0) {
-      global_interfaces_ptr[i] = -new_boundary_id[counter];
-      counter++;
-    }
-  }
-
-  if (counter != n_boundary_patches) {
-    splinepy::utils::PrintAndThrowError(
-        counter,
-        " new boundary ids were assigned, however ",
-        n_boundary_patches,
-        " were expected, which means information was lost. Abort mission");
-  }
-
-  return current_max_id;
+  const ViewList holders(boundary_splines);
+  splinepy::core::Options options;
+  options.nthreads = n_threads;
+  nb::gil_scoped_release release;
+  return splinepy::core::GroupBoundariesByContinuity(
+      holders.Batch(),
+      {boundary_interfaces.data(), boundary_interfaces.size()},
+      {global_interfaces.data(), global_interfaces.size()},
+      tolerance,
+      options);
 }
 
 nb::object
@@ -672,17 +564,10 @@ InterfaceOrientations(const nb::list& spline_list,
   if (num_patches == 0)
     return nb::none();
 
-  std::vector<PySplineHolder> holders;
-  holders.reserve(num_patches);
-  std::vector<splinepy::core::SplineView> views;
-  views.reserve(num_patches);
-  for (int p = 0; p < num_patches; ++p) {
-    holders.emplace_back(spline_list[p]);
-    views.push_back(holders.back().view);
-  }
-  const int para_dim = holders[0].view.para_dim;
+  const ViewList holders(spline_list);
+  const int para_dim = holders[0].para_dim;
 
-  splinepy::core::SplineBatchView batch(views.data(), views.size());
+  const splinepy::core::SplineBatchView batch = holders.Batch();
   splinepy::core::Span<const int32_t> ifaces_span(interfaces.data(),
                                                   interfaces.size());
   core::Options options;
@@ -732,6 +617,10 @@ void init_nb_multipatch(nb::module_& m) {
            nb::arg("resolution"),
            nb::arg("nthreads"),
            nb::arg("out") = nb::none());
+  m.def("boundary_centers",
+        &BoundaryCenters,
+        nb::arg("patches"),
+        nb::arg("nthreads") = 1);
   m.def("interfaces_from_boundary_centers",
         &InterfacesFromBoundaryCenters,
         nb::arg("face_center_vertices"),

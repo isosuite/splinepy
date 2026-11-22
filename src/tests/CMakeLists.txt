@@ -22,16 +22,19 @@ add_executable(
   test_validator.cpp
   test_hierarchy.cpp
   test_parallel_for.cpp
+  test_team.cpp
   test_binomial.cpp
   test_bernstein.cpp
   test_bspline_basis.cpp
   test_queries.cpp
   test_manipulation.cpp
   test_bezier_algebra.cpp
+  test_composition.cpp
   test_multipatch.cpp
   test_workspace.cpp
   test_element_bvh.cpp
-  test_proximity.cpp)
+  test_proximity.cpp
+  test_query_kernels.cpp)
 
 target_link_libraries(core_tests PRIVATE splinepy::core GTest::gtest_main)
 

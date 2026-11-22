@@ -3,14 +3,47 @@
 #include "splinepy/core/common.hpp"
 #include "splinepy/core/memory/buffer.hpp"
 #include "splinepy/core/memory/span.hpp"
+#include "splinepy/core/model/axis_array.hpp"
 #include "splinepy/core/model/spline_view.hpp"
 #include "splinepy/core/options.hpp"
 
 namespace splinepy::core {
 
-/// Computes the parametric bounds of a spline: [min_0, max_0, min_1, max_1,
-/// ...]. Buffer size is 2 * para_dim.
-Buffer<double> ParametricBounds(const SplineView& spline);
+/// The parametric bounds of a spline: the lower bound of every axis, then
+/// the upper bounds. Held inline, like all per-axis values.
+class ParametricBox {
+public:
+  explicit ParametricBox(int32_t para_dim) : para_dim_(para_dim) {}
+
+  double& operator[](std::size_t i) noexcept { return values_[i]; }
+  const double& operator[](std::size_t i) const noexcept { return values_[i]; }
+  const double* data() const noexcept { return values_; }
+  std::size_t size() const noexcept {
+    return 2 * static_cast<std::size_t>(para_dim_);
+  }
+  const double* begin() const noexcept { return values_; }
+  const double* end() const noexcept { return values_ + size(); }
+  Span<const double> cspan() const noexcept { return {values_, size()}; }
+
+private:
+  double values_[2 * kMaxParaDim];
+  int32_t para_dim_;
+};
+
+ParametricBox ParametricBounds(const SplineView& spline);
+
+/// Parametric center of boundary face `face` (axis face / 2, upper side if
+/// odd), given the bounds of ParametricBounds.
+inline AxisArray<double>
+FaceCenter(Span<const double> bounds, int32_t para_dim, int32_t face) {
+  AxisArray<double> u;
+  u.resize(para_dim);
+  for (int32_t k = 0; k < para_dim; ++k) {
+    u[k] = (k == face / 2) ? bounds[k + (face % 2) * para_dim]
+                           : 0.5 * (bounds[k] + bounds[k + para_dim]);
+  }
+  return u;
+}
 
 /// Computes the physical center coordinates of all 2 * para_dim boundary faces
 /// of each patch. Output buffer has shape (num_patches * 2 * para_dim, dim).

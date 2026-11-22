@@ -16,7 +16,7 @@ struct ThbRefinementData {
 /// Use RefineThb when closure requires more than one generation.
 bool IsThbAdmissible(const ThbCacheData& cache, int32_t admissible);
 
-Buffer<std::size_t> ThbAdmissibleClosure(const SplineView& spline,
+Buffer<std::size_t> ThbAdmissibleClosure(const HierarchicalSplineView& spline,
                                          const ThbCacheData& cache,
                                          Span<const std::size_t> marked,
                                          int32_t admissible,
@@ -25,7 +25,7 @@ Buffer<std::size_t> ThbAdmissibleClosure(const SplineView& spline,
 /// Zero disables admissibility closure. Reuses a supplied next knot level
 /// when available and appends a dyadic level otherwise. Grading can split
 /// additional leaves across multiple generations.
-ThbRefinementData RefineThb(const SplineView& spline,
+ThbRefinementData RefineThb(const HierarchicalSplineView& spline,
                             const ThbCacheData& cache,
                             const ThbGeometryData& geometry,
                             Span<const std::size_t> marked,

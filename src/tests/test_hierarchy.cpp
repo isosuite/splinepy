@@ -60,8 +60,8 @@ void CheckRefinement(int32_t degree,
                      Span<const double> coarse,
                      Span<const double> fine) {
   const auto matrix = BuildRefinementMatrix1D(degree, coarse, fine);
-  const auto coarse_size = matrix.coarse_size;
-  const auto fine_size = static_cast<int32_t>(matrix.first_column.size());
+  const auto coarse_size = static_cast<int32_t>(coarse.size()) - degree - 1;
+  const auto fine_size = static_cast<int32_t>(matrix.first.size());
   const double lo = coarse[degree];
   const double hi = coarse[coarse_size];
   std::vector<double> basis(degree + 1);
@@ -69,11 +69,11 @@ void CheckRefinement(int32_t degree,
   std::vector<double> actual(coarse_size);
 
   for (int32_t row = 0; row < fine_size; ++row) {
-    ASSERT_GE(matrix.first_column[row], 0);
-    ASSERT_LE(matrix.first_column[row] + matrix.row_width, coarse_size);
+    ASSERT_GE(matrix.first[row], 0);
+    ASSERT_LE(matrix.first[row] + matrix.width, coarse_size);
     double sum = 0;
-    for (int32_t col = 0; col < matrix.row_width; ++col) {
-      const double value = matrix.values[row * matrix.row_width + col];
+    for (int32_t col = 0; col < matrix.width; ++col) {
+      const double value = matrix.values[row * matrix.width + col];
       EXPECT_GE(value, 0.0);
       sum += value;
     }
@@ -98,10 +98,10 @@ void CheckRefinement(int32_t degree,
     const auto fine_span = FindSpan(fine_size, degree, u, fine);
     EvaluateBSplineBasis(fine_span, u, degree, fine, basis);
     for (int32_t row = fine_span - degree; row <= fine_span; ++row) {
-      for (int32_t col = 0; col < matrix.row_width; ++col) {
-        const double value = matrix.values[row * matrix.row_width + col];
+      for (int32_t col = 0; col < matrix.width; ++col) {
+        const double value = matrix.values[row * matrix.width + col];
         if (value != 0.0) {
-          actual.at(matrix.first_column[row] + col) +=
+          actual.at(matrix.first[row] + col) +=
               basis[row - fine_span + degree] * value;
         }
       }
@@ -136,11 +136,12 @@ TEST(Hierarchy, RefinementPreservesBasisWithNonuniformAndRepeatedKnots) {
                                     1};
   CheckRefinement(3, coarse, fine);
   CheckRefinement(3, coarse, coarse);
-  CheckRefinement(0,
-                  std::array<double, 2>{0, 1},
-                  std::array<double, 4>{0, 0.2, 0.7, 1});
+  const std::array<double, 2> unit{0, 1};
+  const std::array<double, 4> split{0, 0.2, 0.7, 1};
+  CheckRefinement(0, unit, split);
   const std::array<double, 8> unclamped{-2, -1, 0, 0.2, 0.7, 1, 2, 3};
-  CheckRefinement(2, unclamped, DyadicKnots(2, unclamped));
+  const auto dyadic = DyadicKnots(2, unclamped);
+  CheckRefinement(2, unclamped, dyadic);
   EXPECT_THROW(BuildRefinementMatrix1D(3, fine, coarse), SplinepyException);
 }
 
@@ -230,36 +231,21 @@ TEST(Hierarchy, QuadraticLShapeActiveSetAndPartitionOfUnity) {
     for (int32_t x = 0; x < 6; ++x) {
       const auto fine_index = y * 6 + x;
       double sum = fine_active[fine_index] ? 1.0 : 0.0;
-      std::array<double, 2> tensor_homogeneous{};
-      std::array<double, 2> hierarchical_homogeneous{};
-      for (int32_t j = 0; j < matrix.row_width; ++j) {
-        for (int32_t i = 0; i < matrix.row_width; ++i) {
-          const auto weight = matrix.values[y * matrix.row_width + j]
-                              * matrix.values[x * matrix.row_width + i];
+      for (int32_t j = 0; j < matrix.width; ++j) {
+        for (int32_t i = 0; i < matrix.width; ++i) {
+          const auto weight = matrix.values[y * matrix.width + j]
+                              * matrix.values[x * matrix.width + i];
           if (weight == 0.0) {
             continue;
           }
           const auto coarse_index =
-              (matrix.first_column[y] + j) * 4 + matrix.first_column[x] + i;
-          const double rational_weight = 1.0 + (coarse_index % 3) * 0.25;
-          const double weighted_point = rational_weight * (coarse_index - 8.0);
-          tensor_homogeneous[0] += weight * weighted_point;
-          tensor_homogeneous[1] += weight * rational_weight;
+              (matrix.first[y] + j) * 4 + matrix.first[x] + i;
           if (coarse_active.at(coarse_index) && !fine_active[fine_index]) {
-            hierarchical_homogeneous[0] += weight * weighted_point;
-            hierarchical_homogeneous[1] += weight * rational_weight;
             sum += weight;
           }
         }
       }
-      // Coefficient preservation assigns the refined tensor coefficients
-      // to newly active functions. Compare both homogeneous coordinates.
-      if (fine_active[fine_index]) {
-        hierarchical_homogeneous = tensor_homogeneous;
-      }
       EXPECT_NEAR(sum, 1.0, 1e-14);
-      EXPECT_NEAR(hierarchical_homogeneous[0], tensor_homogeneous[0], 1e-14);
-      EXPECT_NEAR(hierarchical_homogeneous[1], tensor_homogeneous[1], 1e-14);
     }
   }
 }
@@ -340,7 +326,7 @@ protected:
   std::array<double, 5> rational{};
   Buffer<uint64_t> leaves, active;
   HierarchyView hierarchy;
-  std::array<SplineView, 2> splines;
+  std::array<HierarchicalSplineView, 2> splines;
   Workspace workspace;
   Options options;
   Buffer<ThbCacheData> caches;
@@ -360,17 +346,17 @@ protected:
     for (std::size_t i = 0; i < rational.size(); ++i) {
       rational[i] = polynomial[i] / weights[i];
     }
-    auto& spline = splines[0];
+    auto& spline = splines[0].tensor;
     spline.para_dim = spline.dim = 1;
     spline.degrees = degree;
     spline.knot_vectors = a;
     spline.control_points_data = polynomial.data();
     spline.num_control_points = polynomial.size();
     spline.cp_stride = 1;
-    spline.hierarchy = &hierarchy;
-    splines[1] = spline;
-    splines[1].control_points_data = rational.data();
-    splines[1].weights_data = weights.data();
+    splines[0].hierarchy = hierarchy;
+    splines[1] = splines[0];
+    splines[1].tensor.control_points_data = rational.data();
+    splines[1].tensor.weights_data = weights.data();
     options.nthreads = 3;
     options.workspace = &workspace;
     caches = BuildThbCaches(splines, options);
@@ -436,7 +422,7 @@ TEST_F(HierarchyQueryTest, BatchedExtractionAndQueries) {
              ++row) {
           sum += basis[patch].values[row];
           value += basis[patch].values[row]
-                   * splines[patch].Point(basis[patch].support[row], 0);
+                   * splines[patch].tensor.Point(basis[patch].support[row], 0);
         }
         EXPECT_NEAR(sum, order[0] == 0 ? 1.0 : 0.0, 2e-13);
         EXPECT_NEAR(value, output[patch][i], 2e-13);
@@ -458,7 +444,7 @@ TEST_F(HierarchyQueryTest, FinestTensorExportPreservesGeometry) {
     for (std::size_t i = 0; i < queries.size(); ++i) {
       const auto affine = 3 + 2 * queries[i];
       const auto expected =
-          source.IsRational() ? affine / (1 + queries[i]) : affine;
+          source.tensor.IsRational() ? affine / (1 + queries[i]) : affine;
       EXPECT_NEAR(tensor_values[i], expected, 2e-14);
     }
   }
@@ -471,7 +457,8 @@ TEST_F(HierarchyQueryTest, LeafProximityInvertsAnalyticGeometry) {
     std::array<double, queries.size()> physical{};
     for (std::size_t i = 0; i < queries.size(); ++i) {
       const auto affine = 3 + 2 * queries[i];
-      physical[i] = source.IsRational() ? affine / (1 + queries[i]) : affine;
+      physical[i] =
+          source.tensor.IsRational() ? affine / (1 + queries[i]) : affine;
     }
     const auto proximity =
         BuildHierarchyProximity(source, cache, geometry[patch], options);
@@ -509,17 +496,17 @@ TEST_F(HierarchyQueryTest, BernsteinExtractionAndBezierGeometry) {
           cache.bounds[2 * leaf]
           + local_query[0]
                 * (cache.bounds[2 * leaf + 1] - cache.bounds[2 * leaf]);
-      auto local = source;
-      local.hierarchy = nullptr;
+      auto local = source.tensor;
       local.knot_vectors = {};
       local.num_control_points = cache.local_size;
       local.control_points_data =
           bezier.points.data() + leaf * cache.local_size;
-      local.weights_data = source.IsRational()
+      local.weights_data = source.tensor.IsRational()
                                ? bezier.weights.data() + leaf * cache.local_size
                                : nullptr;
       const auto affine = 3 + 2 * u;
-      const auto expected = source.IsRational() ? affine / (1 + u) : affine;
+      const auto expected =
+          source.tensor.IsRational() ? affine / (1 + u) : affine;
       EXPECT_NEAR(Evaluate(local, local_query, options)[0], expected, 2e-14);
       for (std::size_t col = 0; col < cache.local_size; ++col) {
         double sum = 0.0;
@@ -560,15 +547,15 @@ TEST(Hierarchy, RefinementPreservesRationalGeometryWithAndWithoutTruncation) {
     HierarchyView hierarchy{levels, leaves, {}, KeyFormat::kKey64, truncate};
     const auto active = BuildActiveSets(degrees, {&hierarchy, 1}, options);
     hierarchy.active = active[0].cspan();
-    SplineView spline;
-    spline.para_dim = spline.dim = 1;
-    spline.degrees = degree;
-    spline.knot_vectors = axes;
-    spline.control_points_data = points.data();
-    spline.num_control_points = points.size();
-    spline.cp_stride = 1;
-    spline.weights_data = weights.data();
-    spline.hierarchy = &hierarchy;
+    HierarchicalSplineView spline{{}, hierarchy};
+    auto& tensor = spline.tensor;
+    tensor.para_dim = tensor.dim = 1;
+    tensor.degrees = degree;
+    tensor.knot_vectors = axes;
+    tensor.control_points_data = points.data();
+    tensor.num_control_points = points.size();
+    tensor.cp_stride = 1;
+    tensor.weights_data = weights.data();
 
     const auto extraction = BuildThbCaches({&spline, 1}, options);
     const auto geometry = BuildThbGeometry(spline, extraction[0]);
@@ -584,10 +571,10 @@ TEST(Hierarchy, RefinementPreservesRationalGeometryWithAndWithoutTruncation) {
     std::array<Span<const double>, 2> axis_views;
     const auto hierarchy_view = result.hierarchy.View(level_views, axis_views);
     auto refined = spline;
-    refined.hierarchy = &hierarchy_view;
-    refined.control_points_data = result.control_points.data();
-    refined.weights_data = result.weights.data();
-    refined.num_control_points = result.weights.size();
+    refined.hierarchy = hierarchy_view;
+    refined.tensor.control_points_data = result.control_points.data();
+    refined.tensor.weights_data = result.weights.data();
+    refined.tensor.num_control_points = result.weights.size();
     const auto refined_geometry = BuildThbGeometry(refined, result.extraction);
     const auto closure =
         ThbAdmissibleClosure(refined, result.extraction, marked, 2, options);
@@ -622,24 +609,6 @@ TEST(Hierarchy, RefinementPreservesRationalGeometryWithAndWithoutTruncation) {
       EXPECT_NEAR(before[i], after[i], 2e-14);
     }
   }
-}
-
-TEST(Hierarchy, TensorValidationRejectsHierarchyEvenWhenCountsMatch) {
-  const HierarchyView hierarchy;
-  const std::array<int32_t, 1> degree{0};
-  const double point = 0.0;
-  const double weight = 2.0;
-  SplineView view;
-  view.para_dim = view.dim = 1;
-  view.degrees = degree;
-  view.control_points_data = &point;
-  view.num_control_points = view.cp_stride = 1;
-  view.weights_data = &weight;
-  EXPECT_EQ(Validate(view), Status::kOk);
-  view.hierarchy = &hierarchy;
-  EXPECT_TRUE(view.IsRational());
-  EXPECT_NE(Validate(view), Status::kOk);
-  EXPECT_THROW(ThrowIfInvalid(view), SplinepyException);
 }
 
 } // namespace

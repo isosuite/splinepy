@@ -1,82 +1,14 @@
 #include <gtest/gtest.h>
 
-#include <cmath>
-#include <fstream>
 #include <string>
 #include <vector>
 
 #include "splinepy/core/multipatch/multipatch.hpp"
 #include "splinepy/core/queries/queries.hpp"
-
-#ifndef TEST_DATA_DIR
-#define TEST_DATA_DIR "tests/data/golden/bin"
-#endif
+#include "test_utils.hpp"
 
 namespace splinepy::core {
-namespace {
-
-template<typename T>
-std::vector<T> LoadBin(const std::string& filename) {
-  const std::string full_path = std::string(TEST_DATA_DIR) + "/" + filename;
-  std::ifstream is(full_path, std::ios::binary | std::ios::ate);
-  if (!is) {
-    throw std::runtime_error("Could not open binary test data file: "
-                             + full_path);
-  }
-  const std::streamsize size = is.tellg();
-  is.seekg(0, std::ios::beg);
-  std::vector<T> buffer(static_cast<std::size_t>(size) / sizeof(T));
-  if (!is.read(reinterpret_cast<char*>(buffer.data()), size)) {
-    throw std::runtime_error("Failed to read binary test data file: "
-                             + full_path);
-  }
-  return buffer;
-}
-
-double MaxAbsDiff(Span<const double> a, Span<const double> b) {
-  EXPECT_EQ(a.size(), b.size());
-  double max_diff = 0.0;
-  for (std::size_t i = 0; i < std::min(a.size(), b.size()); ++i) {
-    const double diff = std::abs(a[i] - b[i]);
-    if (diff > max_diff) {
-      max_diff = diff;
-    }
-  }
-  return max_diff;
-}
-
-SplineView MakeBezierView(Span<const int32_t> degrees,
-                          Span<const double> cps,
-                          int32_t dim) {
-  SplineView v;
-  v.para_dim = static_cast<int32_t>(degrees.size());
-  v.dim = dim;
-  v.degrees = degrees;
-  v.knot_vectors = {};
-  v.control_points_data = cps.data();
-  v.num_control_points = static_cast<int64_t>(cps.size() / dim);
-  v.cp_stride = dim;
-  v.dim_stride = 1;
-  return v;
-}
-
-SplineView MakeBSplineView(Span<const int32_t> degrees,
-                           Span<const Span<const double>> knot_vectors,
-                           Span<const double> cps,
-                           int32_t dim) {
-  SplineView v;
-  v.para_dim = static_cast<int32_t>(degrees.size());
-  v.dim = dim;
-  v.degrees = degrees;
-  v.knot_vectors = knot_vectors;
-  v.control_points_data = cps.data();
-  v.num_control_points = static_cast<int64_t>(cps.size() / dim);
-  v.cp_stride = dim;
-  v.dim_stride = 1;
-  return v;
-}
-
-} // namespace
+using namespace test;
 
 TEST(MultipatchTest, GoldenTwoPatchAdjoiningSquares) {
   // 2-patch multipatch (adjoining unit squares)
@@ -88,14 +20,14 @@ TEST(MultipatchTest, GoldenTwoPatchAdjoiningSquares) {
   std::vector<double> cps0 = {0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0};
   std::vector<double> cps1 = {1.0, 0.0, 2.0, 0.0, 1.0, 1.0, 2.0, 1.0};
 
-  SplineView p0 = MakeBSplineView(Span<const int32_t>(degrees, 2),
-                                  Span<const Span<const double>>(kvs, 2),
-                                  Span<const double>(cps0),
-                                  2);
-  SplineView p1 = MakeBSplineView(Span<const int32_t>(degrees, 2),
-                                  Span<const Span<const double>>(kvs, 2),
-                                  Span<const double>(cps1),
-                                  2);
+  SplineView p0 = MakeView(Span<const int32_t>(degrees, 2),
+                           Span<const Span<const double>>(kvs, 2),
+                           Span<const double>(cps0),
+                           2);
+  SplineView p1 = MakeView(Span<const int32_t>(degrees, 2),
+                           Span<const Span<const double>>(kvs, 2),
+                           Span<const double>(cps1),
+                           2);
 
   SplineView patches_arr[2] = {p0, p1};
   SplineBatchView batch(patches_arr, 2);

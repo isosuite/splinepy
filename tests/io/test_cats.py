@@ -1,5 +1,4 @@
 import tempfile
-from sys import version as python_version
 
 import splinepy
 
@@ -13,12 +12,12 @@ cats_no_indent_export = [
     'kntVec></kntVecs></SplineEntry><SplineEntry splDim="2" spaceDim="2" numO'
     'fCntrlPntVars="2" numCntrlPnts="4" numOfEleVars="0" closed="0 0"><cntrlPn'
     "tVarNames>x y</cntrlPntVarNames><cntrlPntVars>1.0 0.0 2.0 0.0 1.0 1.0 2.0"
-    " 1.0</cntrlPntVars><deg>1 1</deg><kntVecs><kntVec>0.0 0.0 1.0 1.0</knotV"
+    " 1.0</cntrlPntVars><deg>1 1</deg><kntVecs><kntVec>0.0 0.0 1.0 1.0</kntV"
     "ec><kntVec>0.0 0.0 1.0 1.0</kntVec></kntVecs><wght>1.0 1.0 1.0 1.0</wgh"
     't></SplineEntry><SplineEntry splDim="2" spaceDim="2" numOfCntrlPntVars="2'
     '" numCntrlPnts="9" numOfEleVars="0" closed="0 0"><cntrlPntVarNames>x y</c'
     "ntrlPntVarNames><cntrlPntVars>0.0 1.0 0.5 1.0 1.0 1.0 0.0 1.5 0.5 1.5 1.0"
-    " 1.5 0.0 2.0 0.5 2.0 1.0 2.0</cntrlPntVars><deg>2 1</deg><kntVecs><knotVe"
+    " 1.5 0.0 2.0 0.5 2.0 1.0 2.0</cntrlPntVars><deg>2 1</deg><kntVecs><kntVe"
     "c>0.0 0.0 0.0 1.0 1.0 1.0</kntVec><kntVec>0.0 0.0 0.5 1.0 1.0</kntVec>"
     '</kntVecs></SplineEntry><SplineEntry splDim="2" spaceDim="2" numOfCntrlPn'
     'tVars="2" numCntrlPnts="6" numOfEleVars="0" closed="0 0"><cntrlPntVarName'
@@ -190,16 +189,14 @@ def test_cats_export(to_tmpf, are_items_same, are_stripped_lines_same):
                 cats_no_indent_export, tmp_read.readlines(), True
             )
 
-    # for python version > 3.9, test indented version
-    if int(python_version.split(".")[1]) >= 9:
-        with tempfile.TemporaryDirectory() as tmpd:
-            tmpf = to_tmpf(tmpd)
-            splinepy.io.cats.export(
-                tmpf, spline_list=multipatch, indent=True, make_rational=False
-            )
+    with tempfile.TemporaryDirectory() as tmpd:
+        tmpf = to_tmpf(tmpd)
+        splinepy.io.cats.export(
+            tmpf, spline_list=multipatch, indent=True, make_rational=False
+        )
 
-            with open(tmpf) as tmp_read:
-                assert are_items_same(cats_indent_export, tmp_read.readlines())
+        with open(tmpf) as tmp_read:
+            assert are_items_same(cats_indent_export, tmp_read.readlines())
 
 
 def test_cats_import(to_tmpf, are_splines_equal):

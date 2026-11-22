@@ -29,6 +29,7 @@ class HollowCube(_TileBase):
     )
     _n_info_per_eval_point = 1
     _sensitivities_implemented = True
+    _affine = True
     _parameter_bounds = [[0.0, 0.5]] * 7
     _parameters_shape = (7, 1)
     _default_parameter_value = 0.2
@@ -57,274 +58,257 @@ class HollowCube(_TileBase):
         -------
         microtile_list : list(splines)
         """
-        parameters, n_derivatives, derivatives = self._process_input(
-            parameters=parameters,
-            parameter_sensitivities=parameter_sensitivities,
+        if parameter_sensitivities is not None:
+            return self._affine_derivatives(
+                parameters,
+                parameter_sensitivities,
+                **kwargs,
+            )
+
+        parameters = self._parameters(parameters)
+
+
+        spline_list = []
+        # Constant auxiliary values
+        [
+            x_min,
+            x_max,
+            y_min,
+            y_max,
+            z_min,
+            z_max,
+            center,
+        ] = parameters[:, 0].flatten()
+
+        # x_max_z_max
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1, 1],
+                control_points=_np.array(
+                    [
+                        [1.0 - z_max, z_max, 1.0],
+                        [1.0, 0.0, 1.0],
+                        [1.0 - z_max, 1.0 - z_max, 1.0],
+                        [1.0, 1.0, 1.0],
+                        [1.0 - center, center, 1.0 - center],
+                        [1.0, x_max, 1.0 - x_max],
+                        [1.0 - center, 1.0 - center, 1.0 - center],
+                        [1.0, 1.0 - x_max, 1.0 - x_max],
+                    ]
+                ),
+            )
         )
 
-        splines = []
-
-        for i_derivative in range(n_derivatives + 1):
-            spline_list = []
-            # Constant auxiliary values
-            if i_derivative == 0:
-                v_zero = 0.0
-                v_one = 1.0
-                [
-                    x_min,
-                    x_max,
-                    y_min,
-                    y_max,
-                    z_min,
-                    z_max,
-                    center,
-                ] = parameters[:, 0].flatten()
-            else:
-                v_zero = 0.0
-                v_one = 0.0
-                [
-                    x_min,
-                    x_max,
-                    y_min,
-                    y_max,
-                    z_min,
-                    z_max,
-                    center,
-                ] = parameter_sensitivities[:, 0, i_derivative - 1]
-
-            # x_max_z_max
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1, 1],
-                    control_points=_np.array(
-                        [
-                            [v_one - z_max, z_max, v_one],
-                            [v_one, v_zero, v_one],
-                            [v_one - z_max, v_one - z_max, v_one],
-                            [v_one, v_one, v_one],
-                            [v_one - center, center, v_one - center],
-                            [v_one, x_max, v_one - x_max],
-                            [v_one - center, v_one - center, v_one - center],
-                            [v_one, v_one - x_max, v_one - x_max],
-                        ]
-                    ),
-                )
+        # x_min_z_min
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1, 1],
+                control_points=_np.array(
+                    [
+                        [0.0, x_min, x_min],
+                        [center, center, center],
+                        [0.0, 1.0 - x_min, x_min],
+                        [center, 1.0 - center, center],
+                        [0.0, 0.0, 0.0],
+                        [z_min, z_min, 0.0],
+                        [0.0, 1.0, 0.0],
+                        [z_min, 1.0 - z_min, 0.0],
+                    ]
+                ),
             )
+        )
 
-            # x_min_z_min
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1, 1],
-                    control_points=_np.array(
-                        [
-                            [v_zero, x_min, x_min],
-                            [center, center, center],
-                            [v_zero, v_one - x_min, x_min],
-                            [center, v_one - center, center],
-                            [v_zero, v_zero, v_zero],
-                            [z_min, z_min, v_zero],
-                            [v_zero, v_one, v_zero],
-                            [z_min, v_one - z_min, v_zero],
-                        ]
-                    ),
-                )
+        # x_min_z_max
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1, 1],
+                control_points=_np.array(
+                    [
+                        [0.0, 0.0, 1.0],
+                        [z_max, z_max, 1.0],
+                        [0.0, 1.0, 1.0],
+                        [z_max, 1.0 - z_max, 1.0],
+                        [0.0, x_min, 1.0 - x_min],
+                        [center, center, 1.0 - center],
+                        [0.0, 1.0 - x_min, 1.0 - x_min],
+                        [center, 1.0 - center, 1.0 - center],
+                    ]
+                ),
             )
+        )
 
-            # x_min_z_max
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1, 1],
-                    control_points=_np.array(
-                        [
-                            [v_zero, v_zero, v_one],
-                            [z_max, z_max, v_one],
-                            [v_zero, v_one, v_one],
-                            [z_max, v_one - z_max, v_one],
-                            [v_zero, x_min, v_one - x_min],
-                            [center, center, v_one - center],
-                            [v_zero, v_one - x_min, v_one - x_min],
-                            [center, v_one - center, v_one - center],
-                        ]
-                    ),
-                )
+        # x_max_z_min
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1, 1],
+                control_points=_np.array(
+                    [
+                        [1.0 - center, center, center],
+                        [1.0, x_max, x_max],
+                        [1.0 - center, 1.0 - center, center],
+                        [1.0, 1.0 - x_max, x_max],
+                        [1.0 - z_min, z_min, 0.0],
+                        [1.0, 0.0, 0.0],
+                        [1.0 - z_min, 1.0 - z_min, 0.0],
+                        [1.0, 1.0, 0.0],
+                    ]
+                ),
             )
+        )
 
-            # x_max_z_min
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1, 1],
-                    control_points=_np.array(
-                        [
-                            [v_one - center, center, center],
-                            [v_one, x_max, x_max],
-                            [v_one - center, v_one - center, center],
-                            [v_one, v_one - x_max, x_max],
-                            [v_one - z_min, z_min, v_zero],
-                            [v_one, v_zero, v_zero],
-                            [v_one - z_min, v_one - z_min, v_zero],
-                            [v_one, v_one, v_zero],
-                        ]
-                    ),
-                )
+        # x_max_y_max
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1, 1],
+                control_points=_np.array(
+                    [
+                        [1.0 - y_max, 1.0, y_max],
+                        [1.0, 1.0, 0.0],
+                        [1.0 - y_max, 1.0, 1.0 - y_max],
+                        [1.0, 1.0, 1.0],
+                        [1.0 - center, 1.0 - center, center],
+                        [1.0, 1.0 - x_max, x_max],
+                        [1.0 - center, 1.0 - center, 1.0 - center],
+                        [1.0, 1.0 - x_max, 1.0 - x_max],
+                    ]
+                ),
             )
+        )
 
-            # x_max_y_max
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1, 1],
-                    control_points=_np.array(
-                        [
-                            [v_one - y_max, v_one, y_max],
-                            [v_one, v_one, v_zero],
-                            [v_one - y_max, v_one, v_one - y_max],
-                            [v_one, v_one, v_one],
-                            [v_one - center, v_one - center, center],
-                            [v_one, v_one - x_max, x_max],
-                            [v_one - center, v_one - center, v_one - center],
-                            [v_one, v_one - x_max, v_one - x_max],
-                        ]
-                    ),
-                )
+        # y_max_z_min
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1, 1],
+                control_points=_np.array(
+                    [
+                        [0.0, 1.0, 0.0],
+                        [1.0, 1.0, 0.0],
+                        [y_max, 1.0, y_max],
+                        [1.0 - y_max, 1.0, y_max],
+                        [z_min, 1.0 - z_min, 0.0],
+                        [1.0 - z_min, 1.0 - z_min, 0.0],
+                        [center, 1.0 - center, center],
+                        [1.0 - center, 1.0 - center, center],
+                    ]
+                ),
             )
+        )
 
-            # y_max_z_min
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1, 1],
-                    control_points=_np.array(
-                        [
-                            [v_zero, v_one, v_zero],
-                            [v_one, v_one, v_zero],
-                            [y_max, v_one, y_max],
-                            [v_one - y_max, v_one, y_max],
-                            [z_min, v_one - z_min, v_zero],
-                            [v_one - z_min, v_one - z_min, v_zero],
-                            [center, v_one - center, center],
-                            [v_one - center, v_one - center, center],
-                        ]
-                    ),
-                )
+        # x_min_y_max
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1, 1],
+                control_points=_np.array(
+                    [
+                        [0.0, 1.0, 0.0],
+                        [y_max, 1.0, y_max],
+                        [0.0, 1.0, 1.0],
+                        [y_max, 1.0, 1.0 - y_max],
+                        [0.0, 1.0 - x_min, x_min],
+                        [center, 1.0 - center, center],
+                        [0.0, 1.0 - x_min, 1.0 - x_min],
+                        [center, 1.0 - center, 1.0 - center],
+                    ]
+                ),
             )
+        )
 
-            # x_min_y_max
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1, 1],
-                    control_points=_np.array(
-                        [
-                            [v_zero, v_one, v_zero],
-                            [y_max, v_one, y_max],
-                            [v_zero, v_one, v_one],
-                            [y_max, v_one, v_one - y_max],
-                            [v_zero, v_one - x_min, x_min],
-                            [center, v_one - center, center],
-                            [v_zero, v_one - x_min, v_one - x_min],
-                            [center, v_one - center, v_one - center],
-                        ]
-                    ),
-                )
+        # y_max_z_max
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1, 1],
+                control_points=_np.array(
+                    [
+                        [y_max, 1.0, 1.0 - y_max],
+                        [1.0 - y_max, 1.0, 1.0 - y_max],
+                        [0.0, 1.0, 1.0],
+                        [1.0, 1.0, 1.0],
+                        [center, 1.0 - center, 1.0 - center],
+                        [1.0 - center, 1.0 - center, 1.0 - center],
+                        [z_max, 1.0 - z_max, 1.0],
+                        [1.0 - z_max, 1.0 - z_max, 1.0],
+                    ]
+                ),
             )
+        )
 
-            # y_max_z_max
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1, 1],
-                    control_points=_np.array(
-                        [
-                            [y_max, v_one, v_one - y_max],
-                            [v_one - y_max, v_one, v_one - y_max],
-                            [v_zero, v_one, v_one],
-                            [v_one, v_one, v_one],
-                            [center, v_one - center, v_one - center],
-                            [v_one - center, v_one - center, v_one - center],
-                            [z_max, v_one - z_max, v_one],
-                            [v_one - z_max, v_one - z_max, v_one],
-                        ]
-                    ),
-                )
+        # x_max_y_min
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1, 1],
+                control_points=_np.array(
+                    [
+                        [1.0 - center, center, center],
+                        [1.0, x_max, x_max],
+                        [1.0 - center, center, 1.0 - center],
+                        [1.0, x_max, 1.0 - x_max],
+                        [1.0 - y_min, 0.0, y_min],
+                        [1.0, 0.0, 0.0],
+                        [1.0 - y_min, 0.0, 1.0 - y_min],
+                        [1.0, 0.0, 1.0],
+                    ]
+                ),
             )
+        )
 
-            # x_max_y_min
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1, 1],
-                    control_points=_np.array(
-                        [
-                            [v_one - center, center, center],
-                            [v_one, x_max, x_max],
-                            [v_one - center, center, v_one - center],
-                            [v_one, x_max, v_one - x_max],
-                            [v_one - y_min, v_zero, y_min],
-                            [v_one, v_zero, v_zero],
-                            [v_one - y_min, v_zero, v_one - y_min],
-                            [v_one, v_zero, v_one],
-                        ]
-                    ),
-                )
+        # x_min_y_min
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1, 1],
+                control_points=_np.array(
+                    [
+                        [0.0, x_min, x_min],
+                        [center, center, center],
+                        [0.0, x_min, 1.0 - x_min],
+                        [center, center, 1.0 - center],
+                        [0.0, 0.0, 0.0],
+                        [y_min, 0.0, y_min],
+                        [0.0, 0.0, 1.0],
+                        [y_min, 0.0, 1.0 - y_min],
+                    ]
+                ),
             )
+        )
 
-            # x_min_y_min
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1, 1],
-                    control_points=_np.array(
-                        [
-                            [v_zero, x_min, x_min],
-                            [center, center, center],
-                            [v_zero, x_min, v_one - x_min],
-                            [center, center, v_one - center],
-                            [v_zero, v_zero, v_zero],
-                            [y_min, v_zero, y_min],
-                            [v_zero, v_zero, v_one],
-                            [y_min, v_zero, v_one - y_min],
-                        ]
-                    ),
-                )
+        # y_min_z_max
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1, 1],
+                control_points=_np.array(
+                    [
+                        [center, center, 1.0 - center],
+                        [1.0 - center, center, 1.0 - center],
+                        [z_max, z_max, 1.0],
+                        [1.0 - z_max, z_max, 1.0],
+                        [y_min, 0.0, 1.0 - y_min],
+                        [1.0 - y_min, 0.0, 1.0 - y_min],
+                        [0.0, 0.0, 1.0],
+                        [1.0, 0.0, 1.0],
+                    ]
+                ),
             )
+        )
 
-            # y_min_z_max
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1, 1],
-                    control_points=_np.array(
-                        [
-                            [center, center, v_one - center],
-                            [v_one - center, center, v_one - center],
-                            [z_max, z_max, v_one],
-                            [v_one - z_max, z_max, v_one],
-                            [y_min, v_zero, v_one - y_min],
-                            [v_one - y_min, v_zero, v_one - y_min],
-                            [v_zero, v_zero, v_one],
-                            [v_one, v_zero, v_one],
-                        ]
-                    ),
-                )
+        # y_min_z_min
+        spline_list.append(
+            _Bezier(
+                degrees=[1, 1, 1],
+                control_points=_np.array(
+                    [
+                        [z_min, z_min, 0.0],
+                        [1.0 - z_min, z_min, 0.0],
+                        [center, center, center],
+                        [1.0 - center, center, center],
+                        [0.0, 0.0, 0.0],
+                        [1.0, 0.0, 0.0],
+                        [y_min, 0.0, y_min],
+                        [1.0 - y_min, 0.0, y_min],
+                    ]
+                ),
             )
+        )
 
-            # y_min_z_min
-            spline_list.append(
-                _Bezier(
-                    degrees=[1, 1, 1],
-                    control_points=_np.array(
-                        [
-                            [z_min, z_min, v_zero],
-                            [v_one - z_min, z_min, v_zero],
-                            [center, center, center],
-                            [v_one - center, center, center],
-                            [v_zero, v_zero, v_zero],
-                            [v_one, v_zero, v_zero],
-                            [y_min, v_zero, y_min],
-                            [v_one - y_min, v_zero, y_min],
-                        ]
-                    ),
-                )
-            )
-
-            # Pass to output
-            if i_derivative == 0:
-                splines = spline_list.copy()
-            else:
-                derivatives.append(spline_list)
+        # Pass to output
 
         # Return results
-        return (splines, derivatives)
+        return (spline_list, None)

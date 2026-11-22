@@ -13,7 +13,7 @@ def test_json_import(to_tmpf, are_splines_equal):
     rbz_el1 = splinepy.RationalBezier(
         degrees=[1, 1],
         control_points=[[1, 0], [2, 0], [1, 1], [2, 1]],
-        weights=[1, 1, 1, 1],
+        weights=[1.0, 0.8, 1.3, 0.9],
     )
     bsp_el2 = splinepy.BSpline(
         degrees=[1, 1],
@@ -23,7 +23,7 @@ def test_json_import(to_tmpf, are_splines_equal):
     nur_el3 = splinepy.NURBS(
         degrees=[1, 1],
         control_points=[[1, 1], [2, 1], [1, 2], [2, 2]],
-        weights=[1, 1, 1, 1],
+        weights=[1.0, 0.8, 1.3, 0.9],
         knot_vectors=[[0, 0, 1, 1], [0, 0, 1, 1]],
     )
 

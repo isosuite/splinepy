@@ -10,17 +10,42 @@ except ImportError:
 
 from splinepy import settings as _settings
 from splinepy import spline as _spline
-from splinepy import splinepy_core as _splinepy_core
+from splinepy import splinepy_core as _core
 from splinepy import utils as _utils
 
 
-def _insertion_matrix(data):
-    (values, indices), shape = data
+def _kron(matrices):
+    """Kronecker product of matrices, the first one slowest. Sparse (csr) if
+    scipy is available."""
     if has_scipy:
-        return _scipy.sparse.csr_matrix((values, indices), shape=shape)
+        result = _scipy.sparse.csr_matrix(matrices[0])
+        for m in matrices[1:]:
+            result = _scipy.sparse.kron(result, m, format="csr")
+        return result
+    result = matrices[0]
+    for m in matrices[1:]:
+        result = _np.kron(result, m)
+    return result
+
+
+def _matrix(rows, columns, values, shape):
+    """Matrix of the given entries: sparse (csr) if scipy is available."""
+    if has_scipy:
+        return _scipy.sparse.csr_matrix((values, (rows, columns)), shape=shape)
     matrix = _np.zeros(shape)
-    matrix[indices[0], indices[1]] = values
+    matrix[rows, columns] = values
     return matrix
+
+
+def _axis_maps(knot_vector, degree, knots=(), beziers=False):
+    """Entries (rows, columns, values, shape) of the control point map of an
+    axis after knot insertion, or of each of its Bezier patches."""
+    maps = _core._knot_insertion_rows(
+        knot_vector, int(degree), _np.atleast_1d(knots).astype(float), beziers
+    )
+    for values, columns, offsets, n_new, n_old in maps:
+        rows = _np.repeat(_np.arange(n_new), _np.diff(offsets))
+        yield rows, columns, values, (n_new, n_old)
 
 
 class BSplineBase(_spline.Spline):
@@ -78,9 +103,6 @@ class BSplineBase(_spline.Spline):
 
     __slots__ = ()
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
     def insert_knots(self, parametric_dimension, knots):
         """
         Inserts knots.
@@ -100,7 +122,7 @@ class BSplineBase(_spline.Spline):
         if _settings.CHECK_BOUNDS:
             self.check.clamped_knot_vectors(warning=True)
 
-        if parametric_dimension >= self.para_dim:
+        if not 0 <= parametric_dimension < self.para_dim:
             raise ValueError("Invalid parametric dimension to insert knots.")
 
         if isinstance(knots, float):
@@ -120,12 +142,11 @@ class BSplineBase(_spline.Spline):
                 "One of the query knots not in valid knot range. (Too small)"
             )
 
-        inserted = _splinepy_core.insert_knots(
+        inserted = _core.insert_knots(
             self, parametric_dimension, _utils.data.enforce_contiguous(knots)
         )
 
         self._logd(f"Inserted {len(knots)} knot(s).")
-
 
         return inserted
 
@@ -172,8 +193,7 @@ class BSplineBase(_spline.Spline):
                 return []
             kv_diffs = _np.diff(kv_unique) / (n_knots + 1)
             new_knots = (
-                kv_diffs.reshape(-1, 1)
-                @ _np.arange(1, n_knots + 1).reshape(1, -1)
+                kv_diffs.reshape(-1, 1) @ _np.arange(1, n_knots + 1).reshape(1, -1)
                 + kv_unique[:-1].reshape(-1, 1)
             ).ravel()
             return new_knots
@@ -233,33 +253,49 @@ class BSplineBase(_spline.Spline):
         if _settings.CHECK_BOUNDS:
             self.check.clamped_knot_vectors(warning=True)
 
+        # control point indices run with axis 0 fastest, so the matrices of
+        # the axes are combined last axis first
+        n_cps = [
+            len(kv) - p - 1
+            for kv, p in zip(self.knot_vectors, self.degrees, strict=True)
+        ]
         if beziers:
-            indices, data = _splinepy_core.bezier_extraction_matrix(
-                self,
-                _settings.TOLERANCE,
-            )
-
-            # Indices represents the relevant ctps whereas data is a list of
-            # all matrix information
-            # 1. Create a list of matrices
-            matrices = [_insertion_matrix(entry) for entry in data]
-            #  2. Create global matrix
-            matrix = matrices[0]
-            for n_mat in matrices[1:]:
-                matrix = n_mat @ matrix
-
-            # 3. Extract Bezier Extraction matrices
-            matrices = [matrix[ids, :] for ids in indices]
+            # rows of every Bezier patch along every axis
+            per_axis = [
+                [_matrix(*m) for m in _axis_maps(kv, p, beziers=True)]
+                for kv, p in zip(self.knot_vectors, self.degrees, strict=True)
+            ]
+            # patches with axis 0 fastest, as extract.beziers() orders them
+            matrices = []
+            for index in _np.ndindex(*[len(m) for m in per_axis[::-1]]):
+                matrices.append(
+                    _kron([per_axis[-1 - i][e] for i, e in enumerate(index)])
+                )
             return matrices
 
-        data = _splinepy_core.global_knot_insertion_matrix(
-            self.knot_vectors,
-            self.degrees,
-            parametric_dimension,
-            _utils.data.enforce_contiguous(knots, dtype="float64"),
-            _settings.TOLERANCE,
+        rows, cols, coefficients, (n_new, n_old) = next(
+            _axis_maps(
+                self.knot_vectors[parametric_dimension],
+                self.degrees[parametric_dimension],
+                knots,
+            )
         )
-        return _insertion_matrix(data)
+        # identity along the other axes: entry (r, c) of the curve's matrix
+        # for every index below (lo) and above (hi) the axis
+        lo = int(_np.prod(n_cps[:parametric_dimension]))
+        hi = _np.arange(int(_np.prod(n_cps[parametric_dimension + 1 :])))
+
+        def flat(index, n):
+            return (
+                (hi[:, None, None] * n + index[None, :, None]) * lo
+                + _np.arange(lo)[None, None, :]
+            ).ravel()
+
+        values = _np.broadcast_to(
+            coefficients[None, :, None], (len(hi), len(rows), lo)
+        ).ravel()
+        shape = (len(hi) * n_new * lo, len(hi) * n_old * lo)
+        return _matrix(flat(rows, n_new), flat(cols, n_old), values, shape)
 
     def remove_knots(self, parametric_dimension, knots, tolerance=None):
         """
@@ -279,7 +315,7 @@ class BSplineBase(_spline.Spline):
         if _settings.CHECK_BOUNDS:
             self.check.clamped_knot_vectors(warning=True)
 
-        if parametric_dimension >= self.para_dim:
+        if not 0 <= parametric_dimension < self.para_dim:
             raise ValueError("Invalid parametric dimension to remove knots.")
 
         if isinstance(knots, float):
@@ -299,7 +335,7 @@ class BSplineBase(_spline.Spline):
                 "One of the query knots not in valid knot range. (Too small)"
             )
 
-        removed = _splinepy_core.remove_knots(
+        removed = _core.remove_knots(
             self,
             parametric_dimension,
             _utils.data.enforce_contiguous(knots),
@@ -348,7 +384,7 @@ class BSplineBase(_spline.Spline):
             self.check.clamped_knot_vectors(warning=True)
 
         # this core call makes copy of self and extracts bezier patches.
-        return _splinepy_core.extract_bezier_patches(self)
+        return _core.extract_bezier_patches(self)
 
 
 class BSpline(BSplineBase):

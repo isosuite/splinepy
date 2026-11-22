@@ -4,8 +4,9 @@ import inspect as _inspect
 
 import numpy as _np
 
-from splinepy.viewer import mesh
+from splinepy import mesh
 from splinepy.viewer.camera import turntable
+from splinepy.viewer.compat import follow_control_points as _follow_control_points
 from splinepy.viewer.compat import translate as _translate
 from splinepy.viewer.html import Viewer, to_html
 from splinepy.viewer.scene import (
@@ -28,11 +29,7 @@ def _is_showable(obj):
         _is_spline(obj)
         or isinstance(obj, (dict, _np.ndarray))
         or hasattr(obj, "vertices")
-        or (
-            isinstance(obj, (list, tuple))
-            and len(obj) > 0
-            and all(_is_showable(x) for x in obj)
-        )
+        or _is_group(obj)
     )
 
 
@@ -46,15 +43,9 @@ def _is_group(obj):
 
 
 def _flatten_group(obj):
-    out = []
-    if not isinstance(obj, (list, tuple)) or isinstance(obj, _np.ndarray):
+    if not isinstance(obj, (list, tuple)):
         return [obj]
-    for x in obj:
-        if isinstance(x, (list, tuple)) and not isinstance(x, _np.ndarray):
-            out.extend(_flatten_group(x))
-        else:
-            out.append(x)
-    return out
+    return [x for item in obj for x in _flatten_group(item)]
 
 
 def _build(obj, kwargs):
@@ -62,12 +53,8 @@ def _build(obj, kwargs):
         return obj  # prebuilt scene
     opts = {}
     if hasattr(obj, "show_options"):
-        try:
-            opts = dict(obj.show_options.items())
-            opts = _translate(opts)
-        except Exception:
-            pass
-    combined = {**opts, **kwargs}
+        opts = _translate(dict(obj.show_options.items()))
+    combined = _follow_control_points({**opts, **kwargs})
     builder = scene_from_splines if _is_spline(obj) else scene_from_mesh
     accepted = _inspect.signature(builder).parameters
     return builder(obj, **{k: v for k, v in combined.items() if k in accepted})

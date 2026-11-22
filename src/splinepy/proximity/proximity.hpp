@@ -27,13 +27,14 @@ SOFTWARE.
 #include <algorithm>
 #include <memory>
 #include <utility>
-#include <vector>
 
+#include "splinepy/core/memory/buffer.hpp"
+
+#include "splinepy/core/error.hpp"
 #include "splinepy/core/memory/memory_arena.hpp"
 #include "splinepy/core/memory/span.hpp"
 #include "splinepy/core/model/spline_view.hpp"
 #include "splinepy/core/spatial/element_bvh.hpp"
-#include "splinepy/utils/print.hpp"
 
 namespace splinepy::proximity {
 
@@ -86,11 +87,11 @@ public:
 
   // element bvh based initial guesses
   std::unique_ptr<splinepy::core::ElementBvh> bvh_;
-  std::vector<int> bvh_samples_per_axis_;
+  splinepy::core::AxisArray<int> bvh_samples_per_axis_;
   /// spline(sample) of every element's sampling grid, element-major, first
   /// parametric dimension fastest. Empty if it would exceed the memory budget,
   /// in which case samples are evaluated at query time.
-  std::vector<double> bvh_sample_points_;
+  splinepy::core::Buffer<double> bvh_sample_points_;
 
   /// at most this many starting points are tried per query
   int max_starts_{4};
@@ -99,9 +100,9 @@ public:
 
   /// solvers are tried in this order, until one of them returns an acceptable
   /// result
-  std::vector<Solver> solver_chain_{Solver::kDogleg,
-                                    Solver::kSlsqp,
-                                    Solver::kLevenbergMarquart};
+  splinepy::core::Buffer<Solver> solver_chain_{Solver::kDogleg,
+                                               Solver::kSlsqp,
+                                               Solver::kLevenbergMarquart};
 
   /// if true, a result is only accepted if it is not worse than the guess it
   /// started from, and if it is a (semi-)definite minimum within the bounds.
@@ -112,11 +113,12 @@ public:
   explicit Proximity(splinepy::core::SplineView spline) : spline_(spline) {}
 
   /// @brief sets the order of solvers. Unknown/empty chains are not allowed.
-  void SetSolverChain(const std::vector<Solver>& chain) {
+  void SetSolverChain(Span<const Solver> chain) {
     if (chain.empty()) {
-      splinepy::utils::PrintAndThrowError("solver chain can't be empty");
+      splinepy::core::ThrowError(splinepy::core::Status::kInvalidArgument,
+                                 "solver chain can't be empty");
     }
-    solver_chain_ = chain;
+    solver_chain_.assign(chain.begin(), chain.end());
   }
 
   void SetGuard(const bool guard) { guard_ = guard; }
@@ -130,17 +132,6 @@ public:
     max_starts_ = std::max(1, max_starts);
   }
 
-  /// A starting point for the local solvers.
-  struct Start {
-    /// squared distance from the query to the box of the element
-    double lower_bound_squared;
-    /// squared distance from the query to the sampled point
-    double distance_squared;
-    std::vector<double> guess;
-    /// parametric distance between samples of the element, per axis
-    std::vector<double> step;
-  };
-
   /// @brief Builds a bounding volume hierarchy over the knot spans of the
   /// spline, as an alternative to the kd-tree. Elements are sampled lazily at
   /// query time. The total resolution is distributed to the elements, so that
@@ -151,12 +142,6 @@ public:
   bool PlantBvh(const int* resolutions);
 
   bool HasBvh() const { return static_cast<bool>(bvh_); }
-
-  /// @brief Candidate starting points of the local solvers, sorted by the
-  /// distance of the sampled point. Contains one candidate per element that
-  /// can hold a point as close as the closest sample.
-  /// @param query
-  std::vector<Start> BvhStarts(const double* query) const;
 
 private:
   struct StartView {
@@ -211,44 +196,6 @@ private:
   /// @brief updates current_guess with delta_guess and clips result
   /// @param data
   void UpdateAndClip(detail::SearchData& data) const;
-
-  /// @brief returns J = .5 * distance^2. Where distance is norm of difference.
-  /// Difference is defined as || query - spline(guess) ||. Byproducts,
-  /// difference and guess_phys (=spline(guess)) are also returned.  Used in
-  /// ComputeCostAndDerivatives() and corresponds to depth=0.
-  /// @param guess
-  /// @param query
-  /// @param difference
-  /// @param guess_phys
-  /// @return J
-  double J(Span<const double> guess,
-           Span<const double> query,
-           Span<double> difference,
-           Span<double> guess_phys) const;
-
-  /// @brief Fills dJ/du and a byproduct spline_gradient (dS/du). Used in
-  /// ComputeCostAndDerivatives() and corresponds to depth=1.
-  /// @param guess
-  /// @param difference
-  /// @param djdu
-  /// @param spline_gradient
-  void dJdu(Span<const double> guess,
-            Span<const double> difference,
-            Span<double> djdu,
-            Span<double> spline_gradient) const;
-
-  /// @brief Fills hessian of J (d2J/du2) and a byproduct spline_hessian
-  /// (d2S/du2). Used in ComputeCostAndDerivatives() and corresponds to depth=2.
-  /// @param guess
-  /// @param difference
-  /// @param spline_gradient_AAt
-  /// @param d2jdu2
-  /// @param spline_hessian
-  void d2Jdu2(Span<const double> guess,
-              Span<const double> difference,
-              Span<const double> spline_gradient_AAt,
-              Span<double> d2jdu2,
-              Span<double> spline_hessian) const;
 
   /// @brief computes J and its derivatives based on the value of depth. depth
   /// == 1 -> jacobian, dept > 1 -> jacobian & hessian. Negative value is

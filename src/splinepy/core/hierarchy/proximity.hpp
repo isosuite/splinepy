@@ -10,10 +10,11 @@ struct HierarchyProximityData {
   ElementBvh bvh;
 };
 
-HierarchyProximityData BuildHierarchyProximity(const SplineView& spline,
-                                               const ThbCacheData& extraction,
-                                               const ThbGeometryData& geometry,
-                                               const Options& options = {});
+HierarchyProximityData
+BuildHierarchyProximity(const HierarchicalSplineView& spline,
+                        const ThbCacheData& extraction,
+                        const ThbGeometryData& geometry,
+                        const Options& options = {});
 
 struct HierarchyProximityResult {
   Buffer<double> parameters;
@@ -28,7 +29,7 @@ struct HierarchyProximityResult {
 /// Search the leaf BVH and solve on each promising unit-box Bezier patch.
 /// Verbose derivatives use global parameter coordinates, in axis-major order.
 HierarchyProximityResult
-HierarchyProximities(const SplineView& spline,
+HierarchyProximities(const HierarchicalSplineView& spline,
                      const ThbCacheData& extraction,
                      const HierarchyProximityData& data,
                      Span<const double> queries,

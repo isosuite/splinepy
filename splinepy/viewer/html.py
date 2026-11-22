@@ -130,7 +130,6 @@ class _Session:
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
     def _poll(self, seen, wait=4.0):
-        import json
         import time
 
         with self.cond:
@@ -138,15 +137,7 @@ class _Session:
             self.cond.wait_for(lambda: self.version != seen, timeout=wait)
             self.last_poll = time.monotonic()
             scene = self.scene_json if self.version != seen else None
-            return (
-                json.dumps(
-                    {"v": self.version, "scene": None}
-                    if scene is None
-                    else {"v": self.version, "scene": "@SCENE@"}
-                )
-                .replace('"@SCENE@"', scene or "null")
-                .encode()
-            )
+            return f'{{"v": {self.version}, "scene": {scene or "null"}}}'.encode()
 
     @property
     def alive(self):
@@ -175,10 +166,7 @@ class _Session:
         started = time.monotonic()
         try:
             while not self.done.is_set():
-                if (
-                    (self.last_poll is None or not self.alive)
-                    and time.monotonic() - started > first_timeout
-                ):
+                if not self.alive and time.monotonic() - started > first_timeout:
                     break  # no browser answered
                 time.sleep(0.05)
         except KeyboardInterrupt:

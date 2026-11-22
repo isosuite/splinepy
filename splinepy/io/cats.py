@@ -5,7 +5,6 @@ Possibly will be turned into pure python io.
 """
 
 import xml.etree.ElementTree as _ET
-from sys import version as _python_version
 
 import numpy as _np
 
@@ -90,7 +89,7 @@ def load(fname):
             raise ValueError(
                 "Periodic splines are currently unsupported. Detected "
                 "periodic dimensions: "
-                "{[i for i, key in enumerate(periodic_keys) if int(key) == 1]}"
+                f"{[i for i, key in enumerate(periodic_keys) if int(key) == 1]}"
             )
         for info in xml_element:
             # We ignore most keywords at the moment
@@ -309,16 +308,8 @@ def export(fname, spline_list, indent=True, make_rational=True):
             )
 
     # Beautify and export
-    if int(_python_version.split(".")[1]) >= 9 and indent:
-        # Pretty printing xml with indent only exists in version > 3.9
+    if indent:
         _ET.indent(spline_list_element)
-
-    elif int(_python_version.split(".")[1]) < 9 and indent:
-        _debug(
-            "Indented xml output is only supported from > python3.9.",
-            "Output will not be indented.",
-            f"Current python version: {_python_version}",
-        )
 
     file_content = _ET.tostring(spline_list_element)
     with open(fname, "wb") as f:

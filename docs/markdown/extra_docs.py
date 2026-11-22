@@ -23,8 +23,7 @@ if __name__ == "__main__":
     ) as f:
         f.write("# List of show_options\n")
         derived = [
-            spp.helpme.visualize.SplineShowOption,
-            spp.helpme.visualize.MultipatchShowOption,
+            spp.helpme.visualize.options.SplineShowOption,
         ]
         for cls in derived:
             f.write(f"## {cls.__qualname__}\n\n")

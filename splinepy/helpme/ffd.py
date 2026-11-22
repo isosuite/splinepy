@@ -7,65 +7,11 @@ from copy import deepcopy as _deepcopy
 
 import numpy as _np
 
+from splinepy import mesh as _mesh_module
 from splinepy import settings as _settings
 from splinepy._base import SplinepyBase as _SplinepyBase
 from splinepy.helpme.create import from_bounds as _from_bounds
 from splinepy.spline import Spline as _Spline
-
-
-def _vertices(mesh):
-    """Get the vertex coordinates from an FFD input.
-
-    Parameters
-    ----------
-    mesh : array-like, dict or gustaf.Vertices
-        Vertex coordinates or a mesh containing them.
-
-    Returns
-    -------
-    vertices : array-like
-        Vertex coordinates, without copying or conversion.
-    """
-    if isinstance(mesh, dict):
-        return mesh["vertices"]
-    return getattr(mesh, "vertices", mesh)
-
-
-def _as_gustaf(mesh):
-    """Convert native geometry for the Gustaf visualization path.
-
-    Parameters
-    ----------
-    mesh : numpy.ndarray, dict or gustaf.Vertices
-        Vertex coordinates, a mesh dictionary, or a Gustaf mesh.
-
-    Returns
-    -------
-    mesh : gustaf.Vertices
-        A Gustaf mesh of the corresponding type. Existing Gustaf meshes
-        are returned directly.
-    """
-    import gustaf as _gus
-
-    if isinstance(mesh, _np.ndarray):
-        return _gus.Vertices(mesh)
-    if not isinstance(mesh, dict):
-        return mesh
-    mesh_type = mesh["element_type"]
-    if mesh_type == "vertex":
-        result = _gus.Vertices(mesh["vertices"])
-    else:
-        cls = {
-            "line": _gus.Edges,
-            "triangle": _gus.Faces,
-            "quad": _gus.Faces,
-            "tet": _gus.Volumes,
-            "hexa": _gus.Volumes,
-        }[mesh_type]
-        result = cls(mesh["vertices"], mesh["connectivity"])
-    for key, values in mesh.get("vertex_data", {}).items():
-        result.vertex_data[key] = values
-    return result
 
 
 class FFD(_SplinepyBase):
@@ -77,8 +23,8 @@ class FFD(_SplinepyBase):
     Parameters
     ----------
     mesh: array-like, dict or gustaf.Vertices
-      An (n, dim) vertex array, a mesh dict as created by
-      :func:`splinepy.viewer.mesh.make_mesh`, or a Gustaf mesh.
+      An (n, dim) vertex array, a mesh dict (see :mod:`splinepy.mesh`), or
+      a gustaf mesh.
       Defaults to None.
     spline: splinepy.Spline
       Spline used in the FFD. Defaults to None.
@@ -115,6 +61,7 @@ class FFD(_SplinepyBase):
         """
         # init variables
         self._mesh = None
+        self._gustaf_input = False
         self._spline = None
         self._q_vertices = None
 
@@ -147,15 +94,9 @@ class FFD(_SplinepyBase):
         vertices = self._spline.evaluate(self._q_vertices)
         if isinstance(self._mesh, _np.ndarray):
             return vertices
-        if isinstance(self._mesh, dict):
-            result = _deepcopy(self._mesh)
-            result["vertices"] = vertices
-            return result
-
-        result = type(self._mesh)(vertices=vertices)
-        if hasattr(self._mesh, "elements"):
-            result.elements = self._mesh.elements.copy()
-        return result
+        result = _deepcopy(self._mesh)
+        result["vertices"] = vertices
+        return _mesh_module.to_gustaf(result) if self._gustaf_input else result
 
     @mesh.setter
     def mesh(self, mesh):
@@ -175,7 +116,12 @@ class FFD(_SplinepyBase):
             self._q_vertices = None
             return
 
-        vertices = _np.asarray(_vertices(mesh), dtype=float)
+        gustaf_input = hasattr(mesh, "vertices") and not isinstance(mesh, dict)
+        if gustaf_input:
+            mesh = _mesh_module.from_gustaf(mesh)
+        vertices = _np.asarray(
+            mesh["vertices"] if isinstance(mesh, dict) else mesh, dtype=float
+        )
         if (
             vertices.ndim != 2
             or not all(vertices.shape)
@@ -184,24 +130,17 @@ class FFD(_SplinepyBase):
             raise ValueError("Mesh vertices must be a nonempty, finite (n, dim) array.")
 
         if isinstance(mesh, dict):
-            from splinepy.viewer.mesh import make_mesh
-
             mesh = _deepcopy(
-                make_mesh(
+                _mesh_module.make_mesh(
                     mesh["element_type"],
                     vertices,
                     mesh.get("connectivity"),
                     mesh.get("vertex_data"),
                 )
             )
-        elif hasattr(mesh, "vertices"):
-            from gustaf import Vertices
-
-            if not isinstance(mesh, Vertices):
-                raise TypeError("Pass a vertex array, mesh dict, or Gustaf mesh.")
-            mesh = mesh.copy()
         else:
             mesh = vertices.copy()
+        self._gustaf_input = gustaf_input
 
         dim = vertices.shape[1]
         if self._spline is not None and self._spline.para_dim != dim:
@@ -260,7 +199,7 @@ class FFD(_SplinepyBase):
 
         if (
             self._mesh is not None
-            and spline.para_dim != _vertices(self._mesh).shape[1]
+            and spline.para_dim != self._q_vertices.shape[1]
         ):
             raise ValueError(
                 "Spline's para_dim should match mesh vertices' dim."
@@ -316,7 +255,9 @@ class FFD(_SplinepyBase):
 
         # if there's q_vertices, reset mesh, so that new q_vertices are formed
         if self._q_vertices is not None:
+            gustaf_input = self._gustaf_input
             self.mesh = self._mesh
+            self._gustaf_input = gustaf_input
 
     def show(self, **kwargs):
         """Show the original mesh, spline, and deformed mesh.
@@ -415,19 +356,21 @@ class FFD(_SplinepyBase):
                 "Please set both a mesh and a spline before visualizing FFD."
             )
 
-        import gustaf as _gus
-
         return_gustaf = kwargs.pop("return_gustaf", False)
 
         things_to_show = {}
 
-        # let's show faces at most, since volumes can take awhile
-        mesh = _as_gustaf(self._mesh)
-        if mesh.kind == "volume":
-            mesh = _gus.Faces(
-                mesh.const_vertices,
-                mesh.faces()[mesh.single_faces()],
-            )
+        def as_gustaf(mesh):
+            if isinstance(mesh, _np.ndarray):
+                mesh = _mesh_module.make_mesh("vertex", mesh)
+            elif not isinstance(mesh, dict):
+                return mesh
+            # let's show faces at most, since volumes can take awhile
+            if mesh["element_type"] in _mesh_module.ELEMENT_FACES:
+                mesh = _mesh_module.boundary_faces(mesh)
+            return _mesh_module.to_gustaf(mesh)
+
+        mesh = as_gustaf(self._mesh)
 
         # original mesh
         things_to_show["original_mesh"] = mesh
@@ -437,7 +380,7 @@ class FFD(_SplinepyBase):
         things_to_show["spline"] = self._spline
 
         # deformed mesh
-        deformed = _as_gustaf(self.mesh)
+        deformed = as_gustaf(self.mesh)
         things_to_show["mesh"] = deformed
 
         if return_gustaf:

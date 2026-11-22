@@ -2,18 +2,19 @@ import xml.etree.ElementTree as _ET
 
 import numpy as _np
 
-try:
-    from vedo import Plotter as _Plotter
-    from vedo import color_map as _color_map
-    from vedo.colors import get_color as _get_color
-except ImportError:
-    def _missing_vedo(*_args, **_kwargs):
-        raise ImportError("Vedo is required for SVG export. Install splinepy[all].")
-
-    _Plotter = _color_map = _get_color = _missing_vedo
-
+from splinepy import settings as _settings
 from splinepy.utils.log import debug as _debug
 from splinepy.utils.log import warning as _warning
+from splinepy.viewer.compat import colormap as _colormap
+from splinepy.viewer.compat import to_css as _to_css
+
+
+def _css(color):
+    """Color option (name, hex, RGB or palette index) as an svg color."""
+    css = _to_css(color)
+    if css is None:
+        raise ValueError(f"Can't use {color!r} as a color.")
+    return css
 
 
 def _rgb_2_hex(r, g, b):
@@ -135,9 +136,11 @@ def _write_png(bitmap, as_base64=True):
 
 def _export_spline_field(spline, svg_element, box_min_x, box_max_y, **kwargs):
     """
-    Export a spline's data-field as a pixel-bitmap. The pixel density is based
-    on the sample resolution, (10 * resolution). The image is embedded in b64
-    format
+    Export a spline's data-field as a pixel-bitmap, embedded in b64 format.
+    No renderer is involved: every pixel center is mapped back to the
+    parametric domain with the proximity search, and the field is evaluated
+    there. Pixels farther than half a pixel from the spline stay transparent;
+    the ones in between are blended, which anti-aliases the outline.
 
     Parameters
     ----------
@@ -152,96 +155,75 @@ def _export_spline_field(spline, svg_element, box_min_x, box_max_y, **kwargs):
     box_max_y : float/int
       maximum y coordinate of the surrounding box (pictures use LHS coordinate
       system in top left corner)
+    kwargs :
+      ``field_pixels`` (pixels along the longer side, default 600),
+      ``n_colors``, ``vmin``, ``vmax`` and ``nthreads``.
 
     Returns
     -------
     None
     """
-
-    from splinepy.helpme.visualize import _process_scalar_field, _sample_spline
-
-    # Sample the spline
-    resolution = spline.show_options.get("resolutions", 100)
-    sampled_spline = _sample_spline(spline, resolution)
     data = spline.show_options.get("data", None)
-
-    # Check
     if data is None:
         raise ValueError(
             "There is no data provided, although data plot is requested"
         )
 
-    # Process the scalar field
-    _process_scalar_field(spline, data, sampled_spline, res=resolution)
-    # scalar bar distorts the dimensions of spline bitmap image
-    sampled_spline.show_options["scalarbar"] = False
-    # Set a resolution (This needs to be improved still)
-    pixel_size = (resolution * 10, resolution * 10)
+    # pixel grid over the bounds of the spline, row 0 at the top
+    (x_min, y_min), (x_max, y_max) = spline.control_point_bounds
+    n_long = int(kwargs.get("field_pixels", 600))
+    pixel = max(x_max - x_min, y_max - y_min) / n_long
+    width = max(int(_np.ceil((x_max - x_min) / pixel)), 1)
+    height = max(int(_np.ceil((y_max - y_min) / pixel)), 1)
+    x = x_min + (_np.arange(width) + 0.5) * pixel
+    y = y_max - (_np.arange(height) + 0.5) * pixel
+    centers = _np.stack(_np.meshgrid(x, y), axis=-1).reshape(-1, 2)
 
-    # Create a Plotter
-    plotter = _Plotter(
-        shape=(1, 1),  # Only one field
-        N=1,  # Number of things to plot
-        size=pixel_size,  # Resolution, i.e. pixel density
-        sharecam=True,
-        offscreen=True,
-        title="",
-        bg=(255, 255, 255),
-        axes=0,
+    # pixel centers -> nearest parametric points
+    para, _, _, distance, *_ = spline.proximities(
+        centers,
+        tolerance=1e-3 * pixel,
+        nthreads=kwargs.get("nthreads", _settings.NTHREADS),
+        return_verbose=True,
     )
-    showable = sampled_spline.showable()
+    distance = distance.ravel()
+    alpha = _np.where(distance < 1e-2 * pixel, 1.0, 0.5 - distance / pixel)
+    covered = alpha > 0
 
-    # Discretize colors
-    if kwargs.get("n_colors") is not None:
-        n_colors = kwargs.get("n_colors")
-        cmap_key = spline.show_options.get("cmap", "jet")
-        vmin = kwargs.get("vmin", spline.show_options.get("vmin", None))
-        vmax = kwargs.get("vmax", spline.show_options.get("vmax", None))
-        showable.cmap(cmap_key, vmin=vmin, vmax=vmax, n_colors=n_colors)
-
-    plotter.show(showable, zoom="tightest")
-
-    # Extract bounding box
-    x_min, y_min, x_max, y_max = sampled_spline.bounds().ravel()
-
-    # Extract the bitmap and transform to RGBA
-    bitmap = plotter.screenshot(asarray=True)
-
-    if bitmap.shape[2] == 3:
-        alpha_layer = (
-            _np.ones((bitmap.shape[0], bitmap.shape[1]), dtype=bitmap.dtype)
-            * 255
-        )
-        alpha_layer[_np.all(bitmap == 255, axis=-1)] = 0
-        bitmap = _np.concatenate(
-            (bitmap, alpha_layer.reshape(*alpha_layer.shape, 1)), axis=-1
-        )
-    elif bitmap.shape[2] == 4:
-        alpha_layer = bitmap[:, :, -1]
+    # field at the covered pixels
+    source = spline.spline_data[data]
+    if getattr(source, "has_locations", False):
+        raise ValueError(f"Data '{data}' has fixed locations; it can't be a field.")
+    if hasattr(source, "as_vertex_data"):
+        values = source.as_vertex_data(on=para[covered])
     else:
-        raise RuntimeError("Failed to extract field bitmap")
+        values = source.evaluate(para[covered])
+    values = _np.asarray(values, dtype=float)
+    if values.ndim == 2 and values.shape[1] > 1:
+        values = _np.linalg.norm(values, axis=1)
+    rgb = _colormap(
+        values,
+        spline.show_options.get("cmap", "plasma"),
+        vmin=kwargs.get("vmin", spline.show_options.get("vmin", None)),
+        vmax=kwargs.get("vmax", spline.show_options.get("vmax", None)),
+        n_colors=kwargs.get("n_colors"),
+    )
 
-    # Crop image
-    pixel_layer = alpha_layer != 0
-    has_pixels = _np.where(_np.any(pixel_layer, axis=1))[0]
-    min_x_pixel = has_pixels.min()
-    max_x_pixel = has_pixels.max()
-    has_pixels = _np.where(_np.any(pixel_layer, axis=0))[0]
-    min_y_pixel = has_pixels.min()
-    max_y_pixel = has_pixels.max()
-    bitmap = bitmap[min_x_pixel:max_x_pixel, min_y_pixel:max_y_pixel, :]
+    bitmap = _np.zeros((height * width, 4), dtype=_np.uint8)
+    bitmap[covered, :3] = _np.round(rgb * 255)
+    bitmap[covered, 3] = _np.round(alpha[covered] * 255)
 
     # Write Bitmap into svg
     image_svg = _ET.SubElement(
         svg_element,
         "image",
-        x=str(x_min - box_min_x),  # str(box_max_y - xy)
+        x=str(x_min - box_min_x),
         y=str(box_max_y - y_max),
-        width=str(x_max - x_min),
-        height=str(y_max - y_min),
+        width=str(width * pixel),
+        height=str(height * pixel),
     )
     image_svg.attrib["xlink:href"] = "data:image/png;base64," + _write_png(
-        bitmap=bitmap, as_base64=True
+        bitmap=bitmap.reshape(height, width, 4), as_base64=True
     ).decode("utf-8")
 
 
@@ -253,28 +235,26 @@ def _export_gustaf_object(
 
     Parameters
     """
-    from gustaf import Vertices as _Vertices
-
-    r, g, b = _get_color(gus_object.show_options.get("c", "red"))
+    color = _css(gus_object.show_options.get("c", "red"))
     a = gus_object.show_options.get("alpha", 1.0)
     radius = gus_object.show_options.get("r", 0.1)
 
-    if isinstance(gus_object, _Vertices):
+    if hasattr(gus_object, "vertices"):
         data_name = gus_object.show_options.get("data", None)
         if data_name is not None:
             # Retrieve information on colors and values
             values = gus_object.vertex_data[data_name]
             v_min = gus_object.show_options.get("vmin", _np.min(values))
             v_max = gus_object.show_options.get("vmax", _np.max(values))
-            cmap_style = gus_object.show_options.get("cmap", "jet")
+            cmap_style = gus_object.show_options.get("cmap", "plasma")
             colors = [
                 _rgb_2_hex(r, g, b)
-                for r, g, b in _color_map(
-                    values.ravel(), name=cmap_style, vmin=v_min, vmax=v_max
+                for r, g, b in _colormap(
+                    values.ravel(), cmap_style, vmin=v_min, vmax=v_max
                 )
             ]
         else:
-            colors = [_rgb_2_hex(r, g, b)] * gus_object.vertices.shape[0]
+            colors = [color] * gus_object.vertices.shape[0]
 
         svg_control_points = _ET.SubElement(
             svg_spline_element,
@@ -312,9 +292,7 @@ def _export_gustaf_object(
             svg_labels.attrib["text-anchor"] = kwargs.get(
                 "text_anchor", "middle"
             )
-            svg_labels.attrib["fill"] = _rgb_2_hex(
-                *_get_color(kwargs.get("text_color", "k"))
-            )
+            svg_labels.attrib["fill"] = _css(kwargs.get("text_color", "k"))
             svg_labels.attrib["stroke"] = "none"
             dx = radius
 
@@ -380,7 +358,7 @@ def _export_control_mesh(
         # - control_mesh_c
         # - control_mesh_lw
         # - control_mesh_alpha (tbd)
-        r, g, b = _get_color(spline.show_options.get("control_mesh_c", "red"))
+        color = _css(spline.show_options.get("control_mesh_c", "red"))
         a = spline.show_options.get("control_mesh_alpha", 1.0)
         stroke_width = spline.show_options.get(
             "control_mesh_lw",
@@ -393,7 +371,7 @@ def _export_control_mesh(
             "g",
             id="mesh",
             style=(
-                f"fill:none;stroke:{_rgb_2_hex(r, g, b)};stroke-opacity:{a};"
+                f"fill:none;stroke:{color};stroke-opacity:{a};"
                 f"stroke-width:{stroke_width};stroke-linecap:round"
             ),
         )
@@ -446,15 +424,14 @@ def _export_control_mesh(
         # - control_point_c
         # - control_point_r
 
-        # transform color into (relative) rgb using vedo helper function
-        r, g, b = _get_color(spline.show_options.get("control_point_c", "red"))
+        color = _css(spline.show_options.get("control_point_c", "red"))
         a = spline.show_options.get("control_point_alpha", 1.0)
 
         svg_control_points = _ET.SubElement(
             svg_mesh,
             "g",
             id="control_points",
-            style=f"fill:{_rgb_2_hex(r, g, b)};fill-opacity:{a}",
+            style=f"fill:{color};fill-opacity:{a}",
         )
 
         for ctp in spline.control_points:
@@ -484,9 +461,7 @@ def _export_control_mesh(
         svg_control_point_ids.attrib["text-anchor"] = kwargs.get(
             "text_anchor", "middle"
         )
-        svg_control_point_ids.attrib["fill"] = _rgb_2_hex(
-            *_get_color(kwargs.get("text_color", "k"))
-        )
+        svg_control_point_ids.attrib["fill"] = _css(kwargs.get("text_color", "k"))
         svg_control_point_ids.attrib["stroke"] = "none"
 
         # Text offset
@@ -573,8 +548,9 @@ def _quiver_plot(
 
     # Use Arrow Data to retrieve spline data (prevent from scaling)
     arrow_data = spline.extract.arrow_data(arrow_data_field)
-    positions = arrow_data.vertices[arrow_data.edges[:, 0]]
-    directions = arrow_data.vertices[arrow_data.edges[:, 1]] - positions
+    ends = arrow_data["vertices"][arrow_data["connectivity"]]
+    positions = ends[:, 0]
+    directions = ends[:, 1] - positions
 
     # Set back data to original options
     if original_scale is None:
@@ -603,17 +579,15 @@ def _quiver_plot(
     # Retrieve information on colors and values
     arrow_color = spline.show_options.get("arrow_data_color", None)
     if arrow_color is not None:
-        colors = [_get_color(arrow_color)] * arrow_length.size
+        colors = [_css(arrow_color)] * arrow_length.size
     else:
         v_min = spline.show_options.get("vmin", _np.min(arrow_length))
         v_max = spline.show_options.get("vmax", _np.max(arrow_length))
-        cmap_style = spline.show_options.get("cmap", "jet")
-        colors = _color_map(
-            arrow_length,
-            name=cmap_style,
-            vmin=v_min,
-            vmax=v_max,
-        )
+        cmap_style = spline.show_options.get("cmap", "plasma")
+        colors = [
+            _rgb_2_hex(*rgb)
+            for rgb in _colormap(arrow_length, cmap_style, vmin=v_min, vmax=v_max)
+        ]
 
     # Map arrow control points
     arrow_control_points_ = _np.einsum(
@@ -645,7 +619,7 @@ def _quiver_plot(
                     )
                 ]
             ),
-            style=(f"fill:{_rgb_2_hex(*colors[i])};stroke:none"),
+            style=(f"fill:{colors[i]};stroke:none"),
         )
 
     return None
@@ -669,7 +643,7 @@ def _add_scalar_bar(svg_element, box_size, **kwargs):
       - n_ticks : (int) Number of Tick mars
       - vmin : (float) Minimum Value - Required for colorbar
       - vmax : (float) Maximum Value - Required for colorbar
-      - cmap : (color map string) Defaults to "jet"
+      - cmap : (color map string) Defaults to "plasma"
       - scalarbar_width : (float) Width of the colorbar relative to picture
       - scalarbar_aspect_ratio : (float) Aspect ratio of colorbar
       - scalarbar_offset : (float) reserved space below picture
@@ -693,14 +667,14 @@ def _add_scalar_bar(svg_element, box_size, **kwargs):
     number_of_ticks = kwargs.get("n_ticks", 3)
     vmin = kwargs["vmin"]
     vmax = kwargs["vmax"]
-    cmap = kwargs.get("cmap", "jet")
+    cmap = kwargs.get("cmap", "plasma")
 
     scalarbar_width = kwargs.get("scalarbar_width", 0.4)
     scalarbar_aspect_ratio = kwargs.get("scalarbar_aspect_ratio", 10)
     scalarbar_offset = kwargs["scalarbar_offset"]
 
     # Temporary
-    r, g, b = _get_color(kwargs.get("scalarbar_c", "k"))
+    color = _css(kwargs.get("scalarbar_c", "k"))
     a = 1.0
     stroke_width = kwargs.get("scalarbar_stroke_width", box_size[0] * 0.002)
 
@@ -732,7 +706,7 @@ def _add_scalar_bar(svg_element, box_size, **kwargs):
         "g",
         id="tick_mark_lines",
         style=(
-            f"fill:none;stroke:{_rgb_2_hex(r, g, b)};stroke-opacity:{a};"
+            f"fill:none;stroke:{color};stroke-opacity:{a};"
             f"stroke-width:{stroke_width};stroke-linecap:round"
         ),
     )
@@ -749,9 +723,7 @@ def _add_scalar_bar(svg_element, box_size, **kwargs):
         kwargs.get("scalarbar_font_size", stroke_width * 20)
     )
     svg_tick_labels.attrib["text-anchor"] = kwargs.get("text_anchor", "middle")
-    svg_tick_labels.attrib["fill"] = _rgb_2_hex(
-        *_get_color(kwargs.get("text_color", "k"))
-    )
+    svg_tick_labels.attrib["fill"] = _css(kwargs.get("text_color", "k"))
     svg_tick_labels.attrib["stroke"] = "none"
     # Text offset
     dx = kwargs.get("scalarbar_tick_distance", stroke_width * 10)
@@ -995,7 +967,7 @@ def _export_spline(
         # (2) Export
 
         # First : Retrieve export options
-        r, g, b = _get_color(spline.show_options.get("c", "green"))
+        color = _css(spline.show_options.get("c", "green"))
         a = spline.show_options.get("alpha", 1.0)
 
         # check if the parametric dimension is 2, if the case, extract boundary
@@ -1023,7 +995,7 @@ def _export_spline(
                 # draw path
                 d=path_d,
                 style=(
-                    f"fill:none;stroke:{_rgb_2_hex(r, g, b)};stroke-opacity:{a};"
+                    f"fill:none;stroke:{color};stroke-opacity:{a};"
                     f"stroke-width:{spline.show_options.get('lw', 0.01)};"
                     "stroke-linecap:round"
                 ),
@@ -1065,7 +1037,7 @@ def _export_spline(
                 # draw path
                 d=path_d,
                 style=(
-                    f"fill:{_rgb_2_hex(r, g, b)};fill-opacity:{a};stroke:none;"
+                    f"fill:{color};fill-opacity:{a};stroke:none;"
                     f"stroke-linecap:{kwargs.get('linecap', 'round')}"
                 ),
             )
@@ -1083,7 +1055,7 @@ def _export_spline(
         # - knot_alpha
         # - knot_c
         # - knot_lw
-        r, g, b = _get_color(spline.show_options.get("knot_c", "blue"))
+        color = _css(spline.show_options.get("knot_c", "blue"))
         a = spline.show_options.get("knot_alpha", 1.0)
         lw = spline.show_options.get("knot_lw", 0.02)
         if spline.para_dim == 1:
@@ -1098,7 +1070,7 @@ def _export_spline(
                     height=str(lw),
                     width=str(lw),
                     style=(
-                        f"fill:{_rgb_2_hex(r, g, b)};stroke:none;fill-opacity:{a};"
+                        f"fill:{color};stroke:none;fill-opacity:{a};"
                     ),
                 )
 
@@ -1136,7 +1108,7 @@ def _export_spline(
                     # draw path
                     d=path_d,
                     style=(
-                        f"fill:none;stroke:{_rgb_2_hex(r, g, b)};"
+                        f"fill:none;stroke:{color};"
                         f"stroke-opacity:{a};"
                         f"stroke-width:{lw};"
                         f"stroke-linecap:{kwargs.get('linecap', 'round')}"
@@ -1155,8 +1127,9 @@ def export(
     """
     Exports a number of splines into an svg plot
 
-    Graphics are built to resemble vedo plots as close as possible by relying
-    on spline show_options
+    Graphics are styled by the spline show_options, with the colors and
+    colormaps of the viewer. Data fields are embedded as images computed
+    without a renderer.
 
     Example
     -------
@@ -1244,7 +1217,7 @@ def export(
       - n_ticks : (int) Number of Tick mars
       - vmin : (float) Minimum Value - Required for colorbar
       - vmax : (float) Maximum Value - Required for colorbar
-      - cmap : (color map string) Defaults to "jet"
+      - cmap : (color map string) Defaults to "plasma"
       - scalarbar_width : (float) Width of the colorbar relative to picture
       - scalarbar_aspect_ratio : (float) Aspect ratio of colorbar
       - scalarbar_offset : (float) reserved space below picture
@@ -1256,8 +1229,6 @@ def export(
     -------
     None
     """
-    from gustaf import Vertices as _Vertices
-
     from splinepy.spline import Spline
 
     # Check arguments
@@ -1276,7 +1247,7 @@ def export(
                 raise ValueError("Only lines and surfaces supported")
             if not object.dim == 2:
                 raise ValueError("Only 2D geometries supported")
-        elif isinstance(object, _Vertices):
+        elif hasattr(object, "vertices") and hasattr(object, "show_options"):
             if not object.vertices.shape[1] == 2:
                 raise ValueError("Only 2D geometries supported")
         else:

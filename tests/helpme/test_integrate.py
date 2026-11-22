@@ -4,6 +4,15 @@ import pytest
 import splinepy
 
 
+@pytest.mark.parametrize("width", [1.0, 1e-11, 1e-14])
+def test_integration_preserves_short_parameter_domains(width):
+    spline = splinepy.BSpline([1], [[0, 0, width, width]], [[0], [1]])
+    assert spline.integrate.volume() == pytest.approx(1.0)
+    np.testing.assert_array_equal(spline.knot_vectors[0].multiplicities(), [2, 2])
+    spline.normalize_knot_vectors()
+    np.testing.assert_array_equal(spline.parametric_bounds, [[0], [1]])
+
+
 def test_volume_integration_1D(np_rng):
     """
     Test volume integration for splines using numerical integration of the

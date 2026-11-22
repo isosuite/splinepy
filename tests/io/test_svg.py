@@ -1,27 +1,17 @@
 import os
+import re
 import tempfile
-from sys import version as python_version
 
 import gustaf as gus
 import numpy as np
 
 import splinepy
 
-try:
-    import vedo  # noqa F401
-
-    has_vedo = True
-except ImportError:
-    has_vedo = False
-
 
 def test_svg_export(to_tmpf, are_stripped_lines_same):
     """
     Test export routine of svg module
     """
-    if not has_vedo:
-        return
-
     bez_el0 = splinepy.Bezier(
         degrees=[1, 1], control_points=[[0, 0], [1, 0], [0, 1], [1, 1]]
     )
@@ -99,34 +89,32 @@ def test_svg_export(to_tmpf, are_stripped_lines_same):
                 base_file.readlines(), tmp_read.readlines(), True
             )
 
-    # for python version > 3.9, test indented version
-    if int(python_version.split(".")[1]) >= 9:
-        with tempfile.TemporaryDirectory() as tmpd:
-            tmpf = to_tmpf(tmpd)
-            # With a list and also more options
-            splinepy.io.svg.export(
-                tmpf,
-                [bez_el0, rbz_el1, bsp_el2, nur_el3],
-                indent=True,
-                box_margins=0.5,
-                # Set some show_options
-                c="blue",
-                alpha=0.2,
-                control_point_r=0.1,
-                knots=False,
-                control_points=True,
-                control_mesh_c="purple",
-                control_point_c="black",
-                control_mesh_lw=0.05,
-                font_family="sans-serif",
-            )
+    with tempfile.TemporaryDirectory() as tmpd:
+        tmpf = to_tmpf(tmpd)
+        # With a list and also more options
+        splinepy.io.svg.export(
+            tmpf,
+            [bez_el0, rbz_el1, bsp_el2, nur_el3],
+            indent=True,
+            box_margins=0.5,
+            # Set some show_options
+            c="blue",
+            alpha=0.2,
+            control_point_r=0.1,
+            knots=False,
+            control_points=True,
+            control_mesh_c="purple",
+            control_point_c="black",
+            control_mesh_lw=0.05,
+            font_family="sans-serif",
+        )
 
-            with open(tmpf) as tmp_read, open(
-                os.path.dirname(__file__) + "/../data/svg_indent.svg"
-            ) as base_file:
-                assert are_stripped_lines_same(
-                    base_file.readlines(), tmp_read.readlines(), True
-                )
+        with open(tmpf) as tmp_read, open(
+            os.path.dirname(__file__) + "/../data/svg_indent.svg"
+        ) as base_file:
+            assert are_stripped_lines_same(
+                base_file.readlines(), tmp_read.readlines(), True
+            )
 
     # Check some spline_color and arrows
     askew_spline2D = splinepy.Bezier(
@@ -172,11 +160,23 @@ def test_svg_export(to_tmpf, are_stripped_lines_same):
             box_margins=0.7,
         )
 
+        # the field is an embedded png; its pixels may differ in the last
+        # bit between platforms. compare everything but its pixels.
+        def without_png(lines):
+            return [
+                re.sub(r"base64,[A-Za-z0-9+/=]+", "base64,", line)
+                for line in lines
+            ]
+
         with open(tmpf) as tmp_read, open(
             os.path.dirname(__file__) + "/../data/svg_data_field.svg"
         ) as base_file:
+            exported = tmp_read.read()
+            assert "data:image/png;base64,iVBOR" in exported
             assert are_stripped_lines_same(
-                base_file.readlines(), tmp_read.readlines(), True
+                without_png(base_file.readlines()),
+                without_png(exported.splitlines(keepends=True)),
+                True,
             )
 
     # Plot arrows

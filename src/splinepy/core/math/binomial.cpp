@@ -2,6 +2,9 @@
 
 #include <algorithm>
 #include <array>
+#include <limits>
+#include <numeric>
+#include <stdexcept>
 
 namespace splinepy::core {
 
@@ -28,7 +31,7 @@ constexpr PascalTriangle kPascal{};
 
 } // namespace
 
-int64_t Binomial(int32_t n, int32_t k) noexcept {
+int64_t Binomial(int32_t n, int32_t k) {
   if (k < 0 || k > n || n < 0) {
     return 0;
   }
@@ -44,7 +47,17 @@ int64_t Binomial(int32_t n, int32_t k) noexcept {
   // Fallback for n > 62
   int64_t res = 1;
   for (int32_t i = 1; i <= k; ++i) {
-    res = (res * (n - i + 1)) / i;
+    const int64_t factor = n - i + 1;
+    const int64_t common = std::gcd(factor, static_cast<int64_t>(i));
+    // After cancellation the remaining divisor divides res exactly.
+    // Divide first so even representable coefficients cannot overflow in
+    // an intermediate multiplication.
+    res /= i / common;
+    const int64_t multiplier = factor / common;
+    if (res > std::numeric_limits<int64_t>::max() / multiplier) {
+      throw std::overflow_error("Binomial coefficient exceeds int64_t.");
+    }
+    res *= multiplier;
   }
   return res;
 }

@@ -919,12 +919,10 @@ class FieldIntegrator:
 
         # If other matrix is used, check if it compatible
         if matrixout is not None:
-            if _has_scipy:
-                assert isinstance(
-                    matrixout, _dok_matrix
-                ), "Matrixout must be scipy sparse dok matrix"
-            else:
-                assert isinstance(matrixout, _np.ndarray)
+            types = (_np.ndarray, _dok_matrix) if _has_scipy else _np.ndarray
+            assert isinstance(
+                matrixout, types
+            ), "matrixout must be a numpy array or a scipy sparse dok matrix"
             assert matrixout.shape == (self._ndofs, self._ndofs)
 
         system_matrix = (
@@ -1041,12 +1039,10 @@ class FieldIntegrator:
 
         # If other matrix is used, check if it compatible
         if matrixout is not None:
-            if _has_scipy:
-                assert isinstance(
-                    matrixout, _dok_matrix
-                ), "Matrixout must be scipy sparse dok matrix"
-            else:
-                assert isinstance(matrixout, _np.ndarray)
+            types = (_np.ndarray, _dok_matrix) if _has_scipy else _np.ndarray
+            assert isinstance(
+                matrixout, types
+            ), "matrixout must be a numpy array or a scipy sparse dok matrix"
             assert matrixout.shape == (self._ndofs, self._ndofs)
 
         # Set matrix accordingly

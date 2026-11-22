@@ -1,0 +1,39 @@
+name: Viewer bundle
+
+on:
+  push:
+    paths:
+      - "splinepy/viewer/js/**"
+      - "splinepy/viewer/static/**"
+      - ".github/workflows/viewer.yml"
+  pull_request:
+    paths:
+      - "splinepy/viewer/js/**"
+      - "splinepy/viewer/static/**"
+      - ".github/workflows/viewer.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  bundle_up_to_date:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: splinepy/viewer/js/package-lock.json
+
+      - name: Rebuild the bundle from the lockfile
+        working-directory: splinepy/viewer/js
+        run: |
+          npm ci
+          npm run build
+
+      - name: Committed bundle matches the build
+        run: |
+          git diff --exit-code --stat -- splinepy/viewer/static \
+            || { echo "::error::splinepy/viewer/static/viewer.bundle.js is stale; run 'npm ci && npm run build' in splinepy/viewer/js and commit it"; exit 1; }

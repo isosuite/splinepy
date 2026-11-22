@@ -5,29 +5,30 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
-#include <vector>
 
 #include "splinepy/core/common.hpp"
-#include "splinepy/core/manipulation/detail/knot_insertion_alpha.hpp"
+#include "splinepy/core/concurrency/parallel_for.hpp"
 #include "splinepy/core/math/bspline_basis.hpp"
 #include "splinepy/core/memory/buffer.hpp"
+#include "splinepy/core/memory/dynamic_buffer.hpp"
 #include "splinepy/core/memory/memory_arena.hpp"
 #include "splinepy/core/memory/span.hpp"
 #include "splinepy/core/memory/workspace.hpp"
+#include "splinepy/core/model/grid.hpp"
+#include "splinepy/core/model/spline_data.hpp"
 #include "splinepy/core/model/spline_view.hpp"
 #include "splinepy/core/options.hpp"
 
 namespace splinepy::core::detail {
 
-/// Scratch arena for a single-threaded kernel call: the caller's workspace if
-/// options provide one, otherwise a small local one. Always the thread-0 arena,
-/// so concurrent callers must hand each worker its own arena (see the batch
-/// overloads) instead of sharing one Options::workspace.
+/// Scratch arena for a single-threaded kernel call: thread 0 of the caller's
+/// workspace if options provide one, otherwise of the calling thread's default
+/// workspace (see WorkspaceRef). Concurrent callers must hand each worker its
+/// own workspace (see ForEachSpline / WorkerOptions) instead of sharing one
+/// Options::workspace.
 class LocalArena {
 public:
-  explicit LocalArena(const Options& options)
-      : local_(options.workspace ? 1024 : 16 * 1024, 1),
-        ws_(options.workspace ? options.workspace : &local_) {}
+  explicit LocalArena(const Options& options) : ws_(options, 16 * 1024, 1) {}
 
   LocalArena(const LocalArena&) = delete;
   LocalArena& operator=(const LocalArena&) = delete;
@@ -36,87 +37,50 @@ public:
   MemoryArena& arena() { return ws_->GetThreadArena(0); }
 
 private:
-  Workspace local_;
-  Workspace* ws_;
+  WorkspaceRef ws_;
 };
 
-/// Index bookkeeping for a tensor-product control net being resized along one
-/// axis. All spans live in the arena that built it, so it is valid until that
-/// arena's scope ends. No limit on para_dim.
-struct TensorLayout {
-  int32_t axis{0};
-  int32_t coord_dim{1};
-  Span<int64_t> in_n, in_strides, out_n, out_strides;
-  int64_t num_rows{1}; // independent 1D rows along axis
-  int64_t in_s{0};     // distance between consecutive axis entries, in doubles
-  int64_t out_s{0};
-  int64_t out_total{0}; // number of output control points
+/// Runs fn(spline, worker_options) for every spline of a batch. Each worker
+/// gets single threaded kernels and its own workspace (WorkerOptions), so
+/// nothing is shared between workers.
+template<typename Fn>
+SplineBatchData
+ForEachSpline(SplineBatchView batch, const Options& options, Fn&& fn) {
+  SplineBatchData result(batch.size());
+  const int nthreads = ResolveThreadCount(options.nthreads);
+  WorkspaceRef ws(options, 16 * 1024, nthreads);
+  ParallelForWithThreadId(
+      static_cast<int64_t>(0),
+      static_cast<int64_t>(batch.size()),
+      nthreads,
+      [&](int64_t i, int thread_id) {
+        result[i] = fn(batch[i], WorkerOptions(options, *ws, thread_id));
+      });
+  return result;
+}
 
-  /// in_n_of(d) gives the input control point count along axis d.
-  template<typename InN>
-  static TensorLayout Make(MemoryArena& arena,
-                           int32_t para_dim,
-                           int32_t axis,
-                           int32_t coord_dim,
-                           InN&& in_n_of,
-                           int64_t out_axis_n) {
-    assert(para_dim >= 1 && axis >= 0 && axis < para_dim);
-    TensorLayout l;
-    l.axis = axis;
-    l.coord_dim = coord_dim;
-
-    const std::size_t n = static_cast<std::size_t>(para_dim);
-    Span<int64_t> block = arena.AllocateSpan<int64_t>(4 * n);
-    l.in_n = block.subspan(0, n);
-    l.in_strides = block.subspan(n, n);
-    l.out_n = block.subspan(2 * n, n);
-    l.out_strides = block.subspan(3 * n, n);
-
-    for (int32_t d = 0; d < para_dim; ++d) {
-      l.in_n[d] = in_n_of(d);
-      l.out_n[d] = (d == axis) ? out_axis_n : l.in_n[d];
-      if (d == 0) {
-        l.in_strides[0] = 1;
-        l.out_strides[0] = 1;
-      } else {
-        l.in_strides[d] = l.in_strides[d - 1] * l.in_n[d - 1];
-        l.out_strides[d] = l.out_strides[d - 1] * l.out_n[d - 1];
-      }
-      if (d != axis) {
-        l.num_rows *= l.in_n[d];
+/// Contiguous copy of the control points, dim per point.
+inline Buffer<double> ControlPoints(const SplineView& spline) {
+  const int64_t n = spline.num_control_points;
+  auto points = Buffer<double>::Uninitialized(n * spline.dim);
+  if (spline.IsCpContiguous()) {
+    std::copy_n(spline.control_points_data, points.size(), points.data());
+  } else {
+    for (int64_t i = 0; i < n; ++i) {
+      for (int32_t c = 0; c < spline.dim; ++c) {
+        points[i * spline.dim + c] = spline.Point(i, c);
       }
     }
-    l.in_s = l.in_strides[axis] * coord_dim;
-    l.out_s = l.out_strides[axis] * coord_dim;
-    l.out_total = l.out_strides[para_dim - 1] * l.out_n[para_dim - 1];
-    return l;
   }
+  return points;
+}
 
-  /// Offsets (in doubles) of the first entry of row r in the input and output
-  /// nets.
-  void RowBases(int64_t r, int64_t& in_base, int64_t& out_base) const noexcept {
-    in_base = 0;
-    out_base = 0;
-    for (int32_t d = 0; d < static_cast<int32_t>(in_n.size()); ++d) {
-      if (d == axis)
-        continue;
-      const int64_t idx_d = r % in_n[d];
-      r /= in_n[d];
-      in_base += idx_d * in_strides[d];
-      out_base += idx_d * out_strides[d];
-    }
-    in_base *= coord_dim;
-    out_base *= coord_dim;
-  }
-};
-
-/// Converts spline control points (and weights if rational) into homogeneous
-/// coordinates (dim + 1).
-inline Buffer<double> ToHomogeneous(const SplineView& spline) {
+/// Writes spline control points (and weights if rational) as homogeneous
+/// coordinates (dim + 1 per point) to homo.
+inline void ToHomogeneous(const SplineView& spline, double* homo) {
   const int64_t n_cps = spline.num_control_points;
   const int32_t dim = spline.dim;
   const int32_t homo_dim = dim + 1;
-  Buffer<double> homo(n_cps * homo_dim);
 
   if (spline.IsRational()) {
     for (int64_t i = 0; i < n_cps; ++i) {
@@ -134,7 +98,31 @@ inline Buffer<double> ToHomogeneous(const SplineView& spline) {
       homo[i * homo_dim + dim] = 1.0;
     }
   }
+}
+
+/// Homogeneous coordinates (dim + 1 per point) of a spline.
+inline Buffer<double> ToHomogeneous(const SplineView& spline) {
+  auto homo = Buffer<double>::Uninitialized(spline.num_control_points
+                                            * (spline.dim + 1));
+  ToHomogeneous(spline, homo.data());
   return homo;
+}
+
+/// Polynomial Bezier view of dim values per point on the grid of degrees,
+/// cp_stride doubles apart (default: dim), e.g. homogeneous coordinates or
+/// their weight component.
+inline SplineView PolynomialView(Span<const int32_t> degrees,
+                                 const double* cps,
+                                 int32_t dim,
+                                 int64_t cp_stride = 0) {
+  SplineView view;
+  view.para_dim = static_cast<int32_t>(degrees.size());
+  view.dim = dim;
+  view.degrees = degrees;
+  view.control_points_data = cps;
+  view.num_control_points = SupportGrid(degrees).size;
+  view.cp_stride = cp_stride ? cp_stride : dim;
+  return view;
 }
 
 /// Converts homogeneous coordinates (dim + 1) back into physical coordinates
@@ -146,10 +134,10 @@ inline void FromHomogeneous(Span<const double> homo,
                             Buffer<double>& out_cps,
                             Buffer<double>& out_weights) {
   const int32_t homo_dim = dim + 1;
-  out_cps.resize(n_cps * dim);
+  out_cps = Buffer<double>::Uninitialized(n_cps * dim);
 
   if (is_rational) {
-    out_weights.resize(n_cps);
+    out_weights = Buffer<double>::Uninitialized(n_cps);
     for (int64_t i = 0; i < n_cps; ++i) {
       const double w = homo[i * homo_dim + dim];
       const double inv_w = (w != 0.0) ? (1.0 / w) : 0.0;
@@ -168,107 +156,82 @@ inline void FromHomogeneous(Span<const double> homo,
   }
 }
 
-/// N-D tensor-product single knot insertion along axis.
-/// Precomputes knot span and blending coefficients once for all parallel rows.
-inline void
-InsertKnotAlongAxisND(MemoryArena& arena,
-                      int32_t para_dim,
-                      int32_t coord_dim,
-                      Span<const int32_t> degrees,
-                      const std::vector<Span<const double>>& current_kvs,
-                      Span<const double> in_cps,
-                      int32_t axis,
-                      double u_new,
-                      std::vector<double>& out_axis_knots,
-                      Buffer<double>& out_cps) {
-  assert(axis >= 0 && axis < para_dim);
-  auto scope = arena.CreateScope();
+/// Unique interior knots of a knot vector and their multiplicities.
+struct InteriorKnots {
+  DynamicBuffer<double> knots;
+  DynamicBuffer<int32_t> mults;
 
-  auto in_n_of = [&](int32_t d) {
-    return static_cast<int64_t>(current_kvs[d].size()) - degrees[d] - 1;
-  };
-  const TensorLayout layout = TensorLayout::Make(arena,
-                                                 para_dim,
-                                                 axis,
-                                                 coord_dim,
-                                                 in_n_of,
-                                                 in_n_of(axis) + 1);
-  out_cps.resize(layout.out_total * coord_dim);
+  /// The knots to insert so that every interior knot has multiplicity p,
+  /// which decomposes the spline into Bezier segments.
+  DynamicBuffer<double> MissingToMultiplicity(int32_t p) const {
+    DynamicBuffer<double> missing;
+    for (std::size_t k = 0; k < knots.size(); ++k) {
+      const int32_t n = std::max(p - mults[k], 0);
+      std::fill_n(missing.append_uninitialized(n), n, knots[k]);
+    }
+    return missing;
+  }
+};
 
-  const int32_t p = degrees[axis];
-  const int32_t n = static_cast<int32_t>(layout.in_n[axis]);
-  Span<const double> knots = current_kvs[axis];
-
-  // 1. Find span k such that knots[k] <= u_new < knots[k+1]
-  int32_t k = p;
-  if (u_new >= knots[n]) {
-    k = n - 1;
-  } else if (u_new <= knots[p]) {
-    k = p;
-  } else {
-    while (k < n - 1 && u_new >= knots[k + 1]) {
-      k++;
+inline InteriorKnots FindInteriorKnots(Span<const double> kv) {
+  InteriorKnots interior;
+  const double u_min = kv[0];
+  const double u_max = kv[kv.size() - 1];
+  for (const double u : kv) {
+    if (u <= u_min || u >= u_max) {
+      continue;
+    }
+    if (interior.knots.empty() || u != interior.knots.back()) {
+      interior.knots.push_back(u);
+      interior.mults.push_back(1);
+    } else {
+      ++interior.mults.back();
     }
   }
+  return interior;
+}
 
-  // 2. Precompute new knot vector
-  out_axis_knots.resize(knots.size() + 1);
-  for (int32_t i = 0; i <= k; ++i) {
-    out_axis_knots[i] = knots[i];
+/// Geometric error bound for two positive-weight homogeneous nets in the
+/// same nonnegative, partition-of-unity basis. Centering removes dependence
+/// on a translation of the geometry; dividing by the denominator bound
+/// removes dependence on the common weight scale.
+inline bool RationalNetsWithinTolerance(Span<const double> original,
+                                        Span<const double> candidate,
+                                        int32_t width,
+                                        double tolerance) {
+  if (original.size() != candidate.size() || original.empty()) {
+    return false;
   }
-  out_axis_knots[k + 1] = u_new;
-  for (std::size_t i = k + 1; i < knots.size(); ++i) {
-    out_axis_knots[i + 1] = knots[i];
-  }
-
-  // 3. Precompute blending coefficients alphas for i in [k - p + 1, k]
-  // alpha_i = (u_new - knots[i]) / (knots[i + p] - knots[i])
-  Span<double> alphas = arena.AllocateSpan<double>(p);
-  for (int32_t j = 0; j < p; ++j) {
-    const int32_t i = k - p + 1 + j;
-    alphas[j] = KnotInsertionAlpha(u_new, knots[i], knots[i + p]);
-  }
-
-  const int64_t in_s = layout.in_s;
-  const int64_t out_s = layout.out_s;
-
-  for (int64_t r = 0; r < layout.num_rows; ++r) {
-    int64_t in_base = 0;
-    int64_t out_base = 0;
-    layout.RowBases(r, in_base, out_base);
-
-    // 1. Unaffected left points: 0 ... k - p
-    for (int32_t i = 0; i <= k - p; ++i) {
-      const double* src = in_cps.data() + in_base + i * in_s;
-      double* dst = out_cps.data() + out_base + i * out_s;
-      for (int32_t c = 0; c < coord_dim; ++c) {
-        dst[c] = src[c];
-      }
+  const int32_t dim = width - 1;
+  double minimum = candidate[dim];
+  double radius = 0.;
+  for (std::size_t i = 0; i < original.size(); i += width) {
+    if (!(candidate[i + dim] > 0.) || !std::isfinite(candidate[i + dim])) {
+      return false;
     }
-
-    // 2. Unaffected right points: k ... n - 1 -> shift to k+1 ... n
-    for (int32_t i = k; i < n; ++i) {
-      const double* src = in_cps.data() + in_base + i * in_s;
-      double* dst = out_cps.data() + out_base + (i + 1) * out_s;
-      for (int32_t c = 0; c < coord_dim; ++c) {
-        dst[c] = src[c];
-      }
+    minimum = std::min(minimum, candidate[i + dim]);
+    double distance = 0.;
+    for (int32_t c = 0; c < dim; ++c) {
+      distance = std::hypot(distance,
+                            original[i + c] / original[i + dim]
+                                - original[c] / original[dim]);
     }
-
-    // 3. Inserted/modified points: k - p + 1 ... k
-    for (int32_t j = 0; j < p; ++j) {
-      const int32_t i = k - p + 1 + j;
-      const double alpha = alphas[j];
-      const double one_minus_alpha = 1.0 - alpha;
-      const double* prev_src = in_cps.data() + in_base + (i - 1) * in_s;
-      const double* curr_src = in_cps.data() + in_base + i * in_s;
-      double* dst = out_cps.data() + out_base + i * out_s;
-
-      for (int32_t c = 0; c < coord_dim; ++c) {
-        dst[c] = one_minus_alpha * prev_src[c] + alpha * curr_src[c];
-      }
+    radius = std::max(radius, distance);
+  }
+  for (std::size_t i = 0; i < original.size(); i += width) {
+    const double dw = (candidate[i + dim] - original[i + dim]) / minimum;
+    double numerator = 0.;
+    for (int32_t c = 0; c < dim; ++c) {
+      const double origin = original[c] / original[dim];
+      numerator = std::hypot(numerator,
+                             (original[i + c] - candidate[i + c]) / minimum
+                                 + origin * dw);
+    }
+    if (!(numerator + radius * std::abs(dw) <= tolerance)) {
+      return false;
     }
   }
+  return true;
 }
 
 /// N-D tensor-product single knot removal along axis within tolerance.
@@ -278,12 +241,12 @@ TryRemoveKnotAlongAxisND(MemoryArena& arena,
                          int32_t para_dim,
                          int32_t coord_dim,
                          Span<const int32_t> degrees,
-                         const std::vector<Span<const double>>& current_kvs,
+                         const AxisArray<Span<const double>>& current_kvs,
                          Span<const double> in_cps,
                          int32_t axis,
                          double u_remove,
                          double tolerance,
-                         std::vector<double>& out_axis_knots,
+                         Buffer<double>& out_axis_knots,
                          Buffer<double>& out_cps) {
   assert(axis >= 0 && axis < para_dim);
   auto scope = arena.CreateScope();
@@ -298,11 +261,10 @@ TryRemoveKnotAlongAxisND(MemoryArena& arena,
   }
 
   // Find knot u_remove in knots
-  constexpr double kEps = 1e-12;
   int32_t r = -1;
   int32_t s = 0;
   for (int32_t i = 0; i <= m; ++i) {
-    if (std::abs(knots[i] - u_remove) <= kEps) {
+    if (knots[i] == u_remove) {
       r = i;
       s++;
     }
@@ -323,12 +285,8 @@ TryRemoveKnotAlongAxisND(MemoryArena& arena,
   auto in_n_of = [&](int32_t d) {
     return static_cast<int64_t>(current_kvs[d].size()) - degrees[d] - 1;
   };
-  const TensorLayout layout = TensorLayout::Make(arena,
-                                                 para_dim,
-                                                 axis,
-                                                 coord_dim,
-                                                 in_n_of,
-                                                 in_n_of(axis) - 1);
+  const TensorLayout layout =
+      TensorLayout::Make(para_dim, axis, coord_dim, in_n_of, in_n_of(axis) - 1);
   const int64_t num_rows = layout.num_rows;
   const int64_t in_s = layout.in_s;
   const int64_t out_s = layout.out_s;
@@ -517,37 +475,6 @@ TryRemoveKnotAlongAxisND(MemoryArena& arena,
   }
 
   return true;
-}
-
-/// Elevates a single 1D Bezier curve of degree p by 1.
-/// out_cps must hold (p + 2) * coord_dim doubles and not alias in_cps.
-inline void ElevateBezier1D(int32_t p,
-                            Span<const double> in_cps,
-                            int32_t coord_dim,
-                            Span<double> out_cps) {
-  assert(out_cps.size() >= static_cast<std::size_t>((p + 2) * coord_dim));
-
-  // Q_0 = P_0
-  for (int32_t c = 0; c < coord_dim; ++c) {
-    out_cps[0 * coord_dim + c] = in_cps[0 * coord_dim + c];
-  }
-
-  // Q_i = (i / (p + 1)) * P_{i-1} + (1 - i / (p + 1)) * P_i
-  const double inv_p_plus_1 = 1.0 / static_cast<double>(p + 1);
-  for (int32_t i = 1; i <= p; ++i) {
-    const double alpha = i * inv_p_plus_1;
-    const double one_minus_alpha = 1.0 - alpha;
-    for (int32_t c = 0; c < coord_dim; ++c) {
-      out_cps[i * coord_dim + c] =
-          alpha * in_cps[(i - 1) * coord_dim + c]
-          + one_minus_alpha * in_cps[i * coord_dim + c];
-    }
-  }
-
-  // Q_{p+1} = P_p
-  for (int32_t c = 0; c < coord_dim; ++c) {
-    out_cps[(p + 1) * coord_dim + c] = in_cps[p * coord_dim + c];
-  }
 }
 
 } // namespace splinepy::core::detail

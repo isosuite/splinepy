@@ -3,6 +3,7 @@ import numpy as _np
 from gustaf import Vertices as _Vertices
 from gustaf.utils.arr import enforce_len as _enforce_len
 
+from splinepy import mesh as _mesh
 from splinepy import settings as _settings
 from splinepy.utils import log as _log
 
@@ -44,7 +45,7 @@ def _sample_knots_2d(spline, res):
     Assumes this is one of the showable splines.
     """
     # extract knot lines as edges
-    knot_lines = spline.extract.edges(res, all_knots=True)
+    knot_lines = _mesh.to_gustaf(spline.extract.edges(res, all_knots=True))
 
     # apply show options
     knot_lines.show_options["c"] = spline.show_options.get("knot_c", "black")
@@ -87,12 +88,12 @@ def _sample_spline(spline, res):
     # sampling spline is quite simple, so we don't split functions here
     para_dim = spline.para_dim
     if para_dim == 1:
-        sp = spline.extract.edges(res)
+        sp = _mesh.to_gustaf(spline.extract.edges(res))
         sp.show_options["lw"] = spline.show_options.get("lw", 8)
     elif para_dim > 1:
         # we don't return water tight meshes here
         # see (gustaf #120)
-        sp = spline.extract.faces(res, watertight=False)
+        sp = _mesh.to_gustaf(spline.extract.faces(res, watertight=False))
 
     return sp
 
@@ -257,7 +258,7 @@ def _create_control_points(spline):
     Creates control points.
     """
     # control points (vertices)
-    cps = spline.extract.control_points()
+    cps = _mesh.to_gustaf(spline.extract.control_points())
     cps.show_options["c"] = spline.show_options.get("control_point_c", "red")
     cps.show_options["r"] = spline.show_options.get("control_point_r", 10)
     cps.show_options["alpha"] = spline.show_options.get(
@@ -271,7 +272,7 @@ def _create_control_point_ids(spline):
     Creates control point ids.
     """
     # a bit redundant, but nicely separable
-    cp_ids = spline.extract.control_points()
+    cp_ids = _mesh.to_gustaf(spline.extract.control_points())
     cp_ids.show_options["labels"] = _np.arange(len(cp_ids.vertices))
     cp_ids.show_options["label_options"] = {"font": "VTK"}
 
@@ -283,14 +284,14 @@ def _create_control_mesh(spline):
     Creates control mesh.
     """
     # pure control mesh
-    c_mesh = spline.extract.control_mesh()  # either edges or faces
+    c_mesh = _mesh.to_gustaf(spline.extract.control_mesh())  # either edges or faces
     if spline.para_dim != 1:
         c_mesh = c_mesh.to_edges(unique=True)
 
     c_mesh.show_options["c"] = spline.show_options.get("control_mesh_c", "red")
     c_mesh.show_options["lw"] = spline.show_options.get("control_mesh_lw", 4)
     c_mesh.show_options["alpha"] = spline.show_options.get(
-        "control_points_alpha", 0.8
+        "control_mesh_alpha", 0.8
     )
 
     return c_mesh

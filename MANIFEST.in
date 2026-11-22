@@ -1,5 +1,0 @@
-graft src
-graft core
-graft cmake
-global-include CMakeLists.txt
-global-exclude .git .git*

@@ -190,122 +190,46 @@ def _export_internal(fname, splines):
 
 def _load_internal(fname):
     with open(fname) as f:
-        raw_lines = [line.rstrip("\r\n") for line in f]
+        lines = [line for line in f if len(line) > 73]
+    # column 73 names the section
+    d_lines = [line for line in lines if line[72] == "D"]
+    p_lines = [line for line in lines if line[72] == "P"]
 
-    d_lines = []
-    p_lines = []
-
-    for line in raw_lines:
-        if len(line) < 73:
-            continue
-        sec = line[72]
-        if sec == "D":
-            d_lines.append(line)
-        elif sec == "P":
-            p_lines.append(line)
-
-    # Parse P section text grouped by entity
-    # Each entity's P lines end with ;
-    p_data_by_line = {}
-    for line in p_lines:
-        seq = int(line[73:80].strip())
-        content = line[:64]
-        d_ptr = int(line[64:72].strip()) if line[64:72].strip() else 0
-        p_data_by_line[seq] = (content, d_ptr)
+    # parameter text by sequence number; an entity's lines end with ;
+    p_data_by_line = {int(line[73:80]): line[:64] for line in p_lines}
 
     splines = []
     # Entities in D section come in pairs
-    for i in range(0, len(d_lines), 2):
-        d1 = d_lines[i]
-        d2 = d_lines[i + 1]
-        entity_type = int(d1[:8].strip())
-        p_start = int(d1[8:16].strip())
-        p_count = int(d2[24:32].strip())
-
+    for d1, d2 in zip(d_lines[::2], d_lines[1::2], strict=True):
+        entity_type = int(d1[:8])
         if entity_type not in (126, 128):
             continue
-
-        raw_str = "".join(p_data_by_line[p_start + j][0] for j in range(p_count))
-        # Remove trailing ; and split by ,
-        raw_str = raw_str.rstrip().rstrip(";")
-        tokens = [t.strip() for t in raw_str.split(",") if t.strip()]
-
-        if entity_type == 126:
-            # Curve: 126, K, M, PROP1, PROP2, PROP3, PROP4, ...
-            k = int(tokens[1])
-            m = int(tokens[2])
-            is_rat = int(tokens[5]) == 0
-            idx = 7
-            n_knots = k + m + 2
-            knots = [float(x) for x in tokens[idx : idx + n_knots]]
-            idx += n_knots
-            n_cps = k + 1
-            weights = [float(x) for x in tokens[idx : idx + n_cps]]
-            idx += n_cps
-            cps = []
-            for _ in range(n_cps):
-                cps.append(
-                    [float(tokens[idx]), float(tokens[idx + 1]), float(tokens[idx + 2])]
-                )
-                idx += 3
-
-            if is_rat:
-                splines.append(
-                    _splinepy.NURBS(
-                        degrees=[m],
-                        knot_vectors=[knots],
-                        control_points=cps,
-                        weights=weights,
-                    )
-                )
-            else:
-                splines.append(
-                    _splinepy.BSpline(
-                        degrees=[m], knot_vectors=[knots], control_points=cps
-                    )
-                )
-
-        elif entity_type == 128:
-            # Surface: 128, K1, K2, M1, M2, PROP1..PROP5, ...
-            k1 = int(tokens[1])
-            k2 = int(tokens[2])
-            m1 = int(tokens[3])
-            m2 = int(tokens[4])
-            is_rat = int(tokens[7]) == 0
-            idx = 10
-            n_knots1 = k1 + m1 + 2
-            knots1 = [float(x) for x in tokens[idx : idx + n_knots1]]
-            idx += n_knots1
-            n_knots2 = k2 + m2 + 2
-            knots2 = [float(x) for x in tokens[idx : idx + n_knots2]]
-            idx += n_knots2
-            n_cps = (k1 + 1) * (k2 + 1)
-            weights = [float(x) for x in tokens[idx : idx + n_cps]]
-            idx += n_cps
-            cps = []
-            for _ in range(n_cps):
-                cps.append(
-                    [float(tokens[idx]), float(tokens[idx + 1]), float(tokens[idx + 2])]
-                )
-                idx += 3
-
-            if is_rat:
-                splines.append(
-                    _splinepy.NURBS(
-                        degrees=[m1, m2],
-                        knot_vectors=[knots1, knots2],
-                        control_points=cps,
-                        weights=weights,
-                    )
-                )
-            else:
-                splines.append(
-                    _splinepy.BSpline(
-                        degrees=[m1, m2],
-                        knot_vectors=[knots1, knots2],
-                        control_points=cps,
-                    )
-                )
+        p_start = int(d1[8:16])
+        # 126 (curve): type, K, M, 4 flags; 128 (surface): type, K1, K2, M1,
+        # M2, 5 flags. Then knots per axis, weights and control points.
+        n_axes = 1 if entity_type == 126 else 2
+        *head, numbers = "".join(
+            p_data_by_line[p_start + j] for j in range(int(d2[24:32]))
+        ).split(",", 4 + 3 * n_axes)
+        upper = [int(t) for t in head[1 : 1 + n_axes]]
+        degrees = [int(t) for t in head[1 + n_axes : 1 + 2 * n_axes]]
+        is_rational = int(head[3 + 2 * n_axes]) == 0
+        n_knots = [k + m + 2 for k, m in zip(upper, degrees, strict=True)]
+        n_cps = int(_np.prod([k + 1 for k in upper]))
+        numbers = numbers.partition(";")[0].split(",")
+        values = _np.array(
+            [float(t) for t in numbers[: sum(n_knots) + 4 * n_cps]]
+        )
+        properties = {
+            "degrees": degrees,
+            "knot_vectors": _np.split(values[: sum(n_knots)], n_knots[:-1]),
+            "control_points": values[sum(n_knots) + n_cps :].reshape(-1, 3),
+        }
+        if is_rational:
+            weights = values[sum(n_knots) : sum(n_knots) + n_cps]
+            splines.append(_splinepy.NURBS(weights=weights, **properties))
+        else:
+            splines.append(_splinepy.BSpline(**properties))
 
     return splines
 

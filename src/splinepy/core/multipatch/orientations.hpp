@@ -1,7 +1,6 @@
 #pragma once
 
 #include <array>
-#include <vector>
 
 #include "splinepy/core/common.hpp"
 #include "splinepy/core/memory/buffer.hpp"
@@ -35,11 +34,17 @@ Buffer<int32_t> InterfaceOrientations(const SplineBatchView& patches,
 
 using SeamPoint = std::array<int64_t, 2>;
 
+/// Groups of coincident control points: group g is points[offsets[g],
+/// offsets[g + 1]), in order of their first point, each group sorted.
+struct SeamGroups {
+  Buffer<SeamPoint> points;
+  Buffer<std::size_t> offsets;
+};
+
 /// Groups of coincident control points on conforming oriented interfaces.
-std::vector<std::vector<SeamPoint>>
-SeamControlPoints(SplineBatchView patches,
-                  Span<const int32_t> interfaces,
-                  Span<const int32_t> orientations,
-                  double tolerance);
+SeamGroups SeamControlPoints(SplineBatchView patches,
+                             Span<const int32_t> interfaces,
+                             Span<const int32_t> orientations,
+                             double tolerance);
 
 } // namespace splinepy::core

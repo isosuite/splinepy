@@ -3,6 +3,27 @@ import pytest
 
 import splinepy
 
+
+def test_local_queries_validate_live_values_and_full_validation_is_explicit():
+    spline = splinepy.NURBS(
+        [1], [[0, 0, 0.25, 0.5, 0.75, 1, 1]],
+        np.arange(5.0).reshape(-1, 1), np.ones(5),
+    )
+    assert spline.validate()
+    expected = spline.evaluate([[0.9]])
+    spline.control_points[0] = np.nan
+    np.testing.assert_array_equal(spline.evaluate([[0.9]]), expected)
+    with pytest.raises(ValueError, match="non-finite"):
+        spline.evaluate([[0.1]])
+    with pytest.raises(ValueError, match="non-finite"):
+        spline.validate()
+    spline.control_points[0] = 0
+    spline.weights[-1] = -1
+    with pytest.raises(ValueError, match="positive"):
+        spline.evaluate([[0.9]])
+    spline.weights[-1] = 1
+    assert spline.validate()
+
 # fixtures for test_new_control_point_pointers_creation
 all_2p2d_splines = (
     "rational_bezier_2p2d",
@@ -245,3 +266,42 @@ def test_cps_valid_after_manipulation(splinetype, request):
         # reduce degree only available for bsplines
         spline.reduce_degrees([0])
         cps_are_synced(spline)
+
+
+@pytest.mark.parametrize(
+    "method, args",
+    [
+        ("evaluate", ()),
+        ("jacobian", ()),
+        ("basis", ()),
+        ("derivative", ([1, 0],)),
+        ("derivative", ([[1, 0], [0, 1]],)),
+        ("basis_derivative", ([1, 0],)),
+    ],
+)
+@pytest.mark.parametrize("nthreads", [1, 4])
+def test_queries_report_bad_values_they_read_and_no_others(method, args, nthreads):
+    knots = [0, 0, 0, 0.25, 0.5, 0.75, 1, 1, 1]
+    spline = splinepy.NURBS(
+        [2, 2], [knots, knots], np.random.default_rng(1).random((36, 3)), np.ones(36)
+    )
+    query = getattr(spline, method)
+    far = np.full((2000, 2), 0.9)  # supports stay away from point 0
+    near = np.vstack([far, [[0.05, 0.05]]])
+    expected = query(far, *args, nthreads=nthreads)
+
+    spline.weights[0] = -1
+    np.testing.assert_array_equal(query(far, *args, nthreads=nthreads), expected)
+    with pytest.raises(ValueError, match="positive"):
+        query(near, *args, nthreads=nthreads)
+    spline.weights[0] = 1
+
+    spline.control_points[0] = np.inf
+    np.testing.assert_array_equal(query(far, *args, nthreads=nthreads), expected)
+    if "basis" not in method:  # basis functions do not read control points
+        with pytest.raises(ValueError, match="non-finite"):
+            query(near, *args, nthreads=nthreads)
+    spline.control_points[0] = 0
+
+    # a NaN query is not the spline's fault
+    assert np.isnan(query([[np.nan, 0.5]], *args)).any()

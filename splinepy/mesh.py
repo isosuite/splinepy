@@ -1,8 +1,9 @@
-"""Mesh primitives for the viewer.
+"""Meshes as plain dicts.
 
-A mesh is a plain dict ``{"element_type", "vertices", "connectivity",
-"vertex_data"}``. All routines here are pure numpy and operate on that dict,
-so that they can be swapped for compiled kernels without touching callers.
+A mesh is ``{"element_type", "vertices", "connectivity", "vertex_data"}``.
+Extraction (``spline.extract``), FFD and the viewer all use this one format;
+the routines here are pure numpy on that dict. :func:`to_gustaf` and
+:func:`from_gustaf` are the only bridge to gustaf, which stays optional.
 """
 
 import numpy as _np
@@ -167,6 +168,82 @@ def grid_quads(shape):
     )
 
 
+def grid_hexas(shape):
+    """(m, 8) hexahedra of a 3D structured grid.
+
+    Parameters
+    ----------
+    shape : sequence of int
+        Number of vertices along each grid axis.
+
+    Returns
+    -------
+    hexas : (m, 8) numpy.ndarray
+        Vertex indices per hexahedron, bottom face first.
+    """
+    if len(shape) != 3:
+        raise ValueError("grid_hexas needs a 3D shape")
+    i = grid_ids(shape)
+    lo, hi = slice(None, -1), slice(1, None)
+    corners = [
+        i[lo, lo, lo], i[hi, lo, lo], i[hi, hi, lo], i[lo, hi, lo],
+        i[lo, lo, hi], i[hi, lo, hi], i[hi, hi, hi], i[lo, hi, hi],
+    ]  # fmt: skip
+    return _np.stack(corners, axis=-1).reshape(-1, 8, order="F")
+
+
+def grid_elements(shape):
+    """Element type and connectivity of a structured grid of any dimension.
+
+    Parameters
+    ----------
+    shape : sequence of int
+        Number of vertices along each grid axis (1 to 3 axes).
+
+    Returns
+    -------
+    element_type : str
+        "line", "quad" or "hexa".
+    connectivity : numpy.ndarray
+        Vertex indices per element.
+    """
+    if len(shape) == 1:
+        return "line", grid_edges(shape)
+    if len(shape) == 2:
+        return "quad", grid_quads(shape)
+    return "hexa", grid_hexas(shape)
+
+
+def merge_vertices(mesh, tolerance=None):
+    """Merges vertices closer than ``tolerance`` and renumbers elements.
+
+    Parameters
+    ----------
+    mesh : dict
+        Mesh dictionary as returned by make_mesh.
+    tolerance : float, optional
+        Merge distance per coordinate. Default is settings.TOLERANCE.
+
+    Returns
+    -------
+    merged : dict
+        Mesh with unique vertices in order of first appearance.
+    """
+    import funi as _funi
+
+    from splinepy import settings as _settings
+
+    tol = _settings.TOLERANCE if tolerance is None else tolerance
+    _, ids, inverse = _funi.unique_rows(mesh["vertices"], tol)
+    data = {k: _np.asarray(v)[ids] for k, v in mesh["vertex_data"].items()}
+    return make_mesh(
+        mesh["element_type"],
+        mesh["vertices"][ids],
+        inverse[mesh["connectivity"]],
+        data,
+    )
+
+
 def to_triangles(mesh):
     """Splits quads into triangles; triangles pass through.
 
@@ -260,3 +337,67 @@ def vertex_normals(mesh):
         _np.add.at(n, c[:, k], fn)
     norm = _np.linalg.norm(n, axis=1, keepdims=True)
     return n / _np.where(norm > 0, norm, 1)
+
+
+_GUSTAF_TYPES = {
+    "vertex": "Vertices",
+    "line": "Edges",
+    "triangle": "Faces",
+    "quad": "Faces",
+    "tet": "Volumes",
+    "hexa": "Volumes",
+}
+
+
+def to_gustaf(mesh):
+    """Converts a mesh dict to the matching gustaf object.
+
+    Parameters
+    ----------
+    mesh : dict
+        Mesh dictionary as returned by make_mesh.
+
+    Returns
+    -------
+    gus_mesh : gustaf.Vertices, gustaf.Edges, gustaf.Faces or gustaf.Volumes
+        Mesh with the same vertices, elements and vertex data.
+    """
+    import gustaf as _gus
+
+    cls = getattr(_gus, _GUSTAF_TYPES[mesh["element_type"]])
+    if mesh["element_type"] == "vertex":
+        result = cls(mesh["vertices"])
+    else:
+        result = cls(mesh["vertices"], mesh["connectivity"])
+    for key, values in mesh["vertex_data"].items():
+        result.vertex_data[key] = values
+    return result
+
+
+def from_gustaf(obj):
+    """Converts a gustaf mesh to a mesh dict.
+
+    Parameters
+    ----------
+    obj : gustaf.Vertices or subclass
+        Vertices, edges, faces or volumes.
+
+    Returns
+    -------
+    mesh : dict
+        Mesh dict with the same vertices, elements and vertex data.
+    """
+    elements = getattr(obj, "elements", None)
+    whatami = getattr(obj, "whatami", "")
+    empty = elements is None or len(elements) == 0 or whatami == "vertices"
+    nodes = 0 if empty else elements.shape[1]
+    etype = {2: "line", 3: "triangle", 8: "hexa"}.get(nodes, "vertex")
+    if nodes == 4:
+        etype = "tet" if whatami.startswith("tet") else "quad"
+    data = {}
+    if hasattr(obj, "vertex_data"):
+        # gustaf's VertexData has keys() but no iteration
+        for k in obj.vertex_data.keys():  # noqa: SIM118
+            data[k] = obj.vertex_data[k]
+    connectivity = None if etype == "vertex" else elements
+    return make_mesh(etype, obj.vertices, connectivity, data)

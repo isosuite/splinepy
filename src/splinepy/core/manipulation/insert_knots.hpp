@@ -8,9 +8,9 @@
 
 namespace splinepy::core {
 
-/// Inserts knots along parametric dimension axis.
-/// knots_to_insert: sequence of knots to insert.
-/// Returns owning SplineData containing the refined spline geometry.
+/// Inserts knots along parametric dimension axis, in one pass over the
+/// control net (see AxisMap). A Bezier spline becomes a B-spline with open
+/// knot vectors.
 SplineData InsertKnots(const SplineView& spline,
                        int32_t axis,
                        Span<const double> knots_to_insert,

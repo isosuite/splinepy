@@ -59,7 +59,8 @@ def to_data_url(texture):
             raise ValueError(f"Texture must be png or jpg, got {path.suffix}")
         data = path.read_bytes()
     elif isinstance(texture, (bytes, bytearray)):
-        data, mime = bytes(texture), "image/png"
+        data = bytes(texture)
+        mime = "image/jpeg" if data[:2] == b"\xff\xd8" else "image/png"
     else:
         arr = _np.asarray(texture)
         if arr.ndim not in (2, 3) or (arr.ndim == 3 and arr.shape[2] not in (3, 4)):

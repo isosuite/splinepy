@@ -7,18 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-- Python bindings are built with nanobind instead of pybind11. The C++ spline class hierarchy (`SplinepyBase`, `Bezier`, `BSpline`, ...) and the `SPLINEPY_MORE`, `SPLINEPY_BUILD_EXPLICIT` and `SPLINEPY_COMPILE_BSPLINELIB` build options are removed; kernels live in the standalone `core/` library.
-- `Spline` and `Multipatch` are plain Python classes. Control points, weights, degrees and knot vectors are plain numpy arrays, no synchronization with the backend is needed.
-- `spline.knot_vectors` returns a list of `splinepy.KnotVector`, a numpy array subclass.
-
 ### Added
-- Point inversion (`Spline.proximities`) lives in `core/`: bounded trust-region dogleg, SLSQP and Levenberg-Marquardt solver chain, multi-start from element boxes, restarts at singular points (cone apex, collapsed edges).
+- Standalone C++17 core library (`src/splinepy/core`) with allocation-free query kernels, manipulation, Bezier algebra and multipatch topology, plus a GoogleTest suite run in CI.
+- Hierarchical splines: `HBSpline`, `THBSpline`, `RationalHBSpline`, `RationalTHBSpline` with refinement, coarsening, leaf Bezier extraction and JSON IO ([examples/iga/hierarchical_refinement.py](examples/iga/hierarchical_refinement.py)).
+- three.js viewer (`splinepy.viewer`), the default backend of `splinepy.show()`; select with `settings.SHOW_BACKEND` or `show(backend=...)`.
+- `out=` argument on evaluation queries to write into existing arrays.
+- `Spline.validate()` for an explicit check of the complete layout and all values.
+- `Bezier.compose_batch()` and `Bezier.composition_derivative_batch()`.
+- `Spline.prepare_proximity()` for reusable point inversion searches; it accepts `guess="bvh"` or `"grid"`.
+- `Multipatch.edit_patches_control_points()` and `update_patch_control_points()`, which propagate edits to shared seam points.
+- `helpme.fit.tensor()` for tensor grid fitting in any parametric dimension.
+- `helpme.create.swept()`: `twist` option.
+- `splinepy.KnotVector`, a numpy array subclass returned by `spline.knot_vectors`.
+- `splinepy.SplinepyError` for errors from the native core, with a `status` attribute. Subclasses `ValueError` and `RuntimeError`.
+- Microstructure parameter sensitivities for every tile: tiles without derivatives use central differences.
+- Microstructure macro sensitivities for NURBS deformation functions.
+- `TileBase._affine`: a tile whose control points are affine in its parameters is built for all cells from one probe, and needs no derivative code.
+
+### Changed
+- Degree inputs own immutable storage; coordinates and weights still share compatible writable inputs.
+- Knot uniqueness and multiplicities preserve every distinct knot, including narrow spans.
+- Proximity searches stop at a stationary point of working precision instead of running the trust region to collapse; distances are unchanged and the gradient norm at the result is smaller.
+- `unique_knots`, `parametric_bounds`, `control_mesh_resolutions` are computed natively; `copy()` copies a valid spline without validating it again.
+- Single-spline queries reuse validated layouts and find invalid control points or weights from their result: a query raises for the values it reads, without a separate pass over them.
+- Knot insertion, degree elevation, uniform refinement and Bezier extraction apply one banded map per axis in a single pass over the control net, also for insertion matrices, the microstructure plan and hierarchy levels. Degree elevation no longer inserts and removes knots under a tolerance.
+- Queries choose their thread count from the amount of work, so small calls with `nthreads > 1` stay on the calling thread.
+- `Multipatch.interfaces` computes all boundary centers in one native call.
+- Python bindings use nanobind instead of pybind11. `Spline` and `Multipatch` are plain Python classes holding numpy arrays; no backend synchronization.
+- `Spline.proximities` uses an element BVH (or a grid search, `prepare_proximity(guess="grid")`) for initial guesses and a trust-region dogleg, SLSQP and Levenberg-Marquardt solver chain with restarts at singular points.
+- Degree elevation/reduction and Bezier extraction accept C^-1 knots.
+- IGES IO is implemented in Python.
+- FFD accepts native mesh inputs.
+- `gustaf` is optional (`splinepy[gustaf]`); viewer extras are `splinepy[viewer]` and `splinepy[viewer-export]`.
+- macOS wheels are built for arm64 only.
+- `Microstructure.create()` composes all cells in one native call and shares composed bases between identical tile patches; against 0.2.1, a parametrized structure builds 30x (2D) to 50x (3D) faster, and 300x with macro sensitivities. The parametrization functions are called once, on the evaluation points of all cells.
+- The derivatives of the affine built-in tiles come from their control point map instead of hand-written derivative code.
+- Splines have at most 8 parametric dimensions (0.2.1 wheels allowed 10); compile with `-DSPLINEPY_MAX_PARA_DIM=N` for more.
+
+### Fixed
+- `insert_knots` and `remove_knots` reject a negative parametric dimension (`insert_knots` crashed); `reduce_degrees` raises on errors instead of reporting `False`.
+- Reject non-Bezier inputs to Bezier algebra, malformed tensor arrays, and nonfinite knot edits; preserve inputs when output arrays overlap them.
+- Rational addition under weight scaling, geometric tolerance checks for rational simplification, and integer overflow in high-degree algebra.
+- Degree elevation and integration over narrow knot spans, anisotropic multipatch face connectivity, and parameter bounds in affine tile batches.
+- Multithreaded queries indexing; exceptions in worker threads aborted the process instead of being raised.
+- Data race in multipatch G1 boundary detection.
+- Integration on non-uniform knot spans, element scaling in `FieldIntegrator` assembly, and orientation of `helpme.integrate.volume`.
+- `swept()`: misaligned cross sections for normals with a y-component, trajectories whose parametric bounds do not start at 0, closure along closed trajectories, and degenerate frames.
 
 ### Removed
-- `PySpline`, `PyMultipatch`, `PhysicalSpaceArray`, `_new_core`, `_coordinate_pointers` and related private helpers.
-- Vendored `pybind11` and the `napf` submodule. The kd-tree initial guess of `Spline.proximities` is replaced by an element bounding volume hierarchy (default) or a nearest sample grid search (`ProximityHandle.guess = "grid"`).
-- `SPLINEPY_BUILD_SHARED` and `SPLINEPY_ENABLE_WARNINGS` build options, the `splinepy` C++ library target.
+- C++ spline class hierarchy (`SplinepyBase`, `Bezier`, `BSpline`, ...), `PySpline`, `PyMultipatch`, `PhysicalSpaceArray` and the coordinate pointer layer.
+- Bundled `pybind11`, `BSplineLib`, `bezman` and `napf`.
+- Build options `SPLINEPY_MORE`, `SPLINEPY_BUILD_EXPLICIT`, `SPLINEPY_COMPILE_BSPLINELIB`, `SPLINEPY_BUILD_SHARED`, `SPLINEPY_ENABLE_WARNINGS` and the `splinepy` C++ library target.
 
 ## [0.2.1] - 2026-06
 

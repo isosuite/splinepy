@@ -26,21 +26,22 @@ struct Sibling {
 };
 
 bool MergeSiblings(MemoryArena& arena,
-                   const SplineView& spline,
+                   const HierarchicalSplineView& spline,
                    Span<const std::size_t> marked,
                    HierarchyData& result) {
   auto scope = arena.CreateScope();
-  const auto& source = *spline.hierarchy;
-  const auto dim = spline.degrees.size();
-  const auto grid =
-      detail::BuildGrid<Traits>(arena, spline.degrees, source.level_knots);
+  const auto& source = spline.hierarchy;
+  const auto dim = spline.tensor.degrees.size();
+  const auto grid = detail::BuildGrid<Traits>(arena,
+                                              spline.tensor.degrees,
+                                              source.level_knots);
   auto padded = arena.AllocateSpan<int32_t>(dim);
   auto siblings = arena.AllocateSpan<Sibling>(marked.size());
   auto removed = arena.AllocateSpan<uint8_t>(source.leaves.size(), 0);
   std::size_t count = 0;
   for (auto leaf : marked) {
     if (leaf >= source.leaves.size()) {
-      throw std::invalid_argument("leaf index out of bounds");
+      throw SplinepyException("leaf index out of bounds", Status::kOutOfBounds);
     }
     if (removed[leaf]) {
       continue;
@@ -116,7 +117,7 @@ bool MergeSiblings(MemoryArena& arena,
   const auto levels = source.level_knots.subspan(0, finest_level + 1);
   if (levels.size() != source.level_knots.size()) {
     const auto target =
-        detail::BuildGrid<Traits>(arena, spline.degrees, levels);
+        detail::BuildGrid<Traits>(arena, spline.tensor.degrees, levels);
     for (auto& key : result.leaves) {
       const auto level = Traits::DecodeCell(grid.cells, key, padded.data());
       for (std::size_t axis = 0; axis < dim; ++axis) {
@@ -183,11 +184,12 @@ struct Samples {
 };
 
 Samples SampleSource(MemoryArena& arena,
-                     const SplineView& spline,
+                     const HierarchicalSplineView& spline,
                      const ThbCacheData& cache,
                      const Options& options) {
-  const auto dim = spline.degrees.size();
-  const auto components = spline.dim + std::size_t(spline.IsRational());
+  const auto dim = spline.tensor.degrees.size();
+  const auto components =
+      spline.tensor.dim + std::size_t(spline.tensor.IsRational());
   const auto local = cache.local_size;
   const auto count = CheckedProduct(cache.leaf_levels.size(), local);
   Samples samples{
@@ -206,14 +208,14 @@ Samples SampleSource(MemoryArena& arena,
   auto row_values = arena.AllocateSpan<double>(max_rows);
   auto index = arena.AllocateSpan<std::size_t>(dim);
   for (std::size_t axis = 0; axis < dim; ++axis) {
-    const auto n = std::size_t(spline.degrees[axis]) + 1;
+    const auto n = std::size_t(spline.tensor.degrees[axis]) + 1;
     new (&nodes[axis]) Span<double>(arena.AllocateSpan<double>(n));
     new (&weights[axis]) Span<double>(arena.AllocateSpan<double>(n));
     new (&basis[axis])
         Span<double>(arena.AllocateSpan<double>(CheckedProduct(n, n)));
     GaussRule(nodes[axis], weights[axis]);
     for (std::size_t i = 0; i < n; ++i) {
-      EvaluateBernstein(spline.degrees[axis],
+      EvaluateBernstein(spline.tensor.degrees[axis],
                         nodes[axis][i],
                         basis[axis].subspan(i * n, n));
     }
@@ -266,14 +268,16 @@ Samples SampleSource(MemoryArena& arena,
         double value = 0.0;
         for (std::size_t row = 0; row < rows; ++row) {
           const auto control = cache.active_indices[first + row];
-          const auto coordinate = component == std::size_t(spline.dim)
+          const auto coordinate = component == std::size_t(spline.tensor.dim)
                                       ? 1.0
-                                      : spline.Point(control, component);
-          value += row_values[row] * (coordinate * spline.Weight(control));
+                                      : spline.tensor.Point(control, component);
+          value +=
+              row_values[row] * (coordinate * spline.tensor.Weight(control));
         }
         if (!std::isfinite(value)) {
-          throw std::invalid_argument(
-              "coarsening requires finite homogeneous coefficients");
+          throw SplinepyException(
+              "coarsening requires finite homogeneous coefficients",
+              Status::kInvalidArgument);
         }
         samples.source[q * components + component] = value;
       }
@@ -311,7 +315,7 @@ double Dot(Span<const double> a, Span<const double> b) {
 }
 
 void Project(MemoryArena& arena,
-             const SplineView& spline,
+             const HierarchicalSplineView& spline,
              const Samples& samples,
              const Projection& matrix,
              bool exact,
@@ -319,8 +323,8 @@ void Project(MemoryArena& arena,
              int64_t max_iterations,
              ThbRefinementData& result) {
   const auto count = result.hierarchy.active.size();
-  const auto dim = std::size_t(spline.dim);
-  const auto components = dim + spline.IsRational();
+  const auto dim = std::size_t(spline.tensor.dim);
+  const auto components = dim + spline.tensor.IsRational();
   const auto points = samples.weights.size();
   auto inverse_scale = arena.AllocateSpan<double>(count, 0.0);
   auto solution = arena.AllocateSpan<double>(count);
@@ -344,7 +348,7 @@ void Project(MemoryArena& arena,
     diagonal = 1.0 / std::sqrt(diagonal);
   }
   result.control_points.resize(CheckedProduct(count, dim));
-  if (spline.IsRational()) {
+  if (spline.tensor.IsRational()) {
     result.weights.resize(count);
   }
   const auto limit = max_iterations == -1
@@ -429,8 +433,9 @@ void Project(MemoryArena& arena,
         const auto error = matrix.Evaluate(q, solution)
                            - samples.source[q * components + component];
         if (std::abs(error) > tolerance * scale) {
-          throw std::invalid_argument(
-              "spline coefficients do not lie in the coarser space");
+          throw SplinepyException(
+              "spline coefficients do not lie in the coarser space",
+              Status::kInvalidArgument);
         }
       }
     }
@@ -439,8 +444,9 @@ void Project(MemoryArena& arena,
         result.control_points[i * dim + component] = solution[i];
       } else {
         if (!std::isfinite(solution[i]) || solution[i] <= 0.0) {
-          throw std::invalid_argument(
-              "coarsening would produce nonpositive rational weights");
+          throw SplinepyException(
+              "coarsening would produce nonpositive rational weights",
+              Status::kInvalidArgument);
         }
         result.weights[i] = solution[i];
         for (std::size_t axis = 0; axis < dim; ++axis) {
@@ -453,18 +459,20 @@ void Project(MemoryArena& arena,
 
 } // namespace
 
-std::optional<ThbRefinementData> CoarsenThb(const SplineView& spline,
-                                            const ThbCacheData& cache,
-                                            Span<const std::size_t> marked,
-                                            int32_t admissible,
-                                            bool exact,
-                                            double tolerance,
-                                            int64_t max_iterations,
-                                            const Options& options) {
-  if (!spline.hierarchy || !spline.hierarchy->truncate || spline.dim <= 0
-      || admissible < 0 || (max_iterations != -1 && max_iterations < 1)
+std::optional<ThbRefinementData>
+CoarsenThb(const HierarchicalSplineView& spline,
+           const ThbCacheData& cache,
+           Span<const std::size_t> marked,
+           int32_t admissible,
+           bool exact,
+           double tolerance,
+           int64_t max_iterations,
+           const Options& options) {
+  if (!spline.hierarchy.truncate || spline.tensor.dim <= 0 || admissible < 0
+      || (max_iterations != -1 && max_iterations < 1)
       || !std::isfinite(tolerance) || tolerance <= 0) {
-    throw std::invalid_argument("invalid hierarchy coarsening inputs");
+    throw SplinepyException("invalid hierarchy coarsening inputs",
+                            Status::kInvalidArgument);
   }
   if (marked.empty()) {
     return std::nullopt;
@@ -480,7 +488,7 @@ std::optional<ThbRefinementData> CoarsenThb(const SplineView& spline,
   const auto levels =
       arena.AllocateSpan<LevelKnotsView>(hierarchy.level_knots.size());
   const auto axes = arena.AllocateSpan<Span<const double>>(
-      CheckedProduct(levels.size(), spline.degrees.size()));
+      CheckedProduct(levels.size(), spline.tensor.degrees.size()));
   for (auto& level : levels) {
     new (&level) LevelKnotsView();
   }
@@ -488,26 +496,26 @@ std::optional<ThbRefinementData> CoarsenThb(const SplineView& spline,
     new (&axis) Span<const double>();
   }
   auto view = hierarchy.View(levels, axes);
-  auto active = BuildActiveSets({&spline.degrees, 1}, {&view, 1}, options);
+  const Span<const int32_t> degrees = spline.tensor.degrees;
+  auto active = BuildActiveSets({&degrees, 1}, {&view, 1}, options);
   hierarchy.active = std::move(active[0]);
   view.active = hierarchy.active;
-  auto target = spline;
-  target.hierarchy = &view;
-  target.knot_vectors = view.level_knots.front();
-  target.num_control_points = view.active.size();
+  HierarchicalSplineView target{spline.tensor, view};
+  target.tensor.knot_vectors = view.level_knots.front();
+  target.tensor.num_control_points = view.active.size();
   // The projection uses polynomial basis values for all homogeneous components.
   // Supply dummy scalar controls for the shared batched basis evaluator.
-  target.dim = 1;
-  target.cp_stride = 1;
-  target.dim_stride = 1;
-  target.weights_data = nullptr;
-  target.control_points_data =
+  target.tensor.dim = 1;
+  target.tensor.cp_stride = 1;
+  target.tensor.dim_stride = 1;
+  target.tensor.weights_data = nullptr;
+  target.tensor.control_points_data =
       arena.AllocateSpan<double>(view.active.size(), 0.0).data();
   auto caches = BuildThbCaches({&target, 1}, options);
   result.extraction = std::move(caches[0]);
   if (admissible && !IsThbAdmissible(result.extraction, admissible)) {
-    throw std::invalid_argument(
-        "coarsened hierarchy would violate admissibility");
+    throw SplinepyException("coarsened hierarchy would violate admissibility",
+                            Status::kInvalidArgument);
   }
   const auto samples = SampleSource(arena, spline, cache, options);
   const auto layout =
@@ -515,7 +523,8 @@ std::optional<ThbRefinementData> CoarsenThb(const SplineView& spline,
   const auto entries = CheckedProduct(samples.weights.size(), layout.width);
   auto values = arena.AllocateSpan<double>(entries);
   auto support = arena.AllocateSpan<int64_t>(entries);
-  const auto orders = arena.AllocateSpan<int32_t>(spline.degrees.size(), 0);
+  const auto orders =
+      arena.AllocateSpan<int32_t>(spline.tensor.degrees.size(), 0);
   const auto geometry = BuildThbGeometry(target, result.extraction);
   BasisThb(target,
            result.extraction,

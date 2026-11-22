@@ -1,8 +1,11 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <cmath>
 #include <numeric>
 #include <vector>
 
+#include "splinepy/core/math/bernstein.hpp"
 #include "splinepy/core/math/bspline_basis.hpp"
 
 using namespace splinepy::core;
@@ -135,5 +138,102 @@ TEST(BSplineBasisTest, DerivativeMatchesFiniteDifference) {
     double fd_deriv = (b_plus[j] - b_minus[j]) / (2.0 * h);
     double analytical_deriv = ders[1 * n_basis + j];
     EXPECT_NEAR(analytical_deriv, fd_deriv, 1e-6);
+  }
+}
+
+// Degrees beyond the stack scratch of the basis kernels (16 for derivatives,
+// 32 for values and Bernstein, 64 for de Casteljau) take the heap path. On a
+// Bezier knot vector the B-spline basis equals the Bernstein basis.
+TEST(BSplineBasisTest, HighDegreeMatchesBernstein) {
+  const double u = 0.37;
+  for (const int32_t p : {3, 20, 40, 70}) {
+    std::vector<double> knots(2 * (p + 1), 0.0);
+    std::fill(knots.begin() + (p + 1), knots.end(), 1.0);
+    const Span<const double> kv(knots);
+    const auto n = static_cast<std::size_t>(p + 1);
+
+    std::vector<double> bspline(n), bernstein(n);
+    EvaluateBSplineBasis(p, u, p, kv, Span<double>(bspline));
+    EvaluateBernstein(p, u, Span<double>(bernstein));
+    EXPECT_NEAR(std::accumulate(bspline.begin(), bspline.end(), 0.0),
+                1.0,
+                1e-12)
+        << "p=" << p;
+    for (std::size_t i = 0; i < n; ++i) {
+      EXPECT_NEAR(bspline[i], bernstein[i], 1e-12) << "p=" << p << " i=" << i;
+    }
+
+    constexpr int32_t kOrder = 2;
+    std::vector<double> bspline_ders((kOrder + 1) * n),
+        bernstein_ders((kOrder + 1) * n);
+    EvaluateBSplineBasisDerivatives(p,
+                                    u,
+                                    p,
+                                    kOrder,
+                                    kv,
+                                    Span<double>(bspline_ders));
+    EvaluateBernsteinDerivatives(p, u, kOrder, Span<double>(bernstein_ders));
+    for (int32_t k = 1; k <= kOrder; ++k) {
+      double scale = 1.0, sum = 0.0;
+      for (std::size_t i = 0; i < n; ++i) {
+        scale = std::max(scale, std::abs(bernstein_ders[k * n + i]));
+        sum += bspline_ders[k * n + i];
+      }
+      EXPECT_NEAR(sum, 0.0, 1e-9 * scale) << "p=" << p << " order=" << k;
+      for (std::size_t i = 0; i < n; ++i) {
+        EXPECT_NEAR(bspline_ders[k * n + i],
+                    bernstein_ders[k * n + i],
+                    1e-9 * scale)
+            << "p=" << p << " order=" << k << " i=" << i;
+      }
+    }
+
+    // linear precision of de Casteljau: control points i / p give t
+    std::vector<double> line(n), left(n), right(n);
+    for (std::size_t i = 0; i < n; ++i) {
+      line[i] = static_cast<double>(i) / p;
+    }
+    EXPECT_NEAR(DeCasteljau1D(p, u, Span<const double>(line)), u, 1e-12);
+    DeCasteljauSplit1D(p,
+                       u,
+                       Span<const double>(line),
+                       1,
+                       Span<double>(left),
+                       Span<double>(right));
+    EXPECT_NEAR(left.back(), u, 1e-12);
+    EXPECT_NEAR(right.front(), u, 1e-12);
+  }
+}
+
+// Orders above the degree vanish and leave the lower orders unchanged.
+TEST(BSplineBasisTest, DerivativesAboveDegreeAreZero) {
+  double kv[8] = {0.0, 0.0, 0.0, 0.3, 0.7, 1.0, 1.0, 1.0};
+  const Span<const double> knots(kv, 8);
+  const int32_t p = 2;
+  const int32_t n_basis = p + 1;
+  const double u = 0.45;
+  const int32_t span = FindSpan(5, p, u, knots);
+
+  std::vector<double> up_to_degree((p + 1) * n_basis);
+  EvaluateBSplineBasisDerivatives(span,
+                                  u,
+                                  p,
+                                  p,
+                                  knots,
+                                  Span<double>(up_to_degree));
+
+  constexpr int32_t kOrder = p + 3;
+  std::vector<double> ders((kOrder + 1) * n_basis, -1.0);
+  EvaluateBSplineBasisDerivatives(span,
+                                  u,
+                                  p,
+                                  kOrder,
+                                  knots,
+                                  Span<double>(ders));
+  for (int32_t k = 0; k <= kOrder; ++k) {
+    for (int32_t j = 0; j < n_basis; ++j) {
+      const double expected = k <= p ? up_to_degree[k * n_basis + j] : 0.0;
+      EXPECT_EQ(ders[k * n_basis + j], expected) << "order=" << k << " j=" << j;
+    }
   }
 }

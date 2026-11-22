@@ -1,7 +1,9 @@
 #pragma once
 
 #include "splinepy/core/hierarchy/key.hpp"
+#include "splinepy/core/manipulation/axis_map.hpp"
 #include "splinepy/core/memory/buffer.hpp"
+#include "splinepy/core/model/spline_view.hpp"
 #include "splinepy/core/options.hpp"
 
 namespace splinepy::core {
@@ -16,6 +18,17 @@ struct HierarchyView {
   KeyFormat key_format{KeyFormat::kKey64};
   bool truncate{true};
 };
+
+/// A hierarchical (HB or THB) spline: the tensor part holds the level-zero
+/// degrees and knots plus the geometry of the active functions, the
+/// hierarchy part the levels, leaves and active functions over it. Tensor
+/// kernels take only the tensor part, so they never see a hierarchy.
+struct HierarchicalSplineView {
+  SplineView tensor;
+  HierarchyView hierarchy;
+};
+
+using HierarchicalBatchView = Span<const HierarchicalSplineView>;
 
 struct HierarchyData {
   Buffer<Buffer<Buffer<double>>> level_knots;
@@ -54,19 +67,11 @@ BuildActiveSets(Span<const Span<const int32_t>> degrees,
                 Span<const HierarchyView> hierarchies,
                 const Options& options = {});
 
-/// Fine coefficients equal this matrix times coarse coefficients, including
-/// each coordinate of homogeneous coefficients. Each row starts at
-/// first_column[row] and contains row_width entries, including zero padding.
-struct RefinementMatrix1D {
-  int32_t coarse_size{0};
-  int32_t row_width{0};
-  Buffer<int32_t> first_column;
-  Buffer<double> values;
-};
-
-RefinementMatrix1D BuildRefinementMatrix1D(int32_t degree,
-                                           Span<const double> coarse,
-                                           Span<const double> fine,
-                                           const Options& options = {});
+/// Fine coefficients equal this map times coarse coefficients, including
+/// each coordinate of homogeneous coefficients (see AxisMap). Both knot
+/// vectors must be valid hierarchy levels, the fine one nested in the coarse.
+AxisMap BuildRefinementMatrix1D(int32_t degree,
+                                Span<const double> coarse,
+                                Span<const double> fine);
 
 } // namespace splinepy::core

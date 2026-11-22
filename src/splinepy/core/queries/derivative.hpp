@@ -1,7 +1,5 @@
 #pragma once
 
-#include <vector>
-
 #include "splinepy/core/common.hpp"
 #include "splinepy/core/memory/buffer.hpp"
 #include "splinepy/core/memory/span.hpp"
@@ -28,9 +26,12 @@ Buffer<double> Derivative(const SplineView& spline,
 /// Reusable schedule for flattened derivative multi-indices.
 class DerivativeOrders {
 public:
+  /// kernels: also keep the form the specialized kernels read. Callers
+  /// already past the kernel limits have no use for it.
   DerivativeOrders(Span<const int32_t> orders,
                    std::size_t para_dim,
-                   bool rational);
+                   bool rational,
+                   bool kernels = true);
 
 private:
   friend void Derivative(const SplineView&,
@@ -41,9 +42,15 @@ private:
 
   std::size_t para_dim_;
   bool rational_;
-  std::vector<int32_t> axis_orders_;
-  std::vector<int32_t> terms_;
-  std::vector<std::size_t> output_indices_;
+  AxisArray<int32_t> axis_orders_;
+  Buffer<int32_t> terms_;
+  Buffer<std::size_t> output_indices_;
+  // for the specialized kernels: number of terms up to the highest order per
+  // axis (0 if beyond their limits), the requested orders and the terms the
+  // rational quotient rule converts
+  int32_t kernel_terms_{0};
+  Buffer<int32_t> requested_;
+  Buffer<bool> needed_;
 };
 
 /// Output layout is (query, requested order, physical component).

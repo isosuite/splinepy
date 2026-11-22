@@ -5,17 +5,17 @@
 #include <limits>
 #include <numeric>
 #include <stdexcept>
-#include <vector>
 
 #include "splinepy/core/concurrency/parallel_for.hpp"
+#include "splinepy/core/memory/workspace.hpp"
 #include "splinepy/core/queries/evaluate.hpp"
 #include "splinepy/core/validate/validator.hpp"
 
 namespace splinepy::core {
 
-Buffer<double> ParametricBounds(const SplineView& spline) {
+ParametricBox ParametricBounds(const SplineView& spline) {
   const int32_t para_dim = spline.para_dim;
-  Buffer<double> bounds(2 * para_dim);
+  ParametricBox bounds(para_dim);
 
   if (spline.knot_vectors.empty()) {
     for (int32_t d = 0; d < para_dim; ++d) {
@@ -42,13 +42,13 @@ Buffer<double> ComputeBoundaryCenters(const SplineBatchView& patches,
 
   if (options.validate) {
     ThrowIfInvalid(patches, options);
-    for (std::size_t i = 0; i < patches.size(); ++i) {
-      if (patches[i].para_dim != patches[0].para_dim
-          || patches[i].dim != patches[0].dim) {
-        throw std::invalid_argument("ComputeBoundaryCenters: all patches must "
-                                    "have the same para_dim and "
-                                    "dim.");
-      }
+  }
+  for (std::size_t i = 0; i < patches.size(); ++i) {
+    if (patches[i].para_dim != patches[0].para_dim
+        || patches[i].dim != patches[0].dim) {
+      throw SplinepyException("ComputeBoundaryCenters: all patches must "
+                              "have the same para_dim and dim.",
+                              Status::kInvalidArgument);
     }
   }
 
@@ -58,33 +58,29 @@ Buffer<double> ComputeBoundaryCenters(const SplineBatchView& patches,
   const int64_t n_patches = static_cast<int64_t>(patches.size());
   const int64_t total_faces = n_patches * num_faces;
 
-  Buffer<double> centers(total_faces * dim);
-
-  ParallelFor(int64_t{0}, n_patches, options.nthreads, [&](int64_t p) {
-    const auto& patch = patches[p];
-    Buffer<double> pbounds = ParametricBounds(patch);
-
-    std::vector<double> u(para_dim);
-    for (int32_t f = 0; f < num_faces; ++f) {
-      const int32_t axis = f / 2;
-      const int32_t is_upper = f % 2;
-
-      for (int32_t k = 0; k < para_dim; ++k) {
-        if (k == axis) {
-          u[k] = pbounds[k + is_upper * para_dim];
-        } else {
-          u[k] = 0.5 * (pbounds[k] + pbounds[k + para_dim]);
+  auto centers = Buffer<double>::Uninitialized(total_faces * dim);
+  Options single = options;
+  single.validate = false;
+  single.nthreads = 1;
+  const double work =
+      static_cast<double>(total_faces)
+      * (static_cast<double>(patches[0].NumSupports()) * dim + 64.0);
+  ParallelFor(
+      int64_t{0},
+      n_patches,
+      ThreadsFor(work, options.nthreads),
+      [&](int64_t p) {
+        const auto& patch = patches[p];
+        const ParametricBox bounds = ParametricBounds(patch);
+        for (int32_t f = 0; f < num_faces; ++f) {
+          const auto u = FaceCenter(bounds, para_dim, f);
+          Evaluate(
+              patch,
+              u.cspan(),
+              Span<double>(centers.data() + (p * num_faces + f) * dim, dim),
+              single);
         }
-      }
-
-      Buffer<double> phys =
-          Evaluate(patch, Span<const double>(u.data(), para_dim), options);
-      const int64_t face_idx = p * num_faces + f;
-      for (int32_t c = 0; c < dim; ++c) {
-        centers[face_idx * dim + c] = phys[c];
-      }
-    }
-  });
+      });
 
   return centers;
 }
@@ -102,8 +98,8 @@ Buffer<int32_t> InterfacesFromBoundaryCenters(Span<const double> centers,
   }
 
   // Calculate limits (bounding box) of centers
-  std::vector<double> min_v(dim, std::numeric_limits<double>::infinity());
-  std::vector<double> max_v(dim, -std::numeric_limits<double>::infinity());
+  Buffer<double> min_v(dim, std::numeric_limits<double>::infinity());
+  Buffer<double> max_v(dim, -std::numeric_limits<double>::infinity());
 
   for (int64_t i = 0; i < total_faces; ++i) {
     for (int32_t c = 0; c < dim; ++c) {
@@ -123,7 +119,7 @@ Buffer<int32_t> InterfacesFromBoundaryCenters(Span<const double> centers,
   }
   const double norm = std::sqrt(norm_sq);
 
-  std::vector<double> normed_metric(dim);
+  Buffer<double> normed_metric(dim);
   if (norm < 1e-14) {
     const double inv_sqrt_dim = 1.0 / std::sqrt(static_cast<double>(dim));
     for (int32_t c = 0; c < dim; ++c) {
@@ -136,7 +132,7 @@ Buffer<int32_t> InterfacesFromBoundaryCenters(Span<const double> centers,
   }
 
   // Project centers onto metric line
-  std::vector<double> s(total_faces, 0.0);
+  Buffer<double> s(total_faces, 0.0);
   for (int64_t i = 0; i < total_faces; ++i) {
     for (int32_t c = 0; c < dim; ++c) {
       s[i] += centers[i * dim + c] * normed_metric[c];
@@ -144,7 +140,7 @@ Buffer<int32_t> InterfacesFromBoundaryCenters(Span<const double> centers,
   }
 
   // Sort indices by scalar metric
-  std::vector<int32_t> order(total_faces);
+  Buffer<int32_t> order(total_faces);
   std::iota(order.begin(), order.end(), 0);
   std::sort(order.begin(), order.end(), [&](int32_t a, int32_t b) {
     return s[a] < s[b];

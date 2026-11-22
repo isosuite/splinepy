@@ -3,6 +3,7 @@ from splinepy import (
     bspline,
     helpme,
     io,
+    mesh,
     microstructure,
     multipatch,
     nurbs,
@@ -24,6 +25,7 @@ from splinepy.multipatch import Multipatch
 from splinepy.nurbs import NURBS
 from splinepy.rational_bezier import RationalBezier
 from splinepy.spline import Spline
+from splinepy.splinepy_core import SplinepyError
 from splinepy.utils.data import (
     SplineDataAdaptor,
     cartesian_product,
@@ -33,6 +35,9 @@ from splinepy.utils.data import (
 
 # set NAME_TO_TYPE
 settings.NAME_TO_TYPE = settings.__splinepy_name_to_type__()
+
+# classes the core creates results as
+splinepy_core._register_types(Bezier, RationalBezier, BSpline, NURBS, KnotVector)
 
 # configure logging
 utils.log.configure()
@@ -59,6 +64,7 @@ __all__ = [
     "bezier",
     "bspline",
     "io",
+    "mesh",
     "multipatch",
     "nurbs",
     "rational_bezier",
@@ -78,12 +84,12 @@ __all__ = [
     "RationalTHBSpline",
     "RationalBezier",
     "Spline",
+    "SplinepyError",
     "SplineDataAdaptor",
     "FFD",
     "to_derived",
     "show",
     "Microstructure",
-    "TileLib",
     "cartesian_product",
     "make_matrix",
     "uniform_query",

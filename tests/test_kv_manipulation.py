@@ -1,6 +1,24 @@
 import numpy as np
+import pytest
 
 import splinepy
+
+
+@pytest.mark.parametrize("dense", [False, True])
+@pytest.mark.parametrize("degree", [0, 1, 2, 3])
+@pytest.mark.parametrize("inserted", [[0.125, 0.625, 0.875], [1e-13, 0.25 + 1e-13]])
+def test_sparse_axis_maps_match_geometry_insertion(
+    dense, degree, inserted, monkeypatch
+):
+    if dense:
+        monkeypatch.setattr(splinepy.bspline, "has_scipy", False)
+    knots = [0] * (degree + 1) + [0.25, 0.5, 0.75] + [1] * (degree + 1)
+    n = len(knots) - degree - 1
+    spline = splinepy.BSpline([degree], [knots], np.arange(n * 2.).reshape(n, 2))
+    matrix = spline.knot_insertion_matrix(0, inserted)
+    expected = matrix @ spline.control_points
+    spline.insert_knots(0, inserted)
+    np.testing.assert_allclose(spline.control_points, expected, atol=1e-14)
 
 
 def test_insert_knot(np_rng, are_items_close, bspline_2p2d, nurbs_2p2d):
@@ -210,3 +228,20 @@ def test_uniform_refine():
         for uk in unique_knots3:
             n_elem3 *= len(uk) - 1
         assert n_elem2 * (n_knots[0] + 1) == n_elem3
+
+
+@pytest.mark.parametrize("axis", [-1, -7, 2, 9])
+def test_knot_edits_reject_axes_out_of_range(axis):
+    spline = splinepy.BSpline(
+        degrees=[2, 2],
+        knot_vectors=[[0, 0, 0, 0.5, 1, 1, 1]] * 2,
+        control_points=np.arange(32.0).reshape(16, 2),
+    )
+    with pytest.raises(ValueError):
+        spline.insert_knots(axis, [0.6])
+    with pytest.raises(ValueError):
+        spline.remove_knots(axis, [0.5])
+    with pytest.raises(ValueError):
+        splinepy.splinepy_core.insert_knots(spline, axis, np.array([0.6]))
+    with pytest.raises(ValueError):
+        spline.reduce_degrees([axis])
