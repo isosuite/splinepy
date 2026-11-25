@@ -10,12 +10,14 @@
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <utility>
 
 #include <nanobind/ndarray.h>
 #include <nanobind/stl/optional.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 
+#include "splinepy/core/memory/dynamic_buffer.hpp"
 #include "splinepy/core/model/spline_data.hpp"
 #include "splinepy/core/model/spline_view.hpp"
 
@@ -33,26 +35,51 @@ ByteRangesOverlap(const void* a, size_t a_size, const void* b, size_t b_size) {
   return first <= second ? second - first < a_size : first - second < b_size;
 }
 
-/// Outputs are contiguous arrays or tuples of arrays. Test byte ranges so
-/// differently typed views of the same allocation are covered too.
-inline bool
-OverlapsOutput(const void* data, size_t bytes, nb::handle out, int depth = 0) {
-  if (!out.is_valid() || out.is_none() || bytes == 0 || depth > 8) {
+/// Calls test(data, nbytes) on out, an array or a tuple or list of arrays,
+/// until one returns true. Byte ranges cover differently typed views of one
+/// allocation too. None and invalid outputs are skipped: OutArray reports
+/// those.
+template<typename Test>
+bool AnyOutput(nb::handle out, Test&& test) {
+  const auto array = [&](nb::handle item) {
+    nb::ndarray<nb::ro, nb::c_contig, nb::device::cpu> target;
+    return nb::try_cast(item, target, false)
+           && test(target.data(), target.nbytes());
+  };
+  if (!out.is_valid() || out.is_none()) {
     return false;
   }
-  if (nb::isinstance<nb::tuple>(out) || nb::isinstance<nb::list>(out)) {
-    for (nb::handle item : nb::borrow<nb::sequence>(out)) {
-      if (OverlapsOutput(data, bytes, item, depth + 1)) {
-        return true;
-      }
+  if (!nb::isinstance<nb::tuple>(out) && !nb::isinstance<nb::list>(out)) {
+    return array(out);
+  }
+  for (nb::handle item : nb::borrow<nb::sequence>(out)) {
+    if (array(item)) {
+      return true;
     }
-    return false;
   }
-  nb::ndarray<nb::ro, nb::c_contig, nb::device::cpu> target;
-  if (!nb::try_cast(out, target, false) || target.nbytes() == 0) {
-    return false; // invalid outputs are diagnosed by OutArray
+  return false;
+}
+
+inline bool OverlapsOutput(const void* data, size_t bytes, nb::handle out) {
+  return AnyOutput(out, [&](const void* target, size_t size) {
+    return ByteRangesOverlap(data, bytes, target, size);
+  });
+}
+
+/// Kernels fill the arrays of a tuple or list of outputs independently.
+inline void CheckOutputsDisjoint(nb::handle out) {
+  splinepy::core::DynamicBuffer<std::pair<const void*, size_t>> seen;
+  if (AnyOutput(out, [&](const void* data, size_t size) {
+        for (const auto& [other, other_size] : seen) {
+          if (ByteRangesOverlap(data, size, other, other_size)) {
+            return true;
+          }
+        }
+        seen.push_back({data, size});
+        return false;
+      })) {
+    throw nb::value_error("Output arrays must not overlap each other.");
   }
-  return ByteRangesOverlap(data, bytes, target.data(), target.nbytes());
 }
 
 inline bool OverlapsOutput(const void* data,
@@ -246,11 +273,7 @@ inline std::pair<nb::object, nb::object> SplitOutPair(const nb::object& out) {
       || nb::len(out) != 2) {
     throw std::invalid_argument("out must be None or a tuple of two arrays.");
   }
-  nb::ndarray<nb::ro, nb::c_contig, nb::device::cpu> first;
-  if (nb::try_cast(out[0], first, false)
-      && OverlapsOutput(first.data(), first.nbytes(), out[1])) {
-    throw std::invalid_argument("Output arrays must not overlap each other.");
-  }
+  CheckOutputsDisjoint(out);
   return {out[0], out[1]};
 }
 
@@ -284,12 +307,14 @@ struct NativeSpline {
 
   /// Replaces the arrays. Each is converted to a C-contiguous array of its
   /// dtype if needed; None removes one. With validate, a complete spline is
-  /// checked first and nothing changes if it is invalid.
+  /// checked first and nothing changes if it is invalid. trusted marks arrays
+  /// taken from a spline that was validated, so they are not checked again.
   void Assign(nb::handle degrees,
               nb::handle knot_vectors,
               nb::handle control_points,
               nb::handle weights,
-              bool validate);
+              bool validate,
+              bool trusted = false);
 
   /// Takes over data made in C++, without creating NumPy arrays.
   void Adopt(splinepy::core::SplineData&& data);

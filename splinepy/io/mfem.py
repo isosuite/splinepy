@@ -3,8 +3,6 @@
 Currently hardcoded for 2D-single-patch-splines.
 """
 
-from ast import literal_eval as _literal_eval
-
 import numpy as _np
 
 from splinepy.io.ioutils import dict_to_spline as _dict_to_spline

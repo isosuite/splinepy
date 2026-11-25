@@ -462,3 +462,12 @@ def test_rational_bezier_scalar_mul_and_split_nan():
     with pytest.raises((ValueError, splinepy.SplinepyError)):
         rb.split(0, [np.nan])
 
+
+def test_bezier_operators_reject_other_types():
+    bezier = splinepy.Bezier([1], [[0.0], [1.0]])
+    bspline = splinepy.BSpline([1], [[0, 0, 1, 1]], [[0.0], [1.0]])
+    for other in (bspline, "a", None):
+        with pytest.raises(TypeError):
+            bezier + other
+        with pytest.raises(TypeError):
+            bezier * other

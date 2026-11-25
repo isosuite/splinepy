@@ -111,9 +111,8 @@ void ValidateSpline(const core::SplineView& view, size_t weights_size) {
   const int para_dim = view.para_dim;
   const int64_t ncps = view.num_control_points;
   if (para_dim <= 0) {
-    core::ThrowError(
-        core::Status::kInvalidArgument,
-        "Parametric dimension must be positive.");
+    core::ThrowError(core::Status::kInvalidArgument,
+                     "Parametric dimension must be positive.");
   }
   if (view.dim == 0) {
     core::ThrowError(
@@ -397,7 +396,8 @@ void NativeSpline::Assign(nb::handle degrees_obj,
                           nb::handle kvs_obj,
                           nb::handle cps_obj,
                           nb::handle weights_obj,
-                          bool validate) {
+                          bool validate,
+                          bool trusted) {
   SplineArrays next;
   auto& view = next.view;
   if (!cps_obj.is_none()) {
@@ -467,7 +467,7 @@ void NativeSpline::Assign(nb::handle degrees_obj,
     ++layout;
   }
   arrays = std::move(next);
-  layout_validated = validate;
+  layout_validated = validate || trusted;
 }
 
 void NativeSpline::Adopt(core::SplineData&& data) {
@@ -606,28 +606,29 @@ std::pair<nb::object, nb::object> BasisAndSupport(nb::handle spline,
 
 namespace {
 
-/// basis derivatives of one or several orders into out
-nb::object BasisDerivativeInto(const QueryInput& in, const nb::object& out) {
-  if (in.SingleOrder()) {
-    OutArray<double> result(out, {in.n, in.NumSupports()});
-    Release([&] {
-      in.Validate();
-      core::BasisDerivative(in.view(),
-                            in.Queries(),
-                            in.Orders(),
-                            Out(result),
-                            in.options);
-    });
-    return result.result();
-  }
-  OutArray<double> result(out, {in.n, in.NumOrders(), in.NumSupports()});
+using BasisDerivativeKernel = void (*)(const core::SplineView&,
+                                       core::Span<const double>,
+                                       core::Span<const int32_t>,
+                                       core::Span<double>,
+                                       const core::Options&);
+
+/// Basis derivatives, (n, supports) for one order and (n, orders, supports)
+/// for several, and the support too if asked for.
+nb::object BasisDerivativeInto(const QueryInput& in,
+                               const nb::object& out,
+                               OutArray<int32_t>* support = nullptr) {
+  const bool single = in.SingleOrder();
+  auto result =
+      single ? OutArray<double>(out, {in.n, in.NumSupports()})
+             : OutArray<double>(out, {in.n, in.NumOrders(), in.NumSupports()});
   Release([&] {
     in.Validate();
-    core::BasisDerivatives(in.view(),
-                           in.Queries(),
-                           in.Orders(),
-                           Out(result),
-                           in.options);
+    const auto kernel = single ? BasisDerivativeKernel(core::BasisDerivative)
+                               : core::BasisDerivatives;
+    kernel(in.view(), in.Queries(), in.Orders(), Out(result), in.options);
+    if (support) {
+      core::Support(in.view(), in.Queries(), Out(*support), in.options);
+    }
   });
   return result.result();
 }
@@ -640,8 +641,7 @@ nb::object BasisDerivative(nb::handle spline,
                            int nthreads,
                            nb::object out,
                            bool check_bounds) {
-  QueryInput in(spline, queries, nthreads, check_bounds, out, orders);
-  in.options.validate = false;
+  const QueryInput in(spline, queries, nthreads, check_bounds, out, orders);
   return BasisDerivativeInto(in, out);
 }
 
@@ -651,16 +651,11 @@ std::pair<nb::object, nb::object> BasisDerivativeAndSupport(nb::handle spline,
                                                             int nthreads,
                                                             nb::object out,
                                                             bool check_bounds) {
-  QueryInput in(spline, queries, nthreads, check_bounds, out, orders);
-  in.options.validate = false;
+  const QueryInput in(spline, queries, nthreads, check_bounds, out, orders);
   const auto [out_basis, out_support] = SplitOutPair(out);
   OutArray<int32_t> support(out_support, {in.n, in.NumSupports()});
-  Release([&] {
-    in.Validate();
-    core::Support(in.view(), in.Queries(), Out(support), in.options);
-  });
-  auto support_result = support.result();
-  return {BasisDerivativeInto(in, out_basis), support_result};
+  auto basis = BasisDerivativeInto(in, out_basis, &support);
+  return {basis, support.result()};
 }
 
 nb::object Support(nb::handle spline,
@@ -891,6 +886,7 @@ void ProximityHandle::Query(nb::object queries,
   if (out.size() != 7) {
     throw nb::value_error("Expected seven proximity output slots");
   }
+  CheckOutputsDisjoint(out);
   const auto count = static_cast<size_t>(n_queries);
   const auto pdim = static_cast<size_t>(para_dim);
   const auto physical = static_cast<size_t>(dim);
@@ -915,22 +911,6 @@ void ProximityHandle::Query(nb::object queries,
   const auto residuals = buffer(4, {count, 1});
   const auto first = buffer(5, {count, pdim, physical}, true);
   const auto second = buffer(6, {count, pdim, pdim, physical}, true);
-  const Output outputs[7] = {
-      params, points, differences, distances, residuals, first, second};
-  for (size_t i = 0; i < 7; ++i) {
-    if (!outputs[i].is_valid()) {
-      continue;
-    }
-    for (size_t j = i + 1; j < 7; ++j) {
-      if (outputs[j].is_valid()
-          && ByteRangesOverlap(outputs[i].data(),
-                               outputs[i].nbytes(),
-                               outputs[j].data(),
-                               outputs[j].nbytes())) {
-        throw nb::value_error("Output arrays must not overlap each other.");
-      }
-    }
-  }
 
   const double* q_ptr = q_adapter.data();
 
@@ -1018,7 +998,12 @@ void init_nb_spline(nb::module_& m) {
            nb::arg("knot_vectors").none(),
            nb::arg("control_points").none(),
            nb::arg("weights").none(),
-           nb::arg("validate"));
+           nb::arg("validate"),
+           nb::arg("trusted") = false)
+      .def_prop_ro(
+          "_layout_validated",
+          [](const NativeSpline& s) { return bool(s.layout_validated); },
+          "True iff the stored layout was validated.");
   m.def("_register_types",
         &RegisterTypes,
         nb::arg("bezier"),

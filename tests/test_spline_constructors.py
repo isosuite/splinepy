@@ -326,3 +326,14 @@ def test_copy_preserves_staged_properties():
     copied.degrees = [1]
     np.testing.assert_allclose(degrees.evaluate([[0.5]]), [[2]])
     np.testing.assert_allclose(copied.evaluate([[0.5]]), [[2]])
+
+
+def test_copies_keep_the_validated_layout():
+    spline = splinepy.BSpline([1], [[0, 0, 0.5, 1, 1]], [[0.0], [1.0], [2.0]])
+    staged = splinepy.BSpline(degrees=[1])
+    assert spline._layout_validated and not staged._layout_validated
+    for other in (spline.copy(), splinepy.BSpline(spline=spline)):
+        assert other._layout_validated
+        np.testing.assert_allclose(other.evaluate([[0.25]]), [[0.5]])
+    assert not staged.copy()._layout_validated
+    np.testing.assert_array_equal(staged.copy().degrees, [1])

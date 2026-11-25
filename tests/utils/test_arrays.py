@@ -30,4 +30,3 @@ def test_make_matrix_ignores_negative_padding():
         splinepy.utils.data.make_matrix(values, supports, 3, as_array=False).toarray(),
         expected,
     )
-

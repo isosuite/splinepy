@@ -1,3 +1,5 @@
+from collections import Counter as _Counter
+
 import numpy as _np
 
 from splinepy import utils as _utils
@@ -125,9 +127,7 @@ def flip_axes(spline, axes, inplace=False):
     indexing = [slice(None, None, None)] * spline.para_dim
 
     # Only axes flipped an odd number of times need reversing
-    odd_axes = [
-        axis for axis in set(axes) if list(axes).count(axis) % 2 == 1
-    ]
+    odd_axes = [axis for axis, n in _Counter(axes).items() if n % 2]
     for axis in odd_axes:
         # Reverse control point indexing
         indexing[axis] = slice(None, None, -1)

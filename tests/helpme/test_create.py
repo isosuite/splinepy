@@ -943,4 +943,3 @@ def test_plate_radius_and_torus_degree_flag():
     pts = quarter.evaluate([[0.5, 0.5, 0.0], [0.5, 0.5, u_end]])
     np.testing.assert_allclose(pts[0], [0.0, 3.0, 0.0], atol=1e-12)
     np.testing.assert_allclose(pts[1], [0.0, 0.0, 3.0], atol=1e-12)
-

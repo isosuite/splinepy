@@ -814,5 +814,3 @@ def test_boundary_patch_ids_rejects_zero():
     mp = splinepy.Multipatch([p0, p1])
     with pytest.raises(ValueError, match="Boundary IDs start at 1"):
         mp.boundary_patch_ids(0)
-
-

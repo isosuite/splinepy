@@ -391,7 +391,14 @@ class Spline(_core.SplineCore, _SplinepyBase):
 
         # spline based init - shares the other spline's current arrays
         if spline is not None:
-            self._commit(spline._properties())
+            self._assign(
+                spline._degrees,
+                spline._knot_vectors,
+                spline._control_points,
+                spline._weights,
+                validate=False,
+                trusted=spline._layout_validated,
+            )
             return None
 
         # property based init. all at once, so validation happens only once
@@ -1466,12 +1473,17 @@ class Spline(_core.SplineCore, _SplinepyBase):
         new_spline: type(self)
         """
         new = type(self)()
-        properties = self._properties()
-        # _set_properties owns the layout, but normally borrows these arrays.
-        for key in ("control_points", "weights"):
-            if key in properties:
-                properties[key] = properties[key].copy()
-        new._set_properties(**properties)
+        # checked once: a copy of a validated spline is valid. Degrees are
+        # immutable and shared; a staged spline copies what it has.
+        kvs, cps, weights = self._knot_vectors, self._control_points, self._weights
+        new._assign(
+            self._degrees,
+            None if kvs is None else tuple(_knot_vector_arrays(kvs)),
+            None if cps is None else cps.copy(),
+            None if weights is None else weights.copy(),
+            validate=False,
+            trusted=self._layout_validated,
+        )
 
         if saved_data:
             # copy show_options and shallow copy spline_data, where they exist

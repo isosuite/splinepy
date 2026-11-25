@@ -562,7 +562,8 @@ nb::object InterfacesFromBoundaryCenters(
     throw nb::value_error("Invalid boundary centers shape or para_dim.");
   }
   const size_t n_faces_total = py_center_vertices.shape(0);
-  const size_t num_element_faces = static_cast<size_t>(2 * parametric_dimension);
+  const size_t num_element_faces =
+      static_cast<size_t>(2 * parametric_dimension);
   if (n_faces_total % num_element_faces != 0) {
     throw nb::value_error(
         "Number of boundary centers must be a multiple of 2 * para_dim.");
@@ -572,7 +573,8 @@ nb::object InterfacesFromBoundaryCenters(
   const double* centers_ptr = py_center_vertices.data();
 
   splinepy::core::Span<const double> centers_span(
-      centers_ptr, n_faces_total * static_cast<size_t>(dim));
+      centers_ptr,
+      n_faces_total * static_cast<size_t>(dim));
   auto ifaces =
       splinepy::core::InterfacesFromBoundaryCenters(centers_span,
                                                     num_patches,

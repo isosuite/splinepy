@@ -91,7 +91,10 @@ def _export_spline_field(spline, svg_element, box_min_x, box_max_y, **kwargs):
     # pixel grid over the bounds of the spline, row 0 at the top
     (x_min, y_min), (x_max, y_max) = spline.control_point_bounds
     n_long = int(kwargs.get("field_pixels", 600))
-    pixel = max(x_max - x_min, y_max - y_min) / n_long
+    span = max(x_max - x_min, y_max - y_min)
+    if span <= 0:
+        return
+    pixel = span / n_long
     width = max(int(_np.ceil((x_max - x_min) / pixel)), 1)
     height = max(int(_np.ceil((y_max - y_min) / pixel)), 1)
     x = x_min + (_np.arange(width) + 0.5) * pixel
@@ -1225,7 +1228,7 @@ def export(
     svg_data.attrib["width"] = str(400 / box_size[1] * box_size[0])
     background = kwargs.get("background", "white")
     if background is not None:
-        svg_data.attrib["style"] = f"background-color:{background}"
+        svg_data.attrib["style"] = f"background-color:{_css(background)}"
     svg_data.attrib["xmlns"] = "http://www.w3.org/2000/svg"
     svg_data.attrib["xmlns:xlink"] = "http://www.w3.org/1999/xlink"
 

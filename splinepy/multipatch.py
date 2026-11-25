@@ -89,16 +89,12 @@ class _ImplicitZeroPatch:
         return getattr(self._field, method)(routed, *args, nthreads=nthreads, out=out)
 
     def __add__(self, other):
-        if type(other) is _ImplicitZeroPatch:
-            other = other._materialize()
         return self._materialize() + other
 
     def __radd__(self, other):
         return other + self._materialize()
 
     def __mul__(self, other):
-        if type(other) is _ImplicitZeroPatch:
-            other = other._materialize()
         return self._materialize() * other
 
     def __rmul__(self, other):
@@ -1449,48 +1445,43 @@ class Multipatch(_SplinepyBase):
 
     def _refine_patches(self, method, nthreads, *args):
         nthreads = _default_if_none(nthreads, _settings.NTHREADS)
-        # Sparse fields read their zero layouts from a cache of the geometry.
-        # Each cache is refined once, also when a field is refined on its own.
-        refined = {}
-        layouts = {}
-
-        def refine(cache):
-            if cache not in refined:
-                refined[cache] = getattr(cache, method)(*args, nthreads)
-            return refined[cache]
-
-        updates = {}
-        pending = [self]
+        targets, pending = {}, [self]
         while pending:
             multipatch = pending.pop()
-            if id(multipatch) in updates or not multipatch._patch_entries:
+            if id(multipatch) in targets or not multipatch._patch_entries:
                 continue
             if not multipatch._patch_classes().issubset(
                 (_Bezier, _RationalBezier, _BSpline, _NURBS)
             ):
                 raise TypeError("Refinement requires tensor-product spline patches.")
-            # every refinement is computed before any multipatch changes
-            cache = multipatch._patch_cache(sparse=True)
-            patches = refine(cache)
-            layout = multipatch._zero_layout_cache
-            if layout is not None and layout not in layouts:
-                layout_patches = refine(layout)
-                layouts[layout] = (
-                    tuple(layout_patches), _core._MultipatchCache(layout_patches)
-                )
-            updates[id(multipatch)] = (multipatch, patches, cache, layout)
+            # a sparse field reads its zero layouts from a cache of the geometry
+            targets[id(multipatch)] = (
+                multipatch,
+                multipatch._patch_cache(sparse=True),
+                multipatch._zero_layout_cache,
+            )
             pending.extend(multipatch._fields)
 
-        for multipatch, patches, cache, layout in updates.values():
-            multipatch._patches = patches
+        # Every cache is refined once, before any multipatch changes. A field
+        # refined on its own refines its layouts too; the geometry stays.
+        refined, layouts = {}, {}
+        for _, cache, layout in targets.values():
+            for each in (cache, layout):
+                if each is not None and each not in refined:
+                    refined[each] = getattr(each, method)(*args, nthreads)
+            if layout is not None and layout not in layouts:
+                patches = refined[layout]
+                layouts[layout] = tuple(patches), _core._MultipatchCache(patches)
+
+        for multipatch, cache, layout in targets.values():
+            multipatch._patches = refined[cache]
             multipatch._invalidate_patch_layout_caches()
             if cache in layouts:
-                # The geometry keeps the cache its fields read layouts from.
+                # the geometry keeps the cache its fields read layouts from
                 multipatch._native_cache = layouts[cache][1]
             if layout is not None:
-                multipatch._zero_layouts, multipatch._zero_layout_cache = layouts[
-                    layout
-                ]
+                multipatch._zero_layouts = layouts[layout][0]
+                multipatch._zero_layout_cache = layouts[layout][1]
 
     @property
     def extract(self):

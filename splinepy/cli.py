@@ -75,8 +75,10 @@ def show(args):
         loaded_object.show_options["control_mesh"] = args.no_control_mesh
         if args.resolution:
             loaded_object.show_options["resolutions"] = int(args.resolution)
-    show_vedo = _splinepy.show(loaded, interactive=interactive, close=close)
-    if args.output_file:
+    show_vedo = _splinepy.show(
+        loaded, backend="vedo", interactive=interactive, close=close
+    )
+    if args.output_file and not interactive:
         show_vedo.screenshot(args.output_file)
 
 

@@ -361,30 +361,51 @@ SplineData ReduceDegree(const SplineView& spline,
         }
       });
   if (spline.IsRational()) {
-    // Elevate back, restoring any knots lost by reduction, to bound the
-    // geometric error in one common basis over the whole tensor net.
-    auto rebuilt = ElevateDegree(result.View(), axis, amount, options);
-    for (int32_t d = 0; d < spline.para_dim && spline.HasKnotVectors(); ++d) {
-      DynamicBuffer<double> missing;
-      const auto knots = spline.knot_vectors[d];
-      for (std::size_t first = 0; first < knots.size();) {
-        std::size_t last = first + 1;
-        while (last < knots.size() && knots[last] == knots[first]) {
-          ++last;
-        }
-        const auto& current = rebuilt.knot_vectors[d];
-        const auto count =
-            std::count(current.begin(), current.end(), knots[first]);
-        for (auto n = count; n < static_cast<int64_t>(last - first); ++n) {
-          missing.push_back(knots[first]);
-        }
-        first = last;
-      }
-      if (!missing.empty()) {
-        rebuilt = InsertKnots(rebuilt.View(), d, missing.cspan(), options);
+    for (double w : result.weights) {
+      if (!std::isfinite(w) || !(w > 0.0)) {
+        throw SplinepyException(
+            "ReduceDegree: reduced weights are not strictly positive.",
+            Status::kNotConverged);
       }
     }
-    const auto original_net = detail::ToHomogeneous(spline);
+    // Elevate back and align both splines on their common knot union along axis
+    // to bound the geometric error in one common basis over the whole net.
+    Options internal = options;
+    internal.validate = false;
+    auto rebuilt = ElevateDegree(result.View(), axis, amount, internal);
+    SplineData original_refined;
+    SplineView original_view = spline;
+    if (spline.HasKnotVectors()) {
+      auto missing_from = [](Span<const double> src, Span<const double> dst) {
+        DynamicBuffer<double> missing;
+        for (std::size_t first = 0; first < src.size();) {
+          std::size_t last = first + 1;
+          while (last < src.size() && src[last] == src[first]) {
+            ++last;
+          }
+          const auto count = std::count(dst.begin(), dst.end(), src[first]);
+          for (auto n = count; n < static_cast<int64_t>(last - first); ++n) {
+            missing.push_back(src[first]);
+          }
+          first = last;
+        }
+        return missing;
+      };
+      const auto orig_knots = spline.knot_vectors[axis];
+      const auto reb_knots = rebuilt.knot_vectors[axis].cspan();
+      const auto missing_reb = missing_from(orig_knots, reb_knots);
+      const auto missing_orig = missing_from(reb_knots, orig_knots);
+      if (!missing_reb.empty()) {
+        rebuilt =
+            InsertKnots(rebuilt.View(), axis, missing_reb.cspan(), internal);
+      }
+      if (!missing_orig.empty()) {
+        original_refined =
+            InsertKnots(spline, axis, missing_orig.cspan(), internal);
+        original_view = original_refined.View();
+      }
+    }
+    const auto original_net = detail::ToHomogeneous(original_view);
     const auto rebuilt_net = detail::ToHomogeneous(rebuilt.View());
     if (!detail::RationalNetsWithinTolerance(original_net.cspan(),
                                              rebuilt_net.cspan(),

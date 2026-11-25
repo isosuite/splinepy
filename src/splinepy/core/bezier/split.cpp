@@ -10,23 +10,37 @@
 
 namespace splinepy::core {
 
-SplineBatchData Split(const SplineView& spline,
-                      int32_t axis,
-                      double location,
-                      const Options& options) {
-  if (options.validate) {
-    ThrowIfNotBezier(spline);
-    ThrowIfInvalid(spline);
-    if (axis < 0 || axis >= spline.para_dim) {
-      throw SplinepyException("Split: axis out of range [0, para_dim).",
-                              Status::kOutOfBounds);
-    }
+namespace {
+
+void CheckSplit(const SplineView& spline,
+                int32_t axis,
+                Span<const double> locations,
+                const Options& options) {
+  if (!options.validate) {
+    return;
+  }
+  ThrowIfNotBezier(spline);
+  ThrowIfInvalid(spline, options);
+  if (axis < 0 || axis >= spline.para_dim) {
+    throw SplinepyException("Split: axis out of range [0, para_dim).",
+                            Status::kOutOfBounds);
+  }
+  for (const double location : locations) {
     if (!(location > 0.0 && location < 1.0)) {
       throw SplinepyException(
           "Split: split location must be strictly inside (0, 1).",
           Status::kInvalidArgument);
     }
   }
+}
+
+} // namespace
+
+SplineBatchData Split(const SplineView& spline,
+                      int32_t axis,
+                      double location,
+                      const Options& options) {
+  CheckSplit(spline, axis, {&location, 1}, options);
 
   const bool is_rational = spline.IsRational();
   const int32_t coord_dim = is_rational ? (spline.dim + 1) : spline.dim;
@@ -92,26 +106,11 @@ SplineBatchData Split(const SplineView& spline,
                       int32_t axis,
                       Span<const double> locations,
                       const Options& options) {
+  CheckSplit(spline, axis, locations, options);
   if (locations.empty()) {
-    if (options.validate) {
-      ThrowIfNotBezier(spline);
-      ThrowIfInvalid(spline, options);
-      if (axis < 0 || axis >= spline.para_dim) {
-        throw SplinepyException("Split: axis out of range [0, para_dim).",
-                                Status::kOutOfBounds);
-      }
-    }
     SplineBatchData result(1);
     result[0] = SplineData::FromView(spline);
     return result;
-  }
-
-  for (double loc : locations) {
-    if (!(loc > 0.0 && loc < 1.0)) {
-      throw SplinepyException(
-          "Split: split location must be strictly inside (0, 1).",
-          Status::kInvalidArgument);
-    }
   }
   Buffer<double> sorted_locs;
   sorted_locs.assign(locations.begin(), locations.end());
