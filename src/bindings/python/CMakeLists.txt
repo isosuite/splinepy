@@ -9,6 +9,11 @@ nanobind_add_module(splinepy_core splinepy_core.cpp nb_spline.cpp
 
 target_link_libraries(splinepy_core PRIVATE splinepy::core)
 
+# as for the core: query loops instantiated here keep their place
+if(NOT MSVC)
+  target_compile_options(splinepy_core PRIVATE -falign-functions=64)
+endif()
+
 install(
   TARGETS splinepy_core
   DESTINATION splinepy
