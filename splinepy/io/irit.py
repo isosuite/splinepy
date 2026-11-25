@@ -70,8 +70,8 @@ def load(fname, expand_tabs=True, strip_comments=False):
             # Extract data from data
             extracted_data = _re.split(r"\]\s*\]", data)[0] + "]"
 
-            # Split dimensions and degrees from data
-            dim_and_deg = _re.split(r"(e\d|p\d)", extracted_data)
+            # Split dimensions and degrees from data (bounded so 1.5e2 isn't split)
+            dim_and_deg = _re.split(r"\b([ep]\d+)\b", extracted_data, maxsplit=1)
 
             # must contain ctps/degs rational/poly dimension control points
             if len(dim_and_deg) != 3:

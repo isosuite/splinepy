@@ -124,8 +124,11 @@ def flip_axes(spline, axes, inplace=False):
     mi = spline.multi_index
     indexing = [slice(None, None, None)] * spline.para_dim
 
-    # Loop over all axis to be flipped and prepare the flip
-    for axis in axes:
+    # Only axes flipped an odd number of times need reversing
+    odd_axes = [
+        axis for axis in set(axes) if list(axes).count(axis) % 2 == 1
+    ]
+    for axis in odd_axes:
         # Reverse control point indexing
         indexing[axis] = slice(None, None, -1)
 

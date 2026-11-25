@@ -84,6 +84,8 @@ def colormap(values, name="plasma", vmin=None, vmax=None, n_colors=None):
         _log.warning(f"colormap '{name}' unknown, using plasma.")
         name = "plasma"
     values = _np.asarray(values, dtype=float).ravel()
+    if values.size == 0:
+        return _np.empty((0, 3), dtype=float)
     lo = values.min() if vmin is None else vmin
     hi = values.max() if vmax is None else vmax
     t = _np.clip((values - lo) / (hi - lo if hi > lo else 1.0), 0, 1)
@@ -119,6 +121,7 @@ def to_css(c):
         rgb = _np.asarray(c[:3], dtype=float)
         if rgb.max() <= 1:
             rgb = rgb * 255
+        rgb = _np.clip(rgb, 0, 255)
         return "#" + "".join(f"{int(round(v)):02x}" for v in rgb)
     return None
 
@@ -175,7 +178,7 @@ def translate(kwargs):
             _log.debug(f"Viewer: ignoring option '{key}'.")
             continue
 
-        if key.endswith("color"):
+        if key.endswith("color") or key == "background":
             css = to_css(value)
             if css is None:
                 _log.debug(f"Viewer: can't use '{key}'={value!r} as color.")

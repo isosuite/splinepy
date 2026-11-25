@@ -213,7 +213,7 @@ def _sample_arrow_data(spline, adata, sampled_spline, res):
             queries = adapted_adata.locations
             on = None
         else:
-            queries = spline.show_options["arrow_data_on"]
+            queries = _np.asarray(spline.show_options["arrow_data_on"], dtype=float)
             on = queries
 
         # bound /  dim check - only for splines
@@ -419,26 +419,27 @@ def show_vedo(spline, **kwargs):
         raise ValueError("Sorry, can't show given spline.")
 
     orig_show_options = None
-    if kwargs:
-        orig_show_options = spline.show_options
-        spline._show_options = spline.__show_option__(spline)
-        orig_show_options.copy_valid_options(spline.show_options)
-        for key, value in kwargs.items():
-            try:
-                spline.show_options[key] = value
-            except BaseException:
-                _log.debug(
-                    f"Skipping invalid option {key} for "
-                    f"{spline.show_options._helps}."
-                )
-                continue
+    try:
+        if kwargs:
+            orig_show_options = spline.show_options
+            spline._show_options = spline.__show_option__(spline)
+            orig_show_options.copy_valid_options(spline.show_options)
+            for key, value in kwargs.items():
+                try:
+                    spline.show_options[key] = value
+                except (ValueError, TypeError):
+                    _log.debug(
+                        f"Skipping invalid option {key} for "
+                        f"{spline.show_options._helps}."
+                    )
+                    continue
 
-    # Prepare things to show dict.
-    things_to_show = make_showable(spline)
-
-    # set original options back
-    if orig_show_options is not None:
-        spline._show_options = orig_show_options
+        # Prepare things to show dict.
+        things_to_show = make_showable(spline)
+    finally:
+        # set original options back
+        if orig_show_options is not None:
+            spline._show_options = orig_show_options
 
     para_space = kwargs.pop("parametric_space", False)
     if para_space:

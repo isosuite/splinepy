@@ -118,7 +118,11 @@ def by_dim(para_dim=None, dim=None):
         dict of tile names and types that fulfills dimension inputs.
     """
     # initialize pool of tiles
-    pool = _tile_types.copy() if dim is None else eval(f"_{int(dim)}d").copy()
+    pool = (
+        _tile_types.copy()
+        if dim is None
+        else {1: _1d, 2: _2d, 3: _3d}.get(int(dim), {}).copy()
+    )
 
     # filter
     if para_dim is not None:
@@ -133,8 +137,8 @@ def by_dim(para_dim=None, dim=None):
 
     if len(pool) == 0:
         _log.error(
-            "Tiles does not exist with given dimension combination - ",
-            f"(para_dim {para_dim}, dim {dim})",
+            "Tiles does not exist with given dimension combination - "
+            f"(para_dim {para_dim}, dim {dim})"
         )
 
     return pool

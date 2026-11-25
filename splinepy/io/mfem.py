@@ -88,7 +88,10 @@ def load(fname):
     knot_vectors_sec = nurbs_dict["knotvectors"][1:]
     knot_vectors = []
     for kvs in knot_vectors_sec:
-        knot_vectors.append(_literal_eval("[" + kvs.replace(" ", ",") + "]"))
+        tokens = kvs.split()
+        knot_vectors.append(
+            [int(tokens[0]), int(tokens[1]), *(float(t) for t in tokens[2:])]
+        )
 
     # parse degrees and get number of control points for consistency checks
     degrees = []
@@ -100,12 +103,10 @@ def load(fname):
         ncps *= kv.pop(0)
 
     # ws
-    weights = nurbs_dict["weights"]
-    weights = [_literal_eval(w) for w in weights]  # hopefully not too slow
+    weights = [float(w) for w in nurbs_dict["weights"]]
     # cps
-    control_points = nurbs_dict["Ordering"]
     control_points = [
-        _literal_eval(f"[{cp.replace(' ', ',')}]") for cp in control_points
+        [float(x) for x in cp.split()] for cp in nurbs_dict["Ordering"]
     ]
 
     # double check
@@ -166,7 +167,7 @@ def read_solution(
         collect = False
         while line is not None:
             if collect:  # check this first. should be true most time
-                solution.append(_literal_eval(f"[{line.replace(' ', ',')}]"))
+                solution.append([float(x) for x in line.split()])
             elif hotkey in line:
                 collect = True
 

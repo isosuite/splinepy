@@ -19,20 +19,6 @@ def _make_block(s, width=72, align_right=False):
     return s.rjust(width) if align_right else s.ljust(width)
 
 
-def _write_section(lines, content_str, section_id):
-    chunk_size = 72
-    chunks = [
-        content_str[i : i + chunk_size] for i in range(0, len(content_str), chunk_size)
-    ]
-    if not chunks:
-        chunks = [""]
-    for i, chunk in enumerate(chunks):
-        seq = i + 1
-        line = _make_block(chunk, 72, False) + f"{section_id}{seq:7d}"
-        lines.append(line)
-    return len(chunks)
-
-
 def _export_internal(fname, splines):
     if not isinstance(splines, (list, tuple)):
         splines = [splines]
@@ -141,7 +127,7 @@ def _export_internal(fname, splines):
         _format_hollerith(","),
         _format_hollerith(";"),
         _format_hollerith("splinepy"),
-        _format_hollerith(fname),
+        _format_hollerith(str(fname)),
         _format_hollerith("splinepy"),
         _format_hollerith("splinepy"),
         "32",
@@ -218,7 +204,10 @@ def _load_internal(fname):
         n_cps = int(_np.prod([k + 1 for k in upper]))
         numbers = numbers.partition(";")[0].split(",")
         values = _np.array(
-            [float(t) for t in numbers[: sum(n_knots) + 4 * n_cps]]
+            [
+                float(t.replace("D", "E").replace("d", "e"))
+                for t in numbers[: sum(n_knots) + 4 * n_cps]
+            ]
         )
         properties = {
             "degrees": degrees,

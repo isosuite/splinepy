@@ -279,8 +279,8 @@ def revolved(
             )
     else:
         _log.debug(
-            "True revolutions are only possible for rational spline types.",
-            "Creating Approximation.",
+            "True revolutions are only possible for rational spline types. "
+            "Creating Approximation."
         )
 
     if center is not None:
@@ -919,7 +919,7 @@ def parametric_view(spline, axes=True, conform=False):
             "xminor_ticks": 3,
             "xygrid": False,
         }
-        if spline.para_dim == 2:
+        if spline.para_dim >= 2:
             axes_config.update(
                 ytitle="v",
                 yrange=[lower_b[1], upper_b[1]],
