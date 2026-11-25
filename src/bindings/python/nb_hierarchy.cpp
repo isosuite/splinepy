@@ -1,8 +1,5 @@
 #include "nb_common.hpp"
 
-#include <mutex>
-#include <new>
-
 #include <nanobind/stl/unique_ptr.h>
 
 #include "splinepy/core/hierarchy/coarsen.hpp"
@@ -121,18 +118,6 @@ struct QueryArrays {
 
   Span<const int32_t> Orders() const { return {orders.data(), orders.size()}; }
 };
-
-nb::object ProximityArray(Buffer<double>& buffer,
-                          std::initializer_list<std::size_t> shape) {
-  if (buffer.empty()) {
-    nb::list extents;
-    for (const auto extent : shape) {
-      extents.append(extent);
-    }
-    return nb::module_::import_("numpy").attr("empty")(nb::tuple(extents));
-  }
-  return nb::cast(WrapBuffer<double>(buffer, {shape.begin(), shape.size()}));
-}
 
 /// A hierarchical spline's data and caches. Immutable once built; arrays
 /// handed to Python and running calls hold it, so a refine that replaces it
@@ -512,23 +497,27 @@ public:
     }
     Options options;
     options.nthreads = threads;
-    if (!state->proximity) { // built once per state, under the GIL
-      auto proximity = std::make_shared<HierarchyProximityData>();
+    auto proximity = state->proximity;
+    if (!proximity) { // built once per state; hold local ref across GIL release
+      auto built = std::make_shared<HierarchyProximityData>();
       {
         nb::gil_scoped_release release;
-        *proximity = BuildHierarchyProximity(state->spline,
-                                             state->extraction[0],
-                                             state->geometry,
-                                             options);
+        *built = BuildHierarchyProximity(state->spline,
+                                         state->extraction[0],
+                                         state->geometry,
+                                         options);
       }
-      state->proximity = std::move(proximity);
+      if (!state->proximity) {
+        state->proximity = std::move(built);
+      }
+      proximity = state->proximity;
     }
     HierarchyProximityResult result;
     {
       nb::gil_scoped_release release;
       result = HierarchyProximities(state->spline,
                                     state->extraction[0],
-                                    *state->proximity,
+                                    *proximity,
                                     {points.data(), points.size()},
                                     {samples.data(), samples.size()},
                                     tolerance,
@@ -538,18 +527,18 @@ public:
                                     options);
     }
     const auto n = points.shape(0);
-    auto parameters = ProximityArray(result.parameters, {n, pd});
+    auto parameters = TakeNumPyBuffer(result.parameters, {n, pd});
     if (!verbose) {
       return parameters;
     }
     return nb::make_tuple(
         parameters,
-        ProximityArray(result.points, {n, dim}),
-        ProximityArray(result.differences, {n, dim}),
-        ProximityArray(result.distances, {n, 1}),
-        ProximityArray(result.residuals, {n, 1}),
-        ProximityArray(result.first_derivatives, {n, pd, dim}),
-        ProximityArray(result.second_derivatives, {n, pd, pd, dim}));
+        TakeNumPyBuffer(result.points, {n, dim}),
+        TakeNumPyBuffer(result.differences, {n, dim}),
+        TakeNumPyBuffer(result.distances, {n, 1}),
+        TakeNumPyBuffer(result.residuals, {n, 1}),
+        TakeNumPyBuffer(result.first_derivatives, {n, pd, dim}),
+        TakeNumPyBuffer(result.second_derivatives, {n, pd, pd, dim}));
   }
 
   nb::object Bernstein(int threads) const {

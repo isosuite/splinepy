@@ -432,7 +432,7 @@ void Project(MemoryArena& arena,
       for (std::size_t q = 0; q < points; ++q) {
         const auto error = matrix.Evaluate(q, solution)
                            - samples.source[q * components + component];
-        if (std::abs(error) > tolerance * scale) {
+        if (!(std::abs(error) <= tolerance * scale)) {
           throw SplinepyException(
               "spline coefficients do not lie in the coarser space",
               Status::kInvalidArgument);

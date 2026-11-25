@@ -157,6 +157,10 @@ Buffer<int32_t> InterfacesFromBoundaryCenters(Span<const double> centers,
 
     while (upper < total_faces && (s[order[upper]] - s[lower]) < tolerance) {
       const int32_t cand = order[upper];
+      if (connectivity[cand] != -2) {
+        upper++;
+        continue;
+      }
       double dist_sq = 0.0;
       for (int32_t c = 0; c < dim; ++c) {
         const double diff = centers[cand * dim + c] - centers[lower * dim + c];
@@ -170,15 +174,11 @@ Buffer<int32_t> InterfacesFromBoundaryCenters(Span<const double> centers,
       upper++;
     }
 
-    if (found_duplicate) {
-      if (connectivity[lower] == -2 && connectivity[match_cand] == -2) {
-        connectivity[lower] = match_cand;
-        connectivity[match_cand] = lower;
-      }
-    } else {
-      if (connectivity[lower] == -2) {
-        connectivity[lower] = -1;
-      }
+    if (found_duplicate && connectivity[lower] == -2) {
+      connectivity[lower] = match_cand;
+      connectivity[match_cand] = lower;
+    } else if (connectivity[lower] == -2) {
+      connectivity[lower] = -1;
     }
   }
 

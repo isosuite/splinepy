@@ -92,7 +92,7 @@ bool InvertElevateBezier1D(MemoryArena& arena,
       out_cps[i * coord_dim + c] =
           0.5 * (q_left[i * coord_dim + c] + q_right[i * coord_dim + c]);
     }
-    if (std::sqrt(dist_sq) > tolerance) {
+    if (!(std::sqrt(dist_sq) <= tolerance)) {
       return false;
     }
   }

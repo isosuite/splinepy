@@ -21,7 +21,7 @@ SplineBatchData Split(const SplineView& spline,
       throw SplinepyException("Split: axis out of range [0, para_dim).",
                               Status::kOutOfBounds);
     }
-    if (location <= 0.0 || location >= 1.0) {
+    if (!(location > 0.0 && location < 1.0)) {
       throw SplinepyException(
           "Split: split location must be strictly inside (0, 1).",
           Status::kInvalidArgument);
@@ -56,7 +56,7 @@ SplineBatchData Split(const SplineView& spline,
           p,
           location,
           Span<const double>(working_cps.data() + base + c,
-                             static_cast<std::size_t>((p + 1) * s)),
+                             static_cast<std::size_t>(p * s + 1)),
           s,
           left_row,
           right_row);
@@ -96,12 +96,23 @@ SplineBatchData Split(const SplineView& spline,
     if (options.validate) {
       ThrowIfNotBezier(spline);
       ThrowIfInvalid(spline, options);
+      if (axis < 0 || axis >= spline.para_dim) {
+        throw SplinepyException("Split: axis out of range [0, para_dim).",
+                                Status::kOutOfBounds);
+      }
     }
     SplineBatchData result(1);
     result[0] = SplineData::FromView(spline);
     return result;
   }
 
+  for (double loc : locations) {
+    if (!(loc > 0.0 && loc < 1.0)) {
+      throw SplinepyException(
+          "Split: split location must be strictly inside (0, 1).",
+          Status::kInvalidArgument);
+    }
+  }
   Buffer<double> sorted_locs;
   sorted_locs.assign(locations.begin(), locations.end());
   std::sort(sorted_locs.begin(), sorted_locs.end());

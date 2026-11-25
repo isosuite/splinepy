@@ -239,6 +239,8 @@ def test_knot_edits_reject_axes_out_of_range(axis):
     )
     with pytest.raises(ValueError):
         spline.insert_knots(axis, [0.6])
+    with pytest.raises(ValueError, match="Invalid parametric dimension"):
+        spline.knot_insertion_matrix(axis, [0.6])
     with pytest.raises(ValueError):
         spline.remove_knots(axis, [0.5])
     with pytest.raises(ValueError):

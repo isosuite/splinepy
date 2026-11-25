@@ -79,7 +79,8 @@ AxisMap InsertionMap(Span<const double> coarse,
       ++matched;
       continue;
     }
-    while (knots[span + 1 + gap_size] <= knot) {
+    while (static_cast<std::size_t>(span + 1 + gap_size) < knots.size()
+           && knots[span + 1 + gap_size] <= knot) {
       ++span;
     }
     const int32_t position = span + 1;
@@ -315,9 +316,16 @@ AxisMap KnotRefinementMap(Span<const double> knots,
                           Span<const double> refined) {
   CheckKnots(knots, degree);
   CheckKnots(refined, degree);
+  const double lower = knots[degree];
+  const double upper = knots[knots.size() - degree - 1];
   std::size_t matched = 0;
   for (const double knot : refined) {
-    matched += matched < knots.size() && knot == knots[matched];
+    if (matched < knots.size() && knot == knots[matched]) {
+      ++matched;
+    } else if (!(knot >= lower && knot < upper)) {
+      throw SplinepyException(
+          "Inserted knots must lie within the active knot domain.");
+    }
   }
   if (matched != knots.size()) {
     throw SplinepyException("Refined knots must hold every knot.");

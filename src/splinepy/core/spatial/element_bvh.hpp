@@ -85,6 +85,11 @@ public:
     if (!valid_ || max_visits <= 0) {
       return 0;
     }
+    for (int32_t c{}; c < dim_; ++c) {
+      if (!std::isfinite(point[c])) {
+        return 0;
+      }
+    }
     MemoryArena arena(2048);
     return Traverse(point, std::forward<Visitor>(visitor), arena, max_visits);
   }
@@ -98,6 +103,11 @@ public:
       const int64_t max_visits = std::numeric_limits<int64_t>::max()) const {
     if (!valid_ || max_visits <= 0) {
       return 0;
+    }
+    for (int32_t c{}; c < dim_; ++c) {
+      if (!std::isfinite(point[c])) {
+        return 0;
+      }
     }
 
     // A negative ID encodes an element; nonnegative IDs encode tree nodes.

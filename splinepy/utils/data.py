@@ -73,7 +73,8 @@ class _DataHolder:
         return self._saved.items()
 
     def update(self, **kwargs):
-        self._saved.update(**kwargs)
+        for key, value in kwargs.items():
+            self[key] = value
 
 
 def enforce_contiguous(array, dtype=None, asarray=False):
@@ -230,22 +231,21 @@ def make_matrix(values, supports, n_cols, as_array=False):
     matrix : np.ndarray / scipy.sparse.csr_array
       Matrix
     """
-    # Return in Matrix shape (scipy if available)
+    # Return in Matrix shape (scipy if available); ignore negative padding
+    rows = _np.arange(values.shape[0]).repeat(values.shape[1])
+    cols = supports.ravel()
+    vals = values.ravel()
+    valid = cols >= 0
+    if not _np.all(valid):
+        rows, cols, vals = rows[valid], cols[valid], vals[valid]
     if has_scipy and not as_array:
         return _scipy.sparse.csr_array(
-            (
-                values.ravel(),
-                (
-                    _np.arange(values.shape[0]).repeat(values.shape[1]),
-                    supports.ravel(),
-                ),
-            ),
+            (vals, (rows, cols)),
             shape=(values.shape[0], n_cols),
         )
-    else:
-        matrix = _np.zeros((values.shape[0], n_cols))
-        _np.put_along_axis(matrix, supports, values, axis=1)
-        return matrix
+    matrix = _np.zeros((values.shape[0], n_cols))
+    matrix[rows, cols] = vals
+    return matrix
 
 
 def uniform_query(bounds, resolutions):

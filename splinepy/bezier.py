@@ -55,11 +55,17 @@ class BezierBase(_spline.Spline):
           New spline with updated types
         """
         # scalar
-        if isinstance(factor, float):
-            return type(self)(
-                control_points=self.control_points * factor,
-                degrees=self.degrees,
-            )
+        if isinstance(factor, (int, float, _np.number)) and not isinstance(
+            factor, bool
+        ):
+            result = self.copy(saved_data=False)
+            result.control_points *= float(factor)
+            return result
+
+        if not issubclass(type(factor), _core.SplineCore) and hasattr(
+            factor, "_materialize"
+        ):
+            factor = factor._materialize()
 
         # Supports only Bezier families
         if not isinstance(factor, BezierBase):
@@ -88,6 +94,10 @@ class BezierBase(_spline.Spline):
         added: type(self)
           New spline that describes sum
         """
+        if not issubclass(type(summand), _core.SplineCore) and hasattr(
+            summand, "_materialize"
+        ):
+            summand = summand._materialize()
         # same type check, same para dim check, same dim check done in cpp
         return _core.add(self, summand)
 

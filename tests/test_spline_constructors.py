@@ -315,3 +315,14 @@ def test_nonfinite_knots_are_rejected_atomically(value):
             edit()
         np.testing.assert_array_equal(knots, [0, 0, 0.5, 1, 1])
         assert not knots.flags.writeable
+
+
+def test_copy_preserves_staged_properties():
+    degrees = splinepy.Bezier(degrees=[1]).copy()
+    degrees.control_points = [[1], [3]]
+    points = splinepy.Bezier(control_points=[[1], [3]])
+    copied = points.copy()
+    points.control_points.fill(0)
+    copied.degrees = [1]
+    np.testing.assert_allclose(degrees.evaluate([[0.5]]), [[2]])
+    np.testing.assert_allclose(copied.evaluate([[0.5]]), [[2]])

@@ -24,22 +24,33 @@ ElementBvh::ElementBvh(const SplineView& spline)
     return;
   }
 
-  // positive weights are required for the convex hull property
+  // finite control points and positive weights are required for convex hull
+  const int64_t total_coords = spline.num_control_points * dim_;
+  for (int64_t i{}; i < total_coords; ++i) {
+    if (!std::isfinite(spline.control_points_data[i])) {
+      return;
+    }
+  }
   if (spline.IsRational()) {
     for (int64_t i{}; i < spline.num_control_points; ++i) {
-      if (!(spline.Weight(i) > 0.0)) {
+      if (!(spline.Weight(i) > 0.0) || !std::isfinite(spline.Weight(i))) {
         return;
       }
     }
   }
 
   // parametric bounds of the non-empty spans (elements) per axis
-  DynamicBuffer<double> span_lo[kMaxParaDim], span_hi[kMaxParaDim];
+  Buffer<DynamicBuffer<double>> span_lo(para_dim_), span_hi(para_dim_);
   elements_per_axis_ = Buffer<int32_t>(para_dim_);
   num_elements_ = 1;
   for (int32_t d{}; d < para_dim_; ++d) {
     if (spline.HasKnotVectors()) {
       const auto kv = spline.knot_vectors[d];
+      for (double knot : kv) {
+        if (!std::isfinite(knot)) {
+          return;
+        }
+      }
       for (int64_t k = spline.degrees[d]; k < spline.NumControlPointsPerAxis(d);
            ++k) {
         if (kv[k + 1] - kv[k] > kSpanTolerance) {

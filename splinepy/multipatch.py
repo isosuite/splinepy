@@ -45,11 +45,13 @@ class _ImplicitZeroPatch:
             "parametric_bounds",
         }:
             value = getattr(self._layout, name)
-            if name == "knot_vectors":
+            if name == "knot_vectors" and value is not None:
                 return [self._read_only_copy(knots) for knots in value]
             if isinstance(value, _np.ndarray):
                 return self._read_only_copy(value)
             return value
+        if name in {"_show_options", "_spline_data"}:
+            return None
         return getattr(self._materialize(), name)
 
     @staticmethod
@@ -87,16 +89,40 @@ class _ImplicitZeroPatch:
         return getattr(self._field, method)(routed, *args, nthreads=nthreads, out=out)
 
     def __add__(self, other):
+        if type(other) is _ImplicitZeroPatch:
+            other = other._materialize()
         return self._materialize() + other
 
+    def __radd__(self, other):
+        return other + self._materialize()
+
     def __mul__(self, other):
+        if type(other) is _ImplicitZeroPatch:
+            other = other._materialize()
         return self._materialize() * other
+
+    def __rmul__(self, other):
+        return other * self._materialize()
+
+    def copy(self, saved_data=True):
+        """Return a detached copy without materializing an implicit zero."""
+        patch = self._entries[self._index]
+        return self._zero() if patch is None else patch.copy(saved_data=saved_data)
+
+    def todict(self, tolist=False):
+        """Export from a temporary zero patch, keeping the field sparse."""
+        patch = self._entries[self._index]
+        return (self._zero() if patch is None else patch).todict(tolist)
+
+    def _zero(self):
+        patch = self._layout.copy(saved_data=False)
+        patch.control_points.fill(0)
+        return patch
 
     def _materialize(self):
         patch = self._entries[self._index]
         if patch is None:
-            patch = self._layout.copy(saved_data=False)
-            patch.control_points.fill(0)
+            patch = self._zero()
             self._entries[self._index] = patch
             if self._entries is self._field._patch_entries:
                 self._field._native_cache = None
@@ -117,7 +143,11 @@ class Multipatch(_SplinepyBase):
 
     Batch queries use a common parametric and physical dimension. Shared
     queries produce rows in patch order. Routed queries start with a
-    zero-based patch ID and produce rows in input order.
+    zero-based patch ID and produce rows in input order. An output buffer
+    may overlap the queries. It must be disjoint from the patches' control
+    points and weights. For validated tensor splines, evaluation uses the
+    coefficients in the query's local support. Invalid coefficients outside
+    that support can go undetected by the query.
     """
 
     __slots__ = (
@@ -207,11 +237,16 @@ class Multipatch(_SplinepyBase):
             for index, patch in enumerate(self._patch_entries):
                 if patch is None:
                     _ImplicitZeroPatch(self, index)._materialize()
+            self._zero_layouts = None
+            self._zero_layout_cache = None
         return self._patch_entries
 
     @_patches.setter
     def _patches(self, patches):
-        self._patch_entries = patches
+        self._patch_entries = [
+            patch._materialize() if type(patch) is _ImplicitZeroPatch else patch
+            for patch in patches
+        ]
         self._zero_layouts = None
         self._zero_layout_cache = None
 
@@ -300,7 +335,10 @@ class Multipatch(_SplinepyBase):
 
     def _patch_classes(self):
         if self._patch_types is None:
-            self._patch_types = {type(patch) for patch in self._patches}
+            self._patch_types = {
+                type(self._zero_layouts[i] if patch is None else patch)
+                for i, patch in enumerate(self._patch_entries)
+            }
         return self._patch_types
 
     def _patch_cache(self, sparse=False):
@@ -527,6 +565,8 @@ class Multipatch(_SplinepyBase):
         -------
         ids : np.ndarray
         """
+        if bid == 0:
+            raise ValueError("Boundary IDs start at 1.")
         if bid < 0 and self._boundary_patch_ids is not None:
             return self._boundary_patch_ids
 
@@ -674,9 +714,16 @@ class Multipatch(_SplinepyBase):
         -------
         control_points : (n, dim) np.ndarray
         """
-        if not self._patches:
+        if not self._patch_entries:
             return _np.empty((0, 0))
-        return _np.vstack([p.control_points for p in self._patches])
+        return _np.vstack(
+            [
+                patch.control_points
+                if patch is not None
+                else _np.broadcast_to(0.0, self._zero_layouts[i].control_points.shape)
+                for i, patch in enumerate(self._patch_entries)
+            ]
+        )
 
     def _seam_control_points(self):
         """Map each shared patch-local row to its entire interface group."""
@@ -1017,6 +1064,7 @@ class Multipatch(_SplinepyBase):
             tolerance,
             nthreads,
         )
+        self._invalidate_boundary_caches()
         self._logd(f"{n_new_boundaries} new boundaries were assigned")
 
     def combine_boundaries(self, mask=None):
@@ -1212,6 +1260,7 @@ class Multipatch(_SplinepyBase):
             )
             if result is not None:
                 return result
+        self._check_fallback_output(out)
         res = [int(resolutions)] * self.para_dim
         return self._join_query_results(
             [p.sample(res, nthreads=nthreads) for p in self._patches], out
@@ -1294,6 +1343,7 @@ class Multipatch(_SplinepyBase):
             if result is not None:
                 return result
 
+        self._check_fallback_output(out)
         if queries.shape[1] == para_dim:
             return self._join_query_results(
                 [
@@ -1328,6 +1378,16 @@ class Multipatch(_SplinepyBase):
             output[mask] = values
         return output
 
+    def _check_fallback_output(self, out):
+        if isinstance(out, _np.ndarray):
+            for patch in self._patch_entries:
+                if patch is None:
+                    continue
+                if _np.may_share_memory(out, patch.control_points) or (
+                    patch.is_rational and _np.may_share_memory(out, patch.weights)
+                ):
+                    raise ValueError("out must not overlap spline property arrays.")
+
     @classmethod
     def _join_query_results(cls, results, out):
         if out is not None:
@@ -1361,7 +1421,7 @@ class Multipatch(_SplinepyBase):
         the seam control meshes conforming.
         """
         axes = _np.asarray(parametric_dimensions)
-        if not self._patches or not axes.size:
+        if not self._patch_entries or not axes.size:
             return
         if (
             axes.ndim > 1
@@ -1389,23 +1449,48 @@ class Multipatch(_SplinepyBase):
 
     def _refine_patches(self, method, nthreads, *args):
         nthreads = _default_if_none(nthreads, _settings.NTHREADS)
+        # Sparse fields read their zero layouts from a cache of the geometry.
+        # Each cache is refined once, also when a field is refined on its own.
+        refined = {}
+        layouts = {}
+
+        def refine(cache):
+            if cache not in refined:
+                refined[cache] = getattr(cache, method)(*args, nthreads)
+            return refined[cache]
+
         updates = {}
         pending = [self]
         while pending:
             multipatch = pending.pop()
-            if id(multipatch) in updates or not multipatch._patches:
+            if id(multipatch) in updates or not multipatch._patch_entries:
                 continue
             if not multipatch._patch_classes().issubset(
                 (_Bezier, _RationalBezier, _BSpline, _NURBS)
             ):
                 raise TypeError("Refinement requires tensor-product spline patches.")
-            patches = getattr(multipatch._patch_cache(), method)(*args, nthreads)
-            updates[id(multipatch)] = (multipatch, list(patches))
+            # every refinement is computed before any multipatch changes
+            cache = multipatch._patch_cache(sparse=True)
+            patches = refine(cache)
+            layout = multipatch._zero_layout_cache
+            if layout is not None and layout not in layouts:
+                layout_patches = refine(layout)
+                layouts[layout] = (
+                    tuple(layout_patches), _core._MultipatchCache(layout_patches)
+                )
+            updates[id(multipatch)] = (multipatch, patches, cache, layout)
             pending.extend(multipatch._fields)
 
-        for multipatch, patches in updates.values():
+        for multipatch, patches, cache, layout in updates.values():
             multipatch._patches = patches
             multipatch._invalidate_patch_layout_caches()
+            if cache in layouts:
+                # The geometry keeps the cache its fields read layouts from.
+                multipatch._native_cache = layouts[cache][1]
+            if layout is not None:
+                multipatch._zero_layouts, multipatch._zero_layout_cache = layouts[
+                    layout
+                ]
 
     @property
     def extract(self):

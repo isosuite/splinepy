@@ -391,13 +391,7 @@ class Spline(_core.SplineCore, _SplinepyBase):
 
         # spline based init - shares the other spline's current arrays
         if spline is not None:
-            self._assign(
-                spline._degrees,
-                spline._knot_vectors,
-                spline._control_points,
-                spline._weights,
-                validate=False,
-            )
+            self._commit(spline._properties())
             return None
 
         # property based init. all at once, so validation happens only once
@@ -777,7 +771,7 @@ class Spline(_core.SplineCore, _SplinepyBase):
             return [_np.array([d + 1, d + 1]) for d in self.degrees]
 
         else:
-                return [k.multiplicities() for k in self.knot_vectors]
+            return [k.multiplicities() for k in self.knot_vectors]
 
     @property
     def parametric_bounds(self):
@@ -1472,16 +1466,12 @@ class Spline(_core.SplineCore, _SplinepyBase):
         new_spline: type(self)
         """
         new = type(self)()
-        if self._degrees is not None:
-            # valid as it is: copied without being checked again
-            kvs, weights = self._knot_vectors, self._weights
-            new._assign(
-                self._normalize_property("degrees", self._degrees),
-                None if kvs is None else tuple(_knot_vector_arrays(kvs)),
-                self._control_points.copy(),
-                None if weights is None else weights.copy(),
-                validate=False,
-            )
+        properties = self._properties()
+        # _set_properties owns the layout, but normally borrows these arrays.
+        for key in ("control_points", "weights"):
+            if key in properties:
+                properties[key] = properties[key].copy()
+        new._set_properties(**properties)
 
         if saved_data:
             # copy show_options and shallow copy spline_data, where they exist

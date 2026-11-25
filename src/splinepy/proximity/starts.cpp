@@ -103,7 +103,7 @@ bool Proximity::PlantBvh(const int* resolutions) {
     per_element *= static_cast<std::size_t>(n);
   }
   const auto n_elements = static_cast<std::size_t>(bvh->NumElements());
-  if (n_elements * per_element <= kMaxCachedDoubles) {
+  if (n_elements <= kMaxCachedDoubles / per_element) {
     bvh_sample_points_ =
         splinepy::core::Buffer<double>(n_elements * per_element);
     splinepy::core::AxisArray<double> lower, upper, u;

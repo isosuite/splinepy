@@ -926,3 +926,21 @@ def test_swept_twist_on_closed_trajectory():
     sections = half_turn.control_points.reshape(-1, 2, 3)
     # half a turn flips the last section relative to the first one
     assert np.allclose(sections[0], sections[-1][::-1])
+
+
+def test_plate_radius_and_torus_degree_flag():
+    plate = splinepy.helpme.create.plate(radius=2.5)
+    boundary_pts = plate.evaluate(
+        [[0.0, 0.0], [0.5, 0.0], [1.0, 0.0], [0.0, 0.5], [1.0, 1.0]]
+    )
+    np.testing.assert_allclose(np.linalg.norm(boundary_pts, axis=1), 2.5)
+
+    quarter = splinepy.helpme.create.torus(
+        torus_radius=3.0, section_outer_radius=0.5, torus_angle=90, degree=True
+    )
+    # 90 degrees around x-axis from +y goes to +z (not 90 radians)
+    u_end = quarter.parametric_bounds[1, 2]
+    pts = quarter.evaluate([[0.5, 0.5, 0.0], [0.5, 0.5, u_end]])
+    np.testing.assert_allclose(pts[0], [0.0, 3.0, 0.0], atol=1e-12)
+    np.testing.assert_allclose(pts[1], [0.0, 0.0, 3.0], atol=1e-12)
+

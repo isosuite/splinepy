@@ -399,6 +399,7 @@ void ForEachPair(Span<const OuterLayout> layouts,
   }
 
   // fewer inners than threads: each basis uses the threads itself
+  local.workspace = ws.get();
   Buffer<CompositionBasis> bases(n_inner * n_layouts);
   for (std::size_t k = 0; k < bases.size(); ++k) {
     bases[k] = build(k / n_layouts, k % n_layouts, local);
@@ -578,6 +579,16 @@ SplineBatchData CompositionDerivativeBatch(SplineBatchView outers,
     }
   }
 
+  // Precompute outer derivatives once per outer (validated as requested).
+  Buffer<SplineData> outer_ders(n_outer * m);
+  for (std::size_t o = 0; o < n_outer; ++o) {
+    for (int32_t d = 0; d < M; ++d) {
+      outer_ders[o * m + d] =
+          (o == 0) ? std::move(layout_der[d])
+                   : derivative_of(outers[o], d, options);
+    }
+  }
+
   // result[o * n_inner + i] = CompositionDerivative(outers[o], inners[i],
   // inner_derivatives[i])
   ForEachPair(
@@ -589,14 +600,10 @@ SplineBatchData CompositionDerivativeBatch(SplineBatchView outers,
           std::size_t i,
           const CompositionBasis* preps,
           const Options& worker) {
-        // the outers are validated as given by the caller
-        Options checked = worker;
-        checked.validate = options.validate;
         SplineData sum;
         for (int32_t d = 0; d < M; ++d) {
-          SplineData outer_der = derivative_of(outers[o], d, checked);
-          SplineData comp =
-              AccumulateComposition(outer_der.View(), inners[i], preps[d]);
+          SplineData comp = AccumulateComposition(
+              outer_ders[o * m + d].View(), inners[i], preps[d]);
           SplineData term =
               Multiply(comp.View(), inner_der_d[i * m + d].View(), worker);
           sum =

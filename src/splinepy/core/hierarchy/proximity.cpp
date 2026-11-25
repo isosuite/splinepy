@@ -229,16 +229,17 @@ HierarchyProximities(const HierarchicalSplineView& spline,
         double best_residual = best;
         std::size_t best_leaf = 0;
         bool found = false;
+        proximity::Proximity solver(SplineView{});
+        if (tight_bounds) {
+          solver.SetInitialGuess(std::make_unique<SamplingStep>(step));
+        }
 
         data.bvh.Traverse(
             query.data(),
             [&](int64_t element, double) {
               const auto leaf = static_cast<std::size_t>(element);
               const auto view = local_view(leaf);
-              proximity::Proximity solver(view);
-              if (tight_bounds) {
-                solver.SetInitialGuess(std::make_unique<SamplingStep>(step));
-              }
+              solver.SetSpline(view);
               if (sampled.empty()) {
                 Evaluate(view, unit_queries, physical_samples, nested);
               }

@@ -172,7 +172,7 @@ def export(
             i_spline_dict = i_spline.todict(tolist=True)
         else:
             raise ValueError("Unsupported type in list")
-        i_spline_dict["SplineType"] = type(i_spline).__qualname__
+        i_spline_dict["SplineType"] = i_spline.__class__.__qualname__
         # Append para_dim and dim
         i_spline_dict["dim"] = i_spline.dim
         i_spline_dict["para_dim"] = i_spline.para_dim
@@ -187,7 +187,9 @@ def export(
                 ).decode("utf-8")
 
         if not is_hierarchy:
-            i_spline_dict["show_options"] = dict(i_spline.show_options)
+            # read what is stored: no helper is created, no zero patch allocated
+            options = getattr(i_spline, "_show_options", None)
+            i_spline_dict["show_options"] = dict(options or {})
 
         spline_dictonary_list.append(i_spline_dict)
 

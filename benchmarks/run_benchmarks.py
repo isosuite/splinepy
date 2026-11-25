@@ -1,5 +1,7 @@
 import json
 import time
+import timeit
+from functools import partial
 
 import numpy as np
 
@@ -15,6 +17,51 @@ def benchmark(fn, n_warmup=2, n_runs=5):
         fn()
         times.append(time.perf_counter() - start)
     return float(np.min(times)), float(np.mean(times)), float(np.std(times))
+
+
+def benchmark_single_query_after_copy():
+    """Time evaluate alone, with 100,000 control points per linear B-spline."""
+    n = 100_000
+    u = np.linspace(0.0, 1.0, n)
+    knots = np.r_[0.0, u, 1.0]
+    patch = splinepy.BSpline([1], [knots], u[:, None])
+    patches = [patch.copy() for _ in range(8)]
+    query = np.array([[0.375]])
+    routed = np.array([[7.0, 0.375]])
+    results = {}
+
+    def record(name, samples):
+        median = float(np.median(samples))
+        results[name] = {"median_s": median}
+        print(f"{name}: {median * 1e6:.2f} µs per evaluate")
+
+    def warm(name, target, points, expected):
+        evaluate = partial(target.evaluate, points, nthreads=1)
+        np.testing.assert_allclose(evaluate(), expected)
+        times = timeit.repeat(evaluate, number=100, repeat=7)
+        record(f"{name}_100k_warm_query", np.array(times) / 100)
+
+    warm("bspline_original", patch, query, query)
+    warm("bspline_copy", patches[-1], query, query)
+    for index, copied in enumerate(patches):
+        copied.control_points += index
+    shared_expected = np.arange(len(patches))[:, None] + query
+    for name, points, expected in (
+        ("multipatch_routed", routed, shared_expected[-1:]),
+        ("multipatch_shared", query, shared_expected),
+    ):
+        # A fresh wrapper starts without a native patch cache. Construction
+        # and copying are outside both timings, as are the result checks.
+        first_calls = []
+        for _ in range(9):
+            target = splinepy.Multipatch(patches)
+            start = time.perf_counter()
+            values = target.evaluate(points, nthreads=1)
+            first_calls.append(time.perf_counter() - start)
+            np.testing.assert_allclose(values, expected)
+        record(f"{name}_100k_first_query", first_calls)
+        warm(name, target, points, expected)
+    return results
 
 
 def run_all_benchmarks():
@@ -125,6 +172,8 @@ def run_all_benchmarks():
     t_min, t_mean, _ = benchmark(lambda: b2.compose(inner_bez), n_runs=10)
     results["bezier_compose"] = {"min_s": t_min, "mean_s": t_mean}
     print(f"Bezier 2D compose: {t_min * 1000:.4f} ms")
+
+    results.update(benchmark_single_query_after_copy())
 
     with open("benchmarks/baseline_results.json", "w") as f:
         json.dump(results, f, indent=2)

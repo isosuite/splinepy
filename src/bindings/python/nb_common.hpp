@@ -23,15 +23,26 @@ namespace splinepy::py {
 
 namespace nb = nanobind;
 
+inline bool
+ByteRangesOverlap(const void* a, size_t a_size, const void* b, size_t b_size) {
+  if (!a_size || !b_size) {
+    return false;
+  }
+  const auto first = reinterpret_cast<uintptr_t>(a);
+  const auto second = reinterpret_cast<uintptr_t>(b);
+  return first <= second ? second - first < a_size : first - second < b_size;
+}
+
 /// Outputs are contiguous arrays or tuples of arrays. Test byte ranges so
 /// differently typed views of the same allocation are covered too.
-inline bool OverlapsOutput(const void* data, size_t bytes, nb::handle out) {
-  if (!out.is_valid() || out.is_none() || bytes == 0) {
+inline bool
+OverlapsOutput(const void* data, size_t bytes, nb::handle out, int depth = 0) {
+  if (!out.is_valid() || out.is_none() || bytes == 0 || depth > 8) {
     return false;
   }
   if (nb::isinstance<nb::tuple>(out) || nb::isinstance<nb::list>(out)) {
     for (nb::handle item : nb::borrow<nb::sequence>(out)) {
-      if (OverlapsOutput(data, bytes, item)) {
+      if (OverlapsOutput(data, bytes, item, depth + 1)) {
         return true;
       }
     }
@@ -41,9 +52,29 @@ inline bool OverlapsOutput(const void* data, size_t bytes, nb::handle out) {
   if (!nb::try_cast(out, target, false) || target.nbytes() == 0) {
     return false; // invalid outputs are diagnosed by OutArray
   }
-  const auto first = reinterpret_cast<uintptr_t>(data);
-  const auto second = reinterpret_cast<uintptr_t>(target.data());
-  return first < second + target.nbytes() && second < first + bytes;
+  return ByteRangesOverlap(data, bytes, target.data(), target.nbytes());
+}
+
+inline bool OverlapsOutput(const void* data,
+                           size_t bytes,
+                           splinepy::core::Span<const double> out) {
+  return ByteRangesOverlap(data,
+                           bytes,
+                           out.data(),
+                           out.size() * sizeof(double));
+}
+
+/// A kernel reads coefficients while it writes results, so out (a Python
+/// output or an already checked span) must not share their storage.
+template<typename Out>
+void CheckOutputStorage(const splinepy::core::SplineView& view,
+                        const Out& out) {
+  const auto row_bytes = view.num_control_points * sizeof(double);
+  if (OverlapsOutput(view.control_points_data, row_bytes * view.dim, out)
+      || (view.IsRational()
+          && OverlapsOutput(view.weights_data, row_bytes, out))) {
+    throw nb::value_error("out must not overlap spline property arrays.");
+  }
 }
 
 /// Read-only C-contiguous view of a Python array-like as element type T.
@@ -211,7 +242,8 @@ inline std::pair<nb::object, nb::object> SplitOutPair(const nb::object& out) {
   if (out.is_none()) {
     return {nb::none(), nb::none()};
   }
-  if (!nb::isinstance<nb::sequence>(out) || nb::len(out) != 2) {
+  if (!(nb::isinstance<nb::tuple>(out) || nb::isinstance<nb::list>(out))
+      || nb::len(out) != 2) {
     throw std::invalid_argument("out must be None or a tuple of two arrays.");
   }
   nb::ndarray<nb::ro, nb::c_contig, nb::device::cpu> first;

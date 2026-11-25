@@ -110,6 +110,11 @@ void CheckOrders(const ContiguousAdapter<int32_t>& orders, int dimension) {
 void ValidateSpline(const core::SplineView& view, size_t weights_size) {
   const int para_dim = view.para_dim;
   const int64_t ncps = view.num_control_points;
+  if (para_dim <= 0) {
+    core::ThrowError(
+        core::Status::kInvalidArgument,
+        "Parametric dimension must be positive.");
+  }
   if (view.dim == 0) {
     core::ThrowError(
         core::Status::kInvalidArgument,
@@ -136,7 +141,7 @@ void ValidateSpline(const core::SplineView& view, size_t weights_size) {
     }
   };
   int64_t required_ncps = 1;
-  if (view.HasKnotVectors()) {
+  if (!view.knot_vectors.empty()) {
     const int kv_dim = static_cast<int>(view.knot_vectors.size());
     for (int d = 0; d < std::min(para_dim, kv_dim); ++d) {
       check_degree(d);
@@ -157,7 +162,8 @@ void ValidateSpline(const core::SplineView& view, size_t weights_size) {
                            "are not in increasing order.");
         }
       }
-      const int64_t n_minimal_knots = 2 * (view.degrees[d] + 1);
+      const int64_t n_minimal_knots =
+          int64_t{2} * (static_cast<int64_t>(view.degrees[d]) + 1);
       if (static_cast<int64_t>(kv.size()) < n_minimal_knots) {
         core::ThrowError(core::Status::kInvalidArgument,
                          "Not enough knots in parametric dimension (",
@@ -229,16 +235,7 @@ struct QueryInput {
       if (orders) {
         orders->ProtectOutput(out);
       }
-      const auto& view = spline_view;
-      if (OverlapsOutput(view.control_points_data,
-                         view.num_control_points * view.dim * sizeof(double),
-                         out)
-          || OverlapsOutput(
-              view.weights_data,
-              view.IsRational() ? view.num_control_points * sizeof(double) : 0,
-              out)) {
-        throw nb::value_error("out must not overlap spline property arrays.");
-      }
+      CheckOutputStorage(spline_view, out);
     }
   }
 
@@ -690,18 +687,7 @@ nb::object Sample(nb::handle spline,
   if (!NativeOf(spline).layout_validated || para_dim <= 0 || dim <= 0) {
     core::ThrowIfInvalid(wrapper.view);
   }
-  if (!out.is_none()
-      && (OverlapsOutput(wrapper.view.control_points_data,
-                         wrapper.view.num_control_points * dim * sizeof(double),
-                         out)
-          || OverlapsOutput(wrapper.view.weights_data,
-                            wrapper.view.IsRational()
-                                ? wrapper.view.num_control_points
-                                      * sizeof(double)
-                                : 0,
-                            out))) {
-    throw nb::value_error("out must not overlap spline property arrays.");
-  }
+  CheckOutputStorage(wrapper.view, out);
 
   core::AxisArray<int32_t> res;
   res.resize(para_dim);
@@ -783,7 +769,7 @@ nb::list GrevilleAbscissae(nb::handle spline, const double tolerance) {
   const SplineArrays wrapper = Pin(spline);
   core::Options options;
   options.tolerance = tolerance;
-  options.validate = false;
+  options.validate = !NativeOf(spline).layout_validated;
   auto greville_vec = core::GrevilleAbscissaeList(wrapper.view, options);
 
   nb::list result;
@@ -815,6 +801,9 @@ nb::object ControlMeshResolutions(nb::handle spline) {
 nb::list UniqueKnots(nb::handle spline) {
   const SplineArrays wrapper = Pin(spline);
   const auto& view = wrapper.view;
+  if (!NativeOf(spline).layout_validated) {
+    core::ThrowIfInvalid(view);
+  }
   nb::list result;
   for (int32_t d = 0; d < view.para_dim; ++d) {
     const core::AxisKnots axis(view, d);
@@ -858,9 +847,12 @@ ProximityHandle::ProximityHandle(nb::handle spline,
     throw nb::value_error("Initial guess must be 'bvh' or 'grid'");
   }
   proximity_ = std::make_unique<splinepy::proximity::Proximity>(view);
-  if (guess == "grid" || !proximity_->PlantBvh(sampling.data())) {
-    proximity_->SetInitialGuess(
-        splinepy::proximity::MakeGridGuess(view, sampling.data(), nthreads));
+  {
+    nb::gil_scoped_release release;
+    if (guess == "grid" || !proximity_->PlantBvh(sampling.data())) {
+      proximity_->SetInitialGuess(
+          splinepy::proximity::MakeGridGuess(view, sampling.data(), nthreads));
+    }
   }
   if (max_starts < 1) {
     throw nb::value_error("max_starts must be >= 1");
@@ -923,6 +915,22 @@ void ProximityHandle::Query(nb::object queries,
   const auto residuals = buffer(4, {count, 1});
   const auto first = buffer(5, {count, pdim, physical}, true);
   const auto second = buffer(6, {count, pdim, pdim, physical}, true);
+  const Output outputs[7] = {
+      params, points, differences, distances, residuals, first, second};
+  for (size_t i = 0; i < 7; ++i) {
+    if (!outputs[i].is_valid()) {
+      continue;
+    }
+    for (size_t j = i + 1; j < 7; ++j) {
+      if (outputs[j].is_valid()
+          && ByteRangesOverlap(outputs[i].data(),
+                               outputs[i].nbytes(),
+                               outputs[j].data(),
+                               outputs[j].nbytes())) {
+        throw nb::value_error("Output arrays must not overlap each other.");
+      }
+    }
+  }
 
   const double* q_ptr = q_adapter.data();
 
