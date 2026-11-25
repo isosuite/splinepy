@@ -9,6 +9,10 @@ namespace splinepy::core {
 
 Buffer<int32_t> BoundaryPatchIds(Span<const int32_t> interfaces,
                                  int32_t boundary_id) {
+  if (boundary_id == 0) {
+    throw SplinepyException("Boundary IDs start at 1 (or < 0 for all).",
+                            Status::kInvalidArgument);
+  }
   // faces on any boundary (boundary_id < 0) or on boundary -boundary_id
   DynamicBuffer<int32_t> pids(interfaces.size());
   for (std::size_t i = 0; i < interfaces.size(); ++i) {

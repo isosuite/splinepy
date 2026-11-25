@@ -43,7 +43,7 @@ def export(fname, splinepy_obj):
 
     """
     # Determine file extension
-    extension = _pathlib.Path(fname).suffix
+    extension = _pathlib.Path(fname).suffix.lower()
     if extension not in extension_to_io:
         raise ValueError("Extension not supported")
 
@@ -70,9 +70,10 @@ def load(fname):
 
     """
     # Determine file extension
-    extension = _pathlib.Path(fname).suffix
-    if extension not in extension_to_io:
+    extension = _pathlib.Path(fname).suffix.lower()
+    module = extension_to_io.get(extension)
+    if module is None or not hasattr(module, "load"):
         raise ValueError("Extension not supported")
 
     # Load
-    return extension_to_io[extension].load(fname)
+    return module.load(fname)

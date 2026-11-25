@@ -273,6 +273,9 @@ class BSplineBase(_spline.Spline):
                 )
             return matrices
 
+        if not 0 <= parametric_dimension < self.para_dim:
+            raise ValueError("Invalid parametric dimension to insert knots.")
+
         rows, cols, coefficients, (n_new, n_old) = next(
             _axis_maps(
                 self.knot_vectors[parametric_dimension],

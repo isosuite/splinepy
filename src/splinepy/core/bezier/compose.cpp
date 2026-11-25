@@ -399,6 +399,7 @@ void ForEachPair(Span<const OuterLayout> layouts,
   }
 
   // fewer inners than threads: each basis uses the threads itself
+  local.workspace = ws.get();
   Buffer<CompositionBasis> bases(n_inner * n_layouts);
   for (std::size_t k = 0; k < bases.size(); ++k) {
     bases[k] = build(k / n_layouts, k % n_layouts, local);
@@ -559,11 +560,15 @@ SplineBatchData CompositionDerivativeBatch(SplineBatchView outers,
 
   // The derivative splines of all outers share their degrees, so one basis per
   // (inner, direction) serves every outer.
-  Buffer<SplineData> layout_der(m);
+  // outer_ders[o * M + d]: derivative d of outer o, validated as requested
+  Buffer<SplineData> outer_ders(n_outer * m);
+  for (std::size_t k = 0; k < outer_ders.size(); ++k) {
+    outer_ders[k] =
+        derivative_of(outers[k / m], static_cast<int32_t>(k % m), options);
+  }
   Buffer<OuterLayout> layouts(m);
   for (int32_t d = 0; d < M; ++d) {
-    layout_der[d] = derivative_of(outers[0], d, options);
-    const SplineView der_view = layout_der[d].View();
+    const SplineView der_view = outer_ders[d].View();
     layouts[d] = {der_view.degrees, der_view.IsRational()};
   }
 
@@ -589,14 +594,11 @@ SplineBatchData CompositionDerivativeBatch(SplineBatchView outers,
           std::size_t i,
           const CompositionBasis* preps,
           const Options& worker) {
-        // the outers are validated as given by the caller
-        Options checked = worker;
-        checked.validate = options.validate;
         SplineData sum;
         for (int32_t d = 0; d < M; ++d) {
-          SplineData outer_der = derivative_of(outers[o], d, checked);
-          SplineData comp =
-              AccumulateComposition(outer_der.View(), inners[i], preps[d]);
+          SplineData comp = AccumulateComposition(outer_ders[o * m + d].View(),
+                                                  inners[i],
+                                                  preps[d]);
           SplineData term =
               Multiply(comp.View(), inner_der_d[i * m + d].View(), worker);
           sum =

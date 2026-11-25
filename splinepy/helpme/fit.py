@@ -323,15 +323,15 @@ def curve(
     residual: float
         residual (coefficient_matrix @ control_points - fitting_points)
     """
-    fitting_points = _np.asanyarray(fitting_points)
+    fitting_points = _np.asarray(fitting_points, dtype=float)
 
     # calculate n_fitting_points due to multiple usage
     n_fitting_points = fitting_points.shape[0]
 
     # determine evaluation points to build a linear system
     if associated_queries is not None:
-        u_k = _np.asanyarray(associated_queries)
-        if u_k.shape[1] != 1:
+        u_k = _np.asarray(associated_queries, dtype=float)
+        if u_k.ndim != 2 or u_k.shape[1] != 1:
             raise ValueError("Associated queries need to have (-1, 1) shape")
 
     else:

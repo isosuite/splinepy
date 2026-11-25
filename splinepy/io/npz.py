@@ -27,33 +27,22 @@ def load(
     --------
     list_spline: list of NURBS / BSpline / Bezier / Rational Bezier
     """
-    loaded = _np.load(fname)
-
-    # Initialize an empty list to store the splines
     list_of_spline_dicts = []
-
-    # Loop through keys in loaded dictionary and find the ones starting with 'spline_'
-    for i in range(loaded["number_of_splines"]):
-        # Initialize an empty dictionary to store the properties of the spline
-        dict_spline = {}
-
-        # Add the common properties of all splines
-        dict_spline["control_points"] = loaded[f"spline_{i}_control_points"]
-        dict_spline["degrees"] = loaded[f"spline_{i}_degrees"]
-
-        # Add the weights if the spline is rational
-        if f"spline_{i}_weights" in loaded:
-            dict_spline["weights"] = loaded[f"spline_{i}_weights"]
-
-        # Add the knot vectors if the spline has them
-        if f"spline_{i}_knot_vectors_0" in loaded:
-            kvs = []
-            for j in range(dict_spline["degrees"].size):
-                kvs.append(loaded[f"spline_{i}_knot_vectors_{j}"])
-            dict_spline["knot_vectors"] = kvs
-
-        # Append dictionary of spline to the list
-        list_of_spline_dicts.append(dict_spline)
+    with _np.load(fname) as loaded:
+        # Loop through keys in loaded dictionary and find 'spline_'
+        for i in range(loaded["number_of_splines"]):
+            dict_spline = {
+                "control_points": loaded[f"spline_{i}_control_points"],
+                "degrees": loaded[f"spline_{i}_degrees"],
+            }
+            if f"spline_{i}_weights" in loaded:
+                dict_spline["weights"] = loaded[f"spline_{i}_weights"]
+            if f"spline_{i}_knot_vectors_0" in loaded:
+                dict_spline["knot_vectors"] = [
+                    loaded[f"spline_{i}_knot_vectors_{j}"]
+                    for j in range(dict_spline["degrees"].size)
+                ]
+            list_of_spline_dicts.append(dict_spline)
 
     return _io.ioutils.dict_to_spline(list_of_spline_dicts)
 

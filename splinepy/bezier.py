@@ -55,17 +55,17 @@ class BezierBase(_spline.Spline):
           New spline with updated types
         """
         # scalar
-        if isinstance(factor, float):
-            return type(self)(
-                control_points=self.control_points * factor,
-                degrees=self.degrees,
-            )
+        if isinstance(factor, (int, float, _np.number)) and not isinstance(
+            factor, bool
+        ):
+            result = self.copy(saved_data=False)
+            result.control_points *= float(factor)
+            return result
 
-        # Supports only Bezier families
-        if not isinstance(factor, BezierBase):
-            raise TypeError(
-                f"Multiplication with {type(factor)}-type is not supported."
-            )
+        # Only Bezier families, by real type: others (a proxy of a patch
+        # answers isinstance too) get to handle the reflected operation
+        if not issubclass(type(factor), BezierBase):
+            return NotImplemented
 
         # Dimension compatibility is checked in C++.
         return _core.multiply(self, factor)
@@ -88,6 +88,8 @@ class BezierBase(_spline.Spline):
         added: type(self)
           New spline that describes sum
         """
+        if not issubclass(type(summand), BezierBase):
+            return NotImplemented  # see __mul__
         # same type check, same para dim check, same dim check done in cpp
         return _core.add(self, summand)
 

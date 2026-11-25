@@ -39,8 +39,8 @@ def configure(debug=False, logfile=None):
     # times won't duplicate printing.
     new_handlers = []
     for _i, h in enumerate(logger.handlers):
-        # we skip all the stream handler.
-        if isinstance(h, _logging.StreamHandler):
+        # we skip plain stream handlers (preserving FileHandler, which subclasses it)
+        if type(h) is _logging.StreamHandler:
             continue
 
         # blindly keep other ones
@@ -58,6 +58,8 @@ def configure(debug=False, logfile=None):
     # output logs
     if logfile is not None:
         file_logger_handler = _logging.FileHandler(logfile)
+        file_logger_handler.setLevel(level)
+        file_logger_handler.setFormatter(formatter)
         logger.addHandler(file_logger_handler)
 
 

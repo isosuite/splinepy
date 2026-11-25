@@ -70,6 +70,7 @@ void SearchData::SLSQPData::Setup(SearchData& d) {
   // internal states
   alpha = f0 = gs = h1 = h2 = h3 = h4 = t = t0 = tol = 0.0;
   iexact = incons = ireset = itermx = line = n1 = n2 = n3 = 0;
+  line_search = {};
 }
 
 void Proximity::PrepareIterationSlsqp(SearchData& d) const {

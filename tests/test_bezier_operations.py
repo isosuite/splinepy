@@ -449,3 +449,25 @@ def test_result_arrays_are_created_lazily_as_views():
     refined.insert_knots(0, [0.5])
     assert not refined.knot_vectors[0].flags.writeable
     np.testing.assert_allclose(refined.knot_vectors[0], [0, 0, 0.5, 1, 1])
+
+
+def test_rational_bezier_scalar_mul_and_split_nan():
+    rb = splinepy.RationalBezier([1], [[1.0, 2.0], [3.0, 4.0]], [1.0, 2.0])
+    for factor in (2, 2.0):
+        scaled = rb * factor
+        assert isinstance(scaled, splinepy.RationalBezier)
+        assert scaled.is_rational
+        np.testing.assert_allclose(scaled.weights, rb.weights)
+        np.testing.assert_allclose(scaled.evaluate([[0.3]]), 2.0 * rb.evaluate([[0.3]]))
+    with pytest.raises((ValueError, splinepy.SplinepyError)):
+        rb.split(0, [np.nan])
+
+
+def test_bezier_operators_reject_other_types():
+    bezier = splinepy.Bezier([1], [[0.0], [1.0]])
+    bspline = splinepy.BSpline([1], [[0, 0, 1, 1]], [[0.0], [1.0]])
+    for other in (bspline, "a", None):
+        with pytest.raises(TypeError):
+            bezier + other
+        with pytest.raises(TypeError):
+            bezier * other

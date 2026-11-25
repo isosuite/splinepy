@@ -23,6 +23,7 @@
 #include "splinepy/core/microstructure/plan.hpp"
 #include "splinepy/core/multipatch/interfaces.hpp"
 #include "splinepy/core/queries/evaluate.hpp"
+#include "splinepy/core/validate/validator.hpp"
 
 namespace splinepy::py {
 
@@ -38,6 +39,9 @@ InsertKnots(nb::handle spline, int para_dim, nb::object knots, double tol) {
   // a knot is inserted unless it is out of bounds or its multiplicity, in
   // the knot vector and among the knots accepted before it, is full
   const auto& view = holder.view;
+  if (!NativeOf(spline).layout_validated) {
+    splinepy::core::ThrowIfInvalid(view);
+  }
   if (para_dim < 0 || para_dim >= view.para_dim) {
     throw splinepy::core::SplinepyException(
         "InsertKnots: axis out of range [0, para_dim).",
@@ -453,9 +457,13 @@ nb::list ComposeBatch(nb::list outers, nb::list inners, int nthreads) {
   ViewList outer_views(outers), inner_views(inners);
   splinepy::core::Options options;
   options.nthreads = nthreads;
-  auto results = splinepy::core::ComposeBatch(outer_views.Batch(),
-                                              inner_views.Batch(),
-                                              options);
+  splinepy::core::SplineBatchData results;
+  {
+    nb::gil_scoped_release release;
+    results = splinepy::core::ComposeBatch(outer_views.Batch(),
+                                           inner_views.Batch(),
+                                           options);
+  }
   return ToGrid(outer_views.size(), inner_views.size(), [&](size_t k) {
     return SplineFromData(std::move(results[k]));
   });
@@ -466,9 +474,13 @@ ComposeSensitivitiesBatch(nb::list outers, nb::list inners, int nthreads) {
   ViewList outer_views(outers), inner_views(inners);
   splinepy::core::Options options;
   options.nthreads = nthreads;
-  auto results = splinepy::core::ComposeSensitivitiesBatch(outer_views.Batch(),
-                                                           inner_views.Batch(),
-                                                           options);
+  splinepy::core::Buffer<splinepy::core::SplineBatchData> results;
+  {
+    nb::gil_scoped_release release;
+    results = splinepy::core::ComposeSensitivitiesBatch(outer_views.Batch(),
+                                                        inner_views.Batch(),
+                                                        options);
+  }
   return ToGrid(outer_views.size(), inner_views.size(), [&](size_t k) {
     nb::list sensitivities;
     for (auto& s : results[k]) {
@@ -486,11 +498,15 @@ nb::list CompositionDerivativeBatch(nb::list outers,
       derivative_views(inner_derivatives);
   splinepy::core::Options options;
   options.nthreads = nthreads;
-  auto results =
-      splinepy::core::CompositionDerivativeBatch(outer_views.Batch(),
-                                                 inner_views.Batch(),
-                                                 derivative_views.Batch(),
-                                                 options);
+  splinepy::core::SplineBatchData results;
+  {
+    nb::gil_scoped_release release;
+    results =
+        splinepy::core::CompositionDerivativeBatch(outer_views.Batch(),
+                                                   inner_views.Batch(),
+                                                   derivative_views.Batch(),
+                                                   options);
+  }
   return ToGrid(outer_views.size(), inner_views.size(), [&](size_t k) {
     return SplineFromData(std::move(results[k]));
   });
@@ -550,7 +566,10 @@ nb::list ExtractBoundaries(nb::handle spline, nb::handle boundary_ids) {
   const int para_dim = holder.view.para_dim;
 
   splinepy::core::DynamicBuffer<int> bids;
-  if (!boundary_ids.is_none() && nb::isinstance<nb::sequence>(boundary_ids)) {
+  if (!boundary_ids.is_none()) {
+    if (!nb::isinstance<nb::sequence>(boundary_ids)) {
+      throw nb::type_error("boundary_ids must be None or a sequence of ints.");
+    }
     for (nb::handle bid : boundary_ids) {
       bids.push_back(nb::cast<int>(bid));
     }

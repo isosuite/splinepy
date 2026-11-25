@@ -362,7 +362,7 @@ TryRemoveKnotAlongAxisND(MemoryArena& arena,
       }
     }
 
-    if (std::sqrt(dist_sq) > tolerance) {
+    if (!(std::sqrt(dist_sq) <= tolerance)) {
       return false; // cannot remove knot within tolerance
     }
   }

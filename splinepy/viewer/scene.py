@@ -95,7 +95,7 @@ def _data_values(data, queries):
     return _np.asarray(data)
 
 
-def _eval_data(spline, source, queries, parent=None):
+def _eval_data(spline, source, queries, parent=None, patch_index=None):
     """Evaluates data given as spline_data key or callable at queries."""
     if callable(source):
         return _np.asarray(source(queries))
@@ -109,7 +109,11 @@ def _eval_data(spline, source, queries, parent=None):
         data = parent.spline_data[source]
         if hasattr(data, "patches"):
             try:
-                idx = parent.patches.index(spline)
+                idx = (
+                    patch_index
+                    if patch_index is not None
+                    else parent.patches.index(spline)
+                )
                 patch = data.patches[idx]
             except (ValueError, IndexError):
                 raise _DataLookupError(
@@ -129,7 +133,9 @@ def _scalar_values(values, count):
     return values.reshape(-1)
 
 
-def _surface_meshes(spline, res, scalars, uv=False, parent=None, faces=None):
+def _surface_meshes(
+    spline, res, scalars, uv=False, parent=None, faces=None, patch_index=None
+):
     """Showable surface of a single patch as a list of meshes.
 
     ``faces`` selects the faces of a volume to draw, in the face order of
@@ -156,7 +162,9 @@ def _surface_meshes(spline, res, scalars, uv=False, parent=None, faces=None):
             conn, etype = _mesh.grid_quads(shape), "quad"
         data = {}
         if scalars is not None:
-            values = _eval_data(spline, scalars, q, parent=parent)
+            values = _eval_data(
+                spline, scalars, q, parent=parent, patch_index=patch_index
+            )
             data["scalars"] = _scalar_values(values, len(verts))
         if uv and pdim > 1:
             free = [d for d in range(pdim) if d not in fixed]
@@ -352,6 +360,8 @@ def scene_from_splines(
             for p in sub
         ]  # fmt: skip
         uv_needed = texture is not None
+        if not sub:
+            raise ValueError("Cannot build scene from an empty Multipatch.")
         # of a volume multipatch, only the faces no other patch covers
         faces = [None] * len(sub)
         if multi and sub[0].para_dim == 3:
@@ -359,8 +369,10 @@ def scene_from_splines(
         try:
             surface = _mesh.merge(
                 m
-                for p, res, f in zip(sub, patch_resolutions, faces, strict=True)
-                for m in _surface_meshes(p, res, scalars, uv_needed, s, f)
+                for idx, (p, res, f) in enumerate(
+                    zip(sub, patch_resolutions, faces, strict=True)
+                )
+                for m in _surface_meshes(p, res, scalars, uv_needed, s, f, idx)
             )
         except _DataLookupError:
             if not multi or callable(scalars) or scalars not in s.spline_data._saved:

@@ -38,100 +38,19 @@ def _rgb_2_hex(r, g, b):
 
 
 def _write_png(bitmap, as_base64=True):
-    """
-    Write PNG data from a buffer.
-
-    This function is taken from
-    https://stackoverflow.com/questions/56564977/
-
-    Nitesh Menon's answer with some comments added to it
-
-    Replacing this by an external library like PIL or imageio is a @todo
-    still.
-
-    Parameters
-    ----------
-    bitmap : np.ndarray
-        Picture with dimensions (width, height, 4) as RGBA image
-    as_base64 : bool
-        Write into readable base64 format
-
-    Returns
-    -------
-    png : string
-        Base64 encoded String with png data
-    """
+    """Encode an (h, w, 4) uint8 RGBA bitmap as PNG (optionally base64)."""
     import base64
-    import struct  # Packing data
-    import zlib  # Compression
 
-    # Extract data
-    buf = bytearray(bitmap)
+    from splinepy.viewer.texture import _png
+
     if (
         (bitmap.ndim != 3)
         or (bitmap.shape[2] != 4)
         or (bitmap.dtype is not _np.dtype("uint8"))
     ):
         raise ValueError("Was expecting bitmap in RGBA format")
-    width = bitmap.shape[1]
-    height = bitmap.shape[0]
-
-    # Reverse the vertical line order and add null bytes at the start
-    width_byte_4 = width * 4
-
-    # Note: Contrary to the original post, the array is not concatenated in
-    # reverse but in the original order (modified by jzwar)
-    raw_data = b"".join(
-        # Add a null byte and concatenate the raw data
-        b"\x00" + buf[span : (span + width_byte_4)]
-        # Iterate over the buffer
-        for span in range(0, (height - 1) * width_byte_4 + 1, width_byte_4)
-    )
-
-    def png_pack(png_tag, data):
-        """
-        Pack PNG data into a chunk according to png standard.
-
-        Parameters:
-        png_tag : bytes
-            PNG tag identifier.
-        data : bytes
-            Data to be packed.
-
-        Returns
-        -------
-        bytes
-            Packed PNG chunk.
-        """
-        chunk_head = png_tag + data  # Concatenate the tag and data
-        return (
-            # Pack the length of chunk
-            struct.pack("!I", len(data))
-            +
-            # Concatenate the chunk header
-            chunk_head
-            +
-            # Pack CRC-32 checksum
-            struct.pack("!I", 0xFFFFFFFF & zlib.crc32(chunk_head))
-        )
-
-    pure_data = b"".join(
-        [
-            b"\x89PNG\r\n\x1a\n",  # PNG file signature
-            png_pack(
-                b"IHDR", struct.pack("!2I5B", width, height, 8, 6, 0, 0, 0)
-            ),  # PNG header chunk
-            # PNG data chunk (compressed)
-            png_pack(b"IDAT", zlib.compress(raw_data, 9)),
-            png_pack(b"IEND", b""),  # PNG end chunk
-        ]
-    )
-
-    # Return encoded
-    if as_base64:
-        return base64.b64encode(pure_data)
-    else:
-        return pure_data
+    pure_data = _png(bitmap, level=9)
+    return base64.b64encode(pure_data) if as_base64 else pure_data
 
 
 def _export_spline_field(spline, svg_element, box_min_x, box_max_y, **kwargs):
@@ -172,7 +91,10 @@ def _export_spline_field(spline, svg_element, box_min_x, box_max_y, **kwargs):
     # pixel grid over the bounds of the spline, row 0 at the top
     (x_min, y_min), (x_max, y_max) = spline.control_point_bounds
     n_long = int(kwargs.get("field_pixels", 600))
-    pixel = max(x_max - x_min, y_max - y_min) / n_long
+    span = max(x_max - x_min, y_max - y_min)
+    if span <= 0:
+        return
+    pixel = span / n_long
     width = max(int(_np.ceil((x_max - x_min) / pixel)), 1)
     height = max(int(_np.ceil((y_max - y_min) / pixel)), 1)
     x = x_min + (_np.arange(width) + 0.5) * pixel
@@ -1306,7 +1228,7 @@ def export(
     svg_data.attrib["width"] = str(400 / box_size[1] * box_size[0])
     background = kwargs.get("background", "white")
     if background is not None:
-        svg_data.attrib["style"] = f"background-color:{background}"
+        svg_data.attrib["style"] = f"background-color:{_css(background)}"
     svg_data.attrib["xmlns"] = "http://www.w3.org/2000/svg"
     svg_data.attrib["xmlns:xlink"] = "http://www.w3.org/1999/xlink"
 

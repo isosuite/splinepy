@@ -24,11 +24,9 @@ class KnotVector(_np.ndarray):
     """
 
     def __new__(cls, knots=()):
-        arr = _np.ascontiguousarray(knots, dtype="float64")
+        arr = _np.array(knots, dtype="float64", order="C", copy=True)
         if arr.ndim != 1:
             raise ValueError("KnotVector must be one dimensional.")
-        if not arr.flags.writeable:
-            arr = arr.copy()
         kv = arr.view(cls)
         kv._check()
         kv.flags.writeable = False

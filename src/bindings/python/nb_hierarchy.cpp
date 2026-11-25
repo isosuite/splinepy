@@ -1,8 +1,5 @@
 #include "nb_common.hpp"
 
-#include <mutex>
-#include <new>
-
 #include <nanobind/stl/unique_ptr.h>
 
 #include "splinepy/core/hierarchy/coarsen.hpp"
@@ -122,18 +119,6 @@ struct QueryArrays {
   Span<const int32_t> Orders() const { return {orders.data(), orders.size()}; }
 };
 
-nb::object ProximityArray(Buffer<double>& buffer,
-                          std::initializer_list<std::size_t> shape) {
-  if (buffer.empty()) {
-    nb::list extents;
-    for (const auto extent : shape) {
-      extents.append(extent);
-    }
-    return nb::module_::import_("numpy").attr("empty")(nb::tuple(extents));
-  }
-  return nb::cast(WrapBuffer<double>(buffer, {shape.begin(), shape.size()}));
-}
-
 /// A hierarchical spline's data and caches. Immutable once built; arrays
 /// handed to Python and running calls hold it, so a refine that replaces it
 /// never frees memory in use.
@@ -237,9 +222,9 @@ public:
   }
 
   uint64_t Layout() const { return layout_; }
-  int32_t ParaDim() const { return state_->spline.tensor.para_dim; }
-  int32_t Dim() const { return state_->dim; }
-  bool IsRational() const { return !state_->weights.empty(); }
+  int32_t ParaDim() const { return RequireState()->spline.tensor.para_dim; }
+  int32_t Dim() const { return RequireState()->dim; }
+  bool IsRational() const { return !RequireState()->weights.empty(); }
 
   nb::object Degrees() const {
     return Cached(0, [this](const State& s) {
@@ -285,14 +270,14 @@ public:
   }
 
   bool IsAdmissible(int32_t admissible) const {
-    const auto state = state_;
+    const auto state = RequireState();
     nb::gil_scoped_release release;
     return IsThbAdmissible(state->extraction[0], admissible);
   }
 
   nb::object
   Closure(nb::handle indices, int32_t admissible, int threads) const {
-    const auto state = state_;
+    const auto state = RequireState();
     const ContiguousAdapter<std::size_t> marked(indices, "uintp");
     if (marked.ndim() != 1) {
       throw nb::value_error("marked leaves must be a 1D array");
@@ -312,7 +297,7 @@ public:
   }
 
   void Refine(nb::handle indices, int32_t admissible, int threads) {
-    const auto state = state_;
+    const auto state = RequireState();
     const ContiguousAdapter<std::size_t> marked(indices, "uintp");
     if (marked.ndim() != 1) {
       throw nb::value_error("marked leaves must be a 1D array");
@@ -338,7 +323,7 @@ public:
                double tolerance,
                int64_t max_iterations,
                int threads) {
-    const auto state = state_;
+    const auto state = RequireState();
     const ContiguousAdapter<std::size_t> marked(indices, "uintp");
     if (marked.ndim() != 1) {
       throw nb::value_error("marked leaves must be a 1D array");
@@ -367,7 +352,7 @@ public:
                       nb::handle orders,
                       int threads,
                       nb::object out) const {
-    const auto state = state_;
+    const auto state = RequireState();
     const auto pd = static_cast<std::size_t>(state->spline.tensor.para_dim);
     const auto dim = static_cast<std::size_t>(state->spline.tensor.dim);
     const QueryArrays query(queries, orders, pd, true, out);
@@ -393,7 +378,7 @@ public:
   }
 
   nb::object Jacobian(nb::handle queries, int threads, nb::object out) const {
-    const auto state = state_;
+    const auto state = RequireState();
     const auto pd = static_cast<std::size_t>(state->spline.tensor.para_dim);
     const auto dim = static_cast<std::size_t>(state->spline.tensor.dim);
     ContiguousAdapter<double> query(queries, "float64");
@@ -424,11 +409,12 @@ public:
                   nb::object out_basis,
                   nb::object out_support,
                   bool return_support) const {
-    const auto state = state_;
+    const auto state = RequireState();
     const auto pd = static_cast<std::size_t>(state->spline.tensor.para_dim);
     ContiguousAdapter<double> query(queries, "float64");
     query.ProtectOutput(out_basis);
     query.ProtectOutput(out_support);
+    CheckOutputsDisjoint(nb::make_tuple(out_basis, out_support));
     if (query.ndim() != 2 || query.shape(1) != pd) {
       throw nb::value_error("queries must match the parametric dimension");
     }
@@ -501,7 +487,7 @@ public:
                          bool tight,
                          int threads,
                          bool verbose) const {
-    const auto state = state_;
+    const auto state = RequireState();
     const ContiguousAdapter<double> points(queries, "float64");
     const ContiguousAdapter<int32_t> samples(resolutions, "int32");
     const auto pd = static_cast<std::size_t>(state->spline.tensor.para_dim);
@@ -512,23 +498,27 @@ public:
     }
     Options options;
     options.nthreads = threads;
-    if (!state->proximity) { // built once per state, under the GIL
-      auto proximity = std::make_shared<HierarchyProximityData>();
+    auto proximity = state->proximity;
+    if (!proximity) { // built once per state; hold local ref across GIL release
+      auto built = std::make_shared<HierarchyProximityData>();
       {
         nb::gil_scoped_release release;
-        *proximity = BuildHierarchyProximity(state->spline,
-                                             state->extraction[0],
-                                             state->geometry,
-                                             options);
+        *built = BuildHierarchyProximity(state->spline,
+                                         state->extraction[0],
+                                         state->geometry,
+                                         options);
       }
-      state->proximity = std::move(proximity);
+      if (!state->proximity) {
+        state->proximity = std::move(built);
+      }
+      proximity = state->proximity;
     }
     HierarchyProximityResult result;
     {
       nb::gil_scoped_release release;
       result = HierarchyProximities(state->spline,
                                     state->extraction[0],
-                                    *state->proximity,
+                                    *proximity,
                                     {points.data(), points.size()},
                                     {samples.data(), samples.size()},
                                     tolerance,
@@ -538,22 +528,22 @@ public:
                                     options);
     }
     const auto n = points.shape(0);
-    auto parameters = ProximityArray(result.parameters, {n, pd});
+    auto parameters = TakeNumPyBuffer(result.parameters, {n, pd});
     if (!verbose) {
       return parameters;
     }
     return nb::make_tuple(
         parameters,
-        ProximityArray(result.points, {n, dim}),
-        ProximityArray(result.differences, {n, dim}),
-        ProximityArray(result.distances, {n, 1}),
-        ProximityArray(result.residuals, {n, 1}),
-        ProximityArray(result.first_derivatives, {n, pd, dim}),
-        ProximityArray(result.second_derivatives, {n, pd, pd, dim}));
+        TakeNumPyBuffer(result.points, {n, dim}),
+        TakeNumPyBuffer(result.differences, {n, dim}),
+        TakeNumPyBuffer(result.distances, {n, 1}),
+        TakeNumPyBuffer(result.residuals, {n, 1}),
+        TakeNumPyBuffer(result.first_derivatives, {n, pd, dim}),
+        TakeNumPyBuffer(result.second_derivatives, {n, pd, pd, dim}));
   }
 
   nb::object Bernstein(int threads) const {
-    const auto state = state_;
+    const auto state = RequireState();
     Options options;
     options.nthreads = threads;
     Buffer<double> values;
@@ -568,7 +558,7 @@ public:
   }
 
   nb::tuple BezierGeometry(int threads) const {
-    const auto state = state_;
+    const auto state = RequireState();
     Options options;
     options.nthreads = threads;
     ThbGeometryData result;
@@ -591,7 +581,7 @@ public:
   }
 
   nb::tuple ToBSpline(int threads) const {
-    const auto state = state_;
+    const auto state = RequireState();
     Options options;
     options.nthreads = threads;
     SplineData result;
@@ -617,7 +607,7 @@ public:
   }
 
   nb::dict Extraction() const {
-    const auto state = state_;
+    const auto state = RequireState();
     const auto& cache = state->extraction[0];
     const auto array = [&](const auto* data,
                            std::initializer_list<std::size_t> shape) {
@@ -649,10 +639,18 @@ private:
     ++layout_;
   }
 
+  std::shared_ptr<const State> RequireState() const {
+    if (!state_) {
+      throw nb::value_error("HierarchyCore is not initialized.");
+    }
+    return state_;
+  }
+
   template<typename Make>
   nb::object Cached(int slot, Make&& make) const {
+    const auto state = RequireState();
     if (!arrays_[slot].is_valid()) {
-      arrays_[slot] = make(*state_);
+      arrays_[slot] = make(*state);
     }
     return arrays_[slot];
   }

@@ -538,7 +538,7 @@ class Transformation:
 
         # All quad points in element have same support, therefore take arbitrary
         # one
-        relevant_quad_point = element_quad_points[0, :]
+        relevant_quad_point = element_quad_points[:1, :]
 
         if self._solution_field is None:
             return self._spline.support(relevant_quad_point)
@@ -581,15 +581,7 @@ class Transformation:
         if self._all_jacobian_inverses is not None:
             return self._all_jacobian_inverses[element_id]
 
-        element_jacobians = self.jacobian(element_id)
-        element_jacobian_inverse = _np.stack(
-            [
-                _np.linalg.inv(element_jacobian)
-                for element_jacobian in element_jacobians
-            ]
-        )
-
-        return element_jacobian_inverse
+        return _np.linalg.inv(self.jacobian(element_id))
 
     def jacobian_determinant(self, element_id):
         """Return determinant of Jacobian of single element, evaluated at
@@ -608,13 +600,7 @@ class Transformation:
         if self._all_jacobian_determinants is not None:
             return self._all_jacobian_determinants[element_id]
 
-        element_jacobians = self.jacobian(element_id)
-        return _np.array(
-            [
-                _np.linalg.det(element_jacobian)
-                for element_jacobian in element_jacobians
-            ]
-        )
+        return _np.linalg.det(self.jacobian(element_id))
 
     def compute_all_element_quad_points(self, recompute=False):
         """Compute the quadrature points of all elements
@@ -692,12 +678,10 @@ class Transformation:
             return
 
         self.compute_all_element_quad_points(recompute=recompute)
-        self._all_jacobians = _np.stack(
-            [
-                self._spline.jacobian(quad_points)
-                for quad_points in self._all_element_quad_points
-            ]
-        )
+        n_elems, n_quad, para_dim = self._all_element_quad_points.shape
+        self._all_jacobians = self._spline.jacobian(
+            self._all_element_quad_points.reshape(-1, para_dim)
+        ).reshape(n_elems, n_quad, self._spline.dim, para_dim)
 
     def compute_all_element_jacobian_inverses(self, recompute=False):
         """Compute Jacobians' inverses of each element at each quadrature point
@@ -715,18 +699,7 @@ class Transformation:
             return
 
         self.compute_all_element_jacobians(recompute=recompute)
-
-        self._all_jacobian_inverses = _np.stack(
-            [
-                _np.stack(
-                    [
-                        _np.linalg.inv(element_jacobian)
-                        for element_jacobian in element_jacobians
-                    ]
-                )
-                for element_jacobians in self._all_jacobians
-            ]
-        )
+        self._all_jacobian_inverses = _np.linalg.inv(self._all_jacobians)
 
     def compute_all_element_jacobian_determinants(self, recompute=False):
         """Compute Jacobians' determinants of each element at each quadrature point
@@ -744,18 +717,7 @@ class Transformation:
             return
 
         self.compute_all_element_jacobians(recompute=recompute)
-
-        self._all_jacobian_determinants = _np.stack(
-            [
-                _np.stack(
-                    [
-                        _np.linalg.det(element_jacobian)
-                        for element_jacobian in element_jacobians
-                    ]
-                )
-                for element_jacobians in self._all_jacobians
-            ]
-        )
+        self._all_jacobian_determinants = _np.linalg.det(self._all_jacobians)
 
     def compute_all_element_measures(self, recompute=False):
         """Computes the measures of all elements in parametric space. Assumes
@@ -822,18 +784,7 @@ class FieldIntegrator:
             )
         else:
             self._solution_field = solution_field
-        self._ndofs = int(
-            _np.prod(
-                [
-                    len(kv) - 1 - deg
-                    for deg, kv in zip(
-                        self._solution_field.degrees,
-                        self._solution_field.knot_vectors,
-                        strict=True,
-                    )
-                ]
-            )
-        )
+        self._ndofs = len(self._solution_field.control_points)
         self._mapper = self._solution_field.mapper(reference=self._helpee)
 
         self.reset(orders)
@@ -890,7 +841,9 @@ class FieldIntegrator:
             The supports
         """
         if self._supports is None:
-            self._supports = self._helpee.supports(self._trafo.all_quad_points)
+            self._supports = self._helpee.support(
+                self._trafo.all_quad_points.reshape(-1, self._helpee.para_dim)
+            )
 
         return self._supports
 
@@ -1379,8 +1332,10 @@ class FieldIntegrator:
             -1, self._helpee.para_dim
         )
         all_physical_points = self._helpee.evaluate(all_quad_points)
-        all_function_values = function(all_physical_points)
+        all_function_values = _np.asarray(function(all_physical_points))
         solution_values = self._solution_field.evaluate(all_quad_points)
+        if all_function_values.ndim == 1 and solution_values.shape[1] == 1:
+            all_function_values = all_function_values[:, None]
         error_values = all_function_values - solution_values
         # Take the norm into consideration
         if norm == "l1":

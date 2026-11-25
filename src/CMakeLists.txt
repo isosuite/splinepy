@@ -53,6 +53,9 @@ if(MSVC)
   target_compile_options(splinepy_core_lib PRIVATE /W4)
 else()
   target_compile_options(splinepy_core_lib PRIVATE -Wall -Wextra -Wpedantic)
+  # Kernels start on a cache line, so their speed does not depend on what is
+  # linked before them: unrelated edits moved timings by 4-5% without this.
+  target_compile_options(splinepy_core_lib PRIVATE -falign-functions=64)
 endif()
 
 # Modern alias

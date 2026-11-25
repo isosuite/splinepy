@@ -155,8 +155,9 @@ uint64_t HashTile(const SplineData& tile) {
   for (const auto* values : {&tile.weights, &tile.control_points}) {
     mix(values->size());
     for (const double value : *values) {
+      const double canonical = (value == 0.0) ? 0.0 : value;
       uint64_t word;
-      std::memcpy(&word, &value, sizeof(word));
+      std::memcpy(&word, &canonical, sizeof(word));
       mix(word);
     }
   }

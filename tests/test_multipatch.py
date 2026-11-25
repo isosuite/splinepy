@@ -668,3 +668,149 @@ def test_sparse_sensitivity_shared_queries_match_dense():
         field.derivative(queries, [[1], [2]]), dense.derivative(queries, [[1], [2]])
     )
     assert field._patch_entries[0] is None and field._patch_entries[2] is None
+
+
+@pytest.mark.parametrize("method", ["evaluate", "derivative", "jacobian", "sample"])
+def test_multipatch_output_cannot_overlap_patch_storage(method):
+    # One contiguous backing allocation, with intersecting and adjacent slices.
+    storage = np.array([7., 1., 2., 7., 7.])
+    patch = splinepy.RationalBezier([1], storage[1:3, None], [1., 2.])
+    mp = splinepy.Multipatch([patch])
+    args = {
+        "evaluate": ([[0.25], [0.75]],),
+        "derivative": ([[0.25], [0.75]], [1]),
+        "jacobian": ([[0.25], [0.75]],),
+        "sample": (2,),
+    }[method]
+    call = getattr(mp, method)
+    expected = call(*args)
+    for buffer in (storage[:2], patch.weights):
+        with pytest.raises(ValueError, match="property arrays"):
+            call(*args, out=buffer.reshape(expected.shape))
+    np.testing.assert_array_equal(storage, [7., 1., 2., 7., 7.])
+    np.testing.assert_array_equal(patch.weights.ravel(), [1., 2.])
+    out = storage[3:].reshape(expected.shape)
+    assert call(*args, out=out) is out
+    np.testing.assert_allclose(out, expected)
+
+
+def test_sparse_field_refinement_and_materialization():
+    patch = splinepy.Bezier([1], [[0], [1]]).nurbs
+    mp = splinepy.Multipatch([patch, patch])
+    mp._add_sensitivity_fields([[None, patch], [None, None]])
+    mixed, zero = mp.fields
+    original = mixed.patches[0]
+    for refine in (lambda: mp.elevate_degrees([0]), mp.uniform_refine):
+        refine()
+        assert mixed._zero_layout_cache is zero._zero_layout_cache is mp._native_cache
+        assert mixed._patch_entries[0] is None
+        assert zero._patch_entries == [None, None]
+        np.testing.assert_allclose(mixed.evaluate([[0.5]]), [[0], [0.5]])
+        np.testing.assert_array_equal(
+            zero.control_points, np.zeros_like(mp.control_points)
+        )
+        assert zero._patch_entries == [None, None]
+        np.testing.assert_array_equal(
+            mixed.patches[0].knot_vectors[0], mp.patches[0].knot_vectors[0]
+        )
+    zero.elevate_degrees([0])
+    assert zero._patch_entries == [None, None]
+    np.testing.assert_array_equal(zero.patches[0].degrees, [3])
+    np.testing.assert_array_equal(original.degrees, [1])
+    proxy = zero.patches[0]
+    proxy.control_points.fill(2)
+    assert proxy.control_points is zero.patches[0].control_points
+    assert zero._patch_entries[1] is None
+    np.testing.assert_allclose(zero.evaluate([[0.5]]), [[2], [0]])
+
+
+def test_sparse_bezier_metadata_and_json_round_trip(tmp_path):
+    geometry = splinepy.Multipatch([splinepy.Bezier([1], [[1], [2]])])
+    geometry._add_sensitivity_fields([[None]])
+    field = geometry.fields[0]
+    assert field.patches[0].knot_vectors is None
+    assert field._patch_entries == [None]
+    path = tmp_path / "zero.json"
+    splinepy.io.json.export(path, field.patches)
+    assert field.patches[0].todict()["control_points"].shape == (2, 1)
+    assert field._patch_entries == [None]
+    restored, = splinepy.io.json.load(path)
+    assert isinstance(restored, splinepy.Bezier)
+    np.testing.assert_array_equal(restored.degrees, [1])
+    np.testing.assert_array_equal(restored.control_points, [[0.0], [0.0]])
+
+
+@pytest.mark.parametrize("routed", [False, True])
+@pytest.mark.parametrize("property_name", ["weights", "control_points"])
+def test_warm_query_checks_current_local_coefficients(routed, property_name):
+    knots = [[0, 0, 0.25, 0.5, 0.75, 1, 1]]
+    patch = splinepy.NURBS([1], knots, np.arange(5.)[:, None], np.ones(5))
+    other = patch.copy()
+    other.control_points += 10
+    mp = splinepy.Multipatch([other, patch])
+    queries = [[1, 0.875]] if routed else [[0.875]]
+    expected = [[3.5]] if routed else [[13.5], [3.5]]
+    np.testing.assert_array_equal(mp.evaluate(queries), expected)
+    values = getattr(patch, property_name)
+    invalid = 0 if property_name == "weights" else np.nan
+    values[0] = invalid
+    np.testing.assert_array_equal(mp.evaluate(queries), expected)
+    values[-1] = invalid
+    error = "positive" if property_name == "weights" else "non-finite"
+    with pytest.raises(splinepy.SplinepyError, match=error):
+        mp.evaluate(queries)
+
+
+def test_unvalidated_patch_keeps_full_query_validation():
+    # Without its weights, this staged NURBS has no validated layout.
+    patch = splinepy.NURBS(
+        degrees=[1], knot_vectors=[[0, 0, 0.5, 1, 1]],
+        control_points=[[np.nan], [1], [2]],
+    )
+    mp = splinepy.Multipatch([patch])
+    for query in ([[0.75]], [[0, 0.75]]):
+        with pytest.raises(splinepy.SplinepyError, match="non-finite"):
+            mp.evaluate(query)
+
+
+def test_multipatch_sampling_checks_sampled_supports():
+    patch = splinepy.BSpline(
+        [1], [[0, 0, 0.25, 0.5, 0.75, 1, 1]], np.arange(5.)[:, None]
+    )
+    mp = splinepy.Multipatch([patch])
+    np.testing.assert_array_equal(mp.sample(2), [[0], [4]])
+    patch.control_points[2] = np.nan
+    np.testing.assert_array_equal(mp.sample(2), [[0], [4]])
+    with pytest.raises(splinepy.SplinepyError, match="non-finite"):
+        mp.sample(3)
+
+
+def test_multipatch_unrouted_output_may_overlap_queries():
+    p0 = splinepy.Bezier([1], [[0.0], [2.0]])
+    p1 = splinepy.Bezier([1], [[10.0], [12.0]])
+    mp = splinepy.Multipatch([p0, p1])
+    buf = np.array([[0.25], [0.75], [0.0], [0.0]])
+    expected = mp.evaluate(buf[:2].copy())
+    assert mp.evaluate(buf[:2], out=buf) is buf
+    np.testing.assert_allclose(buf, expected)
+
+
+def test_implicit_zero_patch_copy_ops_and_wrapping():
+    p0 = splinepy.Bezier([1], [[1.0], [2.0]])
+    mp = splinepy.Multipatch([p0])
+    mp._add_sensitivity_fields([[None]])
+    field = mp.fields[0]
+    copied = field.patches[0].copy()
+    assert field._patch_entries == [None]
+    np.testing.assert_array_equal(copied.control_points, [[0.0], [0.0]])
+    np.testing.assert_allclose((p0 + field.patches[0]).evaluate([[0.5]]), [[1.5]])
+    wrapped = splinepy.Multipatch(field.patches)
+    np.testing.assert_allclose(wrapped.evaluate([[0.5]]), [[0.0]])
+
+
+def test_boundary_patch_ids_rejects_zero():
+    p0 = splinepy.Bezier([1], [[0.0], [1.0]])
+    p1 = splinepy.Bezier([1], [[1.0], [2.0]])
+    mp = splinepy.Multipatch([p0, p1])
+    with pytest.raises(ValueError, match="Boundary IDs start at 1"):
+        mp.boundary_patch_ids(0)

@@ -33,3 +33,12 @@ def test_knot_vectors(splinetype, request):
         strict=True,
     ):
         assert np.allclose(spl_kv.numpy(), np.repeat(u_kv, kn_m))
+
+
+def test_knot_vector_does_not_alias_caller_array():
+    import splinepy
+
+    raw = np.array([0.0, 0.0, 0.5, 1.0, 1.0])
+    kv = splinepy.KnotVector(raw)
+    raw[0] = 5.0
+    np.testing.assert_array_equal(kv, [0.0, 0.0, 0.5, 1.0, 1.0])

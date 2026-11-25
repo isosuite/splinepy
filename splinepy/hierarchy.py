@@ -150,11 +150,16 @@ class HBSpline(_core.HierarchyCore):
         target = cls
         if spline.is_rational and not cls._rational:
             target = RationalTHBSpline if cls._truncate else RationalHBSpline
+        weights = None
+        if spline.is_rational:
+            weights = spline.weights
+        elif target._rational:
+            weights = _np.ones(len(spline.control_points))
         return target(
             spline.degrees,
             spline.knot_vectors,
             spline.control_points,
-            weights=spline.weights if spline.is_rational else None,
+            weights=weights,
         )
 
     @property

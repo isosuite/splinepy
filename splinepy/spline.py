@@ -397,6 +397,7 @@ class Spline(_core.SplineCore, _SplinepyBase):
                 spline._control_points,
                 spline._weights,
                 validate=False,
+                trusted=spline._layout_validated,
             )
             return None
 
@@ -777,7 +778,7 @@ class Spline(_core.SplineCore, _SplinepyBase):
             return [_np.array([d + 1, d + 1]) for d in self.degrees]
 
         else:
-                return [k.multiplicities() for k in self.knot_vectors]
+            return [k.multiplicities() for k in self.knot_vectors]
 
     @property
     def parametric_bounds(self):
@@ -1472,16 +1473,17 @@ class Spline(_core.SplineCore, _SplinepyBase):
         new_spline: type(self)
         """
         new = type(self)()
-        if self._degrees is not None:
-            # valid as it is: copied without being checked again
-            kvs, weights = self._knot_vectors, self._weights
-            new._assign(
-                self._normalize_property("degrees", self._degrees),
-                None if kvs is None else tuple(_knot_vector_arrays(kvs)),
-                self._control_points.copy(),
-                None if weights is None else weights.copy(),
-                validate=False,
-            )
+        # checked once: a copy of a validated spline is valid. Degrees are
+        # immutable and shared; a staged spline copies what it has.
+        kvs, cps, weights = self._knot_vectors, self._control_points, self._weights
+        new._assign(
+            self._degrees,
+            None if kvs is None else tuple(_knot_vector_arrays(kvs)),
+            None if cps is None else cps.copy(),
+            None if weights is None else weights.copy(),
+            validate=False,
+            trusted=self._layout_validated,
+        )
 
         if saved_data:
             # copy show_options and shallow copy spline_data, where they exist

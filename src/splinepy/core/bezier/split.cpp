@@ -10,23 +10,37 @@
 
 namespace splinepy::core {
 
-SplineBatchData Split(const SplineView& spline,
-                      int32_t axis,
-                      double location,
-                      const Options& options) {
-  if (options.validate) {
-    ThrowIfNotBezier(spline);
-    ThrowIfInvalid(spline);
-    if (axis < 0 || axis >= spline.para_dim) {
-      throw SplinepyException("Split: axis out of range [0, para_dim).",
-                              Status::kOutOfBounds);
-    }
-    if (location <= 0.0 || location >= 1.0) {
+namespace {
+
+void CheckSplit(const SplineView& spline,
+                int32_t axis,
+                Span<const double> locations,
+                const Options& options) {
+  if (!options.validate) {
+    return;
+  }
+  ThrowIfNotBezier(spline);
+  ThrowIfInvalid(spline, options);
+  if (axis < 0 || axis >= spline.para_dim) {
+    throw SplinepyException("Split: axis out of range [0, para_dim).",
+                            Status::kOutOfBounds);
+  }
+  for (const double location : locations) {
+    if (!(location > 0.0 && location < 1.0)) {
       throw SplinepyException(
           "Split: split location must be strictly inside (0, 1).",
           Status::kInvalidArgument);
     }
   }
+}
+
+} // namespace
+
+SplineBatchData Split(const SplineView& spline,
+                      int32_t axis,
+                      double location,
+                      const Options& options) {
+  CheckSplit(spline, axis, {&location, 1}, options);
 
   const bool is_rational = spline.IsRational();
   const int32_t coord_dim = is_rational ? (spline.dim + 1) : spline.dim;
@@ -56,7 +70,7 @@ SplineBatchData Split(const SplineView& spline,
           p,
           location,
           Span<const double>(working_cps.data() + base + c,
-                             static_cast<std::size_t>((p + 1) * s)),
+                             static_cast<std::size_t>(p * s + 1)),
           s,
           left_row,
           right_row);
@@ -92,16 +106,12 @@ SplineBatchData Split(const SplineView& spline,
                       int32_t axis,
                       Span<const double> locations,
                       const Options& options) {
+  CheckSplit(spline, axis, locations, options);
   if (locations.empty()) {
-    if (options.validate) {
-      ThrowIfNotBezier(spline);
-      ThrowIfInvalid(spline, options);
-    }
     SplineBatchData result(1);
     result[0] = SplineData::FromView(spline);
     return result;
   }
-
   Buffer<double> sorted_locs;
   sorted_locs.assign(locations.begin(), locations.end());
   std::sort(sorted_locs.begin(), sorted_locs.end());

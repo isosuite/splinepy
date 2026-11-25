@@ -110,6 +110,10 @@ void CheckOrders(const ContiguousAdapter<int32_t>& orders, int dimension) {
 void ValidateSpline(const core::SplineView& view, size_t weights_size) {
   const int para_dim = view.para_dim;
   const int64_t ncps = view.num_control_points;
+  if (para_dim <= 0) {
+    core::ThrowError(core::Status::kInvalidArgument,
+                     "Parametric dimension must be positive.");
+  }
   if (view.dim == 0) {
     core::ThrowError(
         core::Status::kInvalidArgument,
@@ -136,7 +140,7 @@ void ValidateSpline(const core::SplineView& view, size_t weights_size) {
     }
   };
   int64_t required_ncps = 1;
-  if (view.HasKnotVectors()) {
+  if (!view.knot_vectors.empty()) {
     const int kv_dim = static_cast<int>(view.knot_vectors.size());
     for (int d = 0; d < std::min(para_dim, kv_dim); ++d) {
       check_degree(d);
@@ -157,7 +161,8 @@ void ValidateSpline(const core::SplineView& view, size_t weights_size) {
                            "are not in increasing order.");
         }
       }
-      const int64_t n_minimal_knots = 2 * (view.degrees[d] + 1);
+      const int64_t n_minimal_knots =
+          int64_t{2} * (static_cast<int64_t>(view.degrees[d]) + 1);
       if (static_cast<int64_t>(kv.size()) < n_minimal_knots) {
         core::ThrowError(core::Status::kInvalidArgument,
                          "Not enough knots in parametric dimension (",
@@ -229,16 +234,7 @@ struct QueryInput {
       if (orders) {
         orders->ProtectOutput(out);
       }
-      const auto& view = spline_view;
-      if (OverlapsOutput(view.control_points_data,
-                         view.num_control_points * view.dim * sizeof(double),
-                         out)
-          || OverlapsOutput(
-              view.weights_data,
-              view.IsRational() ? view.num_control_points * sizeof(double) : 0,
-              out)) {
-        throw nb::value_error("out must not overlap spline property arrays.");
-      }
+      CheckOutputStorage(spline_view, out);
     }
   }
 
@@ -400,7 +396,8 @@ void NativeSpline::Assign(nb::handle degrees_obj,
                           nb::handle kvs_obj,
                           nb::handle cps_obj,
                           nb::handle weights_obj,
-                          bool validate) {
+                          bool validate,
+                          bool trusted) {
   SplineArrays next;
   auto& view = next.view;
   if (!cps_obj.is_none()) {
@@ -470,7 +467,7 @@ void NativeSpline::Assign(nb::handle degrees_obj,
     ++layout;
   }
   arrays = std::move(next);
-  layout_validated = validate;
+  layout_validated = validate || trusted;
 }
 
 void NativeSpline::Adopt(core::SplineData&& data) {
@@ -609,28 +606,29 @@ std::pair<nb::object, nb::object> BasisAndSupport(nb::handle spline,
 
 namespace {
 
-/// basis derivatives of one or several orders into out
-nb::object BasisDerivativeInto(const QueryInput& in, const nb::object& out) {
-  if (in.SingleOrder()) {
-    OutArray<double> result(out, {in.n, in.NumSupports()});
-    Release([&] {
-      in.Validate();
-      core::BasisDerivative(in.view(),
-                            in.Queries(),
-                            in.Orders(),
-                            Out(result),
-                            in.options);
-    });
-    return result.result();
-  }
-  OutArray<double> result(out, {in.n, in.NumOrders(), in.NumSupports()});
+using BasisDerivativeKernel = void (*)(const core::SplineView&,
+                                       core::Span<const double>,
+                                       core::Span<const int32_t>,
+                                       core::Span<double>,
+                                       const core::Options&);
+
+/// Basis derivatives, (n, supports) for one order and (n, orders, supports)
+/// for several, and the support too if asked for.
+nb::object BasisDerivativeInto(const QueryInput& in,
+                               const nb::object& out,
+                               OutArray<int32_t>* support = nullptr) {
+  const bool single = in.SingleOrder();
+  auto result =
+      single ? OutArray<double>(out, {in.n, in.NumSupports()})
+             : OutArray<double>(out, {in.n, in.NumOrders(), in.NumSupports()});
   Release([&] {
     in.Validate();
-    core::BasisDerivatives(in.view(),
-                           in.Queries(),
-                           in.Orders(),
-                           Out(result),
-                           in.options);
+    const auto kernel = single ? BasisDerivativeKernel(core::BasisDerivative)
+                               : core::BasisDerivatives;
+    kernel(in.view(), in.Queries(), in.Orders(), Out(result), in.options);
+    if (support) {
+      core::Support(in.view(), in.Queries(), Out(*support), in.options);
+    }
   });
   return result.result();
 }
@@ -643,8 +641,7 @@ nb::object BasisDerivative(nb::handle spline,
                            int nthreads,
                            nb::object out,
                            bool check_bounds) {
-  QueryInput in(spline, queries, nthreads, check_bounds, out, orders);
-  in.options.validate = false;
+  const QueryInput in(spline, queries, nthreads, check_bounds, out, orders);
   return BasisDerivativeInto(in, out);
 }
 
@@ -654,16 +651,11 @@ std::pair<nb::object, nb::object> BasisDerivativeAndSupport(nb::handle spline,
                                                             int nthreads,
                                                             nb::object out,
                                                             bool check_bounds) {
-  QueryInput in(spline, queries, nthreads, check_bounds, out, orders);
-  in.options.validate = false;
+  const QueryInput in(spline, queries, nthreads, check_bounds, out, orders);
   const auto [out_basis, out_support] = SplitOutPair(out);
   OutArray<int32_t> support(out_support, {in.n, in.NumSupports()});
-  Release([&] {
-    in.Validate();
-    core::Support(in.view(), in.Queries(), Out(support), in.options);
-  });
-  auto support_result = support.result();
-  return {BasisDerivativeInto(in, out_basis), support_result};
+  auto basis = BasisDerivativeInto(in, out_basis, &support);
+  return {basis, support.result()};
 }
 
 nb::object Support(nb::handle spline,
@@ -690,18 +682,7 @@ nb::object Sample(nb::handle spline,
   if (!NativeOf(spline).layout_validated || para_dim <= 0 || dim <= 0) {
     core::ThrowIfInvalid(wrapper.view);
   }
-  if (!out.is_none()
-      && (OverlapsOutput(wrapper.view.control_points_data,
-                         wrapper.view.num_control_points * dim * sizeof(double),
-                         out)
-          || OverlapsOutput(wrapper.view.weights_data,
-                            wrapper.view.IsRational()
-                                ? wrapper.view.num_control_points
-                                      * sizeof(double)
-                                : 0,
-                            out))) {
-    throw nb::value_error("out must not overlap spline property arrays.");
-  }
+  CheckOutputStorage(wrapper.view, out);
 
   core::AxisArray<int32_t> res;
   res.resize(para_dim);
@@ -783,7 +764,7 @@ nb::list GrevilleAbscissae(nb::handle spline, const double tolerance) {
   const SplineArrays wrapper = Pin(spline);
   core::Options options;
   options.tolerance = tolerance;
-  options.validate = false;
+  options.validate = !NativeOf(spline).layout_validated;
   auto greville_vec = core::GrevilleAbscissaeList(wrapper.view, options);
 
   nb::list result;
@@ -815,6 +796,9 @@ nb::object ControlMeshResolutions(nb::handle spline) {
 nb::list UniqueKnots(nb::handle spline) {
   const SplineArrays wrapper = Pin(spline);
   const auto& view = wrapper.view;
+  if (!NativeOf(spline).layout_validated) {
+    core::ThrowIfInvalid(view);
+  }
   nb::list result;
   for (int32_t d = 0; d < view.para_dim; ++d) {
     const core::AxisKnots axis(view, d);
@@ -858,9 +842,12 @@ ProximityHandle::ProximityHandle(nb::handle spline,
     throw nb::value_error("Initial guess must be 'bvh' or 'grid'");
   }
   proximity_ = std::make_unique<splinepy::proximity::Proximity>(view);
-  if (guess == "grid" || !proximity_->PlantBvh(sampling.data())) {
-    proximity_->SetInitialGuess(
-        splinepy::proximity::MakeGridGuess(view, sampling.data(), nthreads));
+  {
+    nb::gil_scoped_release release;
+    if (guess == "grid" || !proximity_->PlantBvh(sampling.data())) {
+      proximity_->SetInitialGuess(
+          splinepy::proximity::MakeGridGuess(view, sampling.data(), nthreads));
+    }
   }
   if (max_starts < 1) {
     throw nb::value_error("max_starts must be >= 1");
@@ -899,6 +886,7 @@ void ProximityHandle::Query(nb::object queries,
   if (out.size() != 7) {
     throw nb::value_error("Expected seven proximity output slots");
   }
+  CheckOutputsDisjoint(out);
   const auto count = static_cast<size_t>(n_queries);
   const auto pdim = static_cast<size_t>(para_dim);
   const auto physical = static_cast<size_t>(dim);
@@ -1010,7 +998,12 @@ void init_nb_spline(nb::module_& m) {
            nb::arg("knot_vectors").none(),
            nb::arg("control_points").none(),
            nb::arg("weights").none(),
-           nb::arg("validate"));
+           nb::arg("validate"),
+           nb::arg("trusted") = false)
+      .def_prop_ro(
+          "_layout_validated",
+          [](const NativeSpline& s) { return bool(s.layout_validated); },
+          "True iff the stored layout was validated.");
   m.def("_register_types",
         &RegisterTypes,
         nb::arg("bezier"),

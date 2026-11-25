@@ -10,7 +10,7 @@ import numpy as _np
 _MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
 
 
-def _png(arr):
+def _png(arr, level=6):
     """Minimal PNG encoder for (h, w) / (h, w, 3) / (h, w, 4) uint8 arrays."""
     h, w = arr.shape[:2]
     channels = 1 if arr.ndim == 2 else arr.shape[2]
@@ -29,7 +29,7 @@ def _png(arr):
     return (
         b"\x89PNG\r\n\x1a\n"
         + chunk(b"IHDR", _struct.pack(">IIBBBBB", w, h, 8, color_type, 0, 0, 0))
-        + chunk(b"IDAT", _zlib.compress(raw, 6))
+        + chunk(b"IDAT", _zlib.compress(raw, level))
         + chunk(b"IEND", b"")
     )
 

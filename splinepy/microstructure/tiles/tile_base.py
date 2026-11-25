@@ -84,10 +84,9 @@ class TileBase(_SplinepyBase):
                 f"derived classes: {TileBase.__subclasses__()}"
             )
 
-    @classmethod
-    def _raise_if_not_set_else_return(cls, attr_name):
-        attr = getattr(cls, attr_name, None)
-        if attr is None and cls is not TileBase:
+    def _raise_if_not_set_else_return(self, attr_name):
+        attr = getattr(self, attr_name, None)
+        if attr is None and type(self) is not TileBase:
             raise NotImplementedError(
                 f"Inherited Tile-types need to provide {attr_name}, see documentation."
             )
@@ -252,7 +251,7 @@ class TileBase(_SplinepyBase):
             )
 
         # Check if all parameters are within bounds
-        if self._parameter_bounds is not None:
+        if self._parameter_bounds:
             bounds = _np.array(self._parameter_bounds)
             lower_bounds = bounds[:, 0]
             upper_bounds = bounds[:, 1]

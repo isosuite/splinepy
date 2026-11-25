@@ -388,7 +388,7 @@ def _spline_to_ET(
             [
                 (i, j, 0)
                 for j, k in enumerate(field_mask)
-                for i, v in enumerate(multipatch.fields[k].patches)
+                for i, v in enumerate(multipatch.fields[k]._patch_entries)
                 if v is not None
             ],
             dtype=_np.int64,

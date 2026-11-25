@@ -33,25 +33,24 @@ namespace splinepy::proximity {
 using namespace detail;
 
 namespace {
-void Negate(Span<double> values) {
-  for (double& value : values) {
-    value = -value;
+void CopyNegated(Span<const double> src, Span<double> dst) {
+  for (std::size_t i = 0; i < src.size(); ++i) {
+    dst[i] = -src[i];
   }
 }
 } // namespace
 
 void Proximity::PrepareIterationNewton(SearchData& data) const {
-  // newton requires hessian. to be ready for solve, flip sign for rhs
   ComputeCostAndDerivatives(data, 2);
-  Negate(data.djdu);
 }
 
 void Proximity::Newton(SearchData& data) const {
   data.status.stop_iteration = 0;
 
-  const auto lhs = data.d2jdu2;
-  const auto rhs = data.djdu;
-  const auto rows = data.arena->AllocateSpan<int>(data.para_dim);
+  const int para_dim = data.para_dim;
+  const auto lhs = data.arena->AllocateSpan<double>(para_dim * para_dim);
+  const auto rhs = data.arena->AllocateSpan<double>(para_dim);
+  const auto rows = data.arena->AllocateSpan<int>(para_dim);
 
   PrepareIterationNewton(data);
   ComputeStatus(data, false);
@@ -61,6 +60,8 @@ void Proximity::Newton(SearchData& data) const {
 
   int i{};
   while (i < data.options.max_iter && !data.IsConverged()) {
+    std::copy(data.d2jdu2.begin(), data.d2jdu2.end(), lhs.begin());
+    CopyNegated(data.djdu, rhs);
     // alters lhs in place, but doesn't reorder rows in place
     if (!SolvePivoted(lhs, rhs, data.delta_guess, rows)) {
       break;
@@ -73,9 +74,8 @@ void Proximity::Newton(SearchData& data) const {
 }
 
 void Proximity::PrepareIterationLevenbergMarquart(SearchData& data) const {
-  // LM requires Jacobian. rhs is -djdu, lhs is the regularized gram matrix.
+  // LM requires Jacobian and the regularized gram matrix.
   ComputeCostAndDerivatives(data, 1);
-  Negate(data.djdu);
   ComputeGramMatrix(data);
 
   const bool modified = data.LM.modified_update;
@@ -94,9 +94,8 @@ void Proximity::LevenbergMarquart(SearchData& data) const {
   const int dim = data.dim;
   auto& lm = data.LM;
 
-  // lhs is AAt, with modified diagonal entries
-  const auto lhs = data.spline_gradient_AAt;
-  const auto rhs = data.djdu;
+  const auto lhs = data.arena->AllocateSpan<double>(para_dim * para_dim);
+  const auto rhs = data.arena->AllocateSpan<double>(para_dim);
   const auto rows = data.arena->AllocateSpan<int>(para_dim);
 
   lm.lambda = 1.;
@@ -114,6 +113,10 @@ void Proximity::LevenbergMarquart(SearchData& data) const {
   lm.prev_guess = data.arena->AllocateSpan<double>(para_dim);
   int i{};
   while (i < data.options.max_iter && !data.IsConverged()) {
+    std::copy(data.spline_gradient_AAt.begin(),
+              data.spline_gradient_AAt.end(),
+              lhs.begin());
+    CopyNegated(data.djdu, rhs);
     if (!SolvePivoted(lhs, rhs, data.delta_guess, rows)) {
       break;
     }
@@ -128,7 +131,7 @@ void Proximity::LevenbergMarquart(SearchData& data) const {
           return c != 0;
         })) {
       for (int axis{}; axis < para_dim; ++axis) {
-        data.delta_guess[axis] = lm.prev_guess[axis] - data.current_guess[axis];
+        data.delta_guess[axis] = data.current_guess[axis] - lm.prev_guess[axis];
       }
     }
 
@@ -149,13 +152,16 @@ void Proximity::LevenbergMarquart(SearchData& data) const {
 
     // compute || F(x + dX) ||^2 then rho
     ComputeCostAndDerivatives(data, 0);
-    const double rho = (lm.prev_J - data.status.J) / (lm.prev_J - metric_norm);
-    const double rho2 = -(lm.prev_J - data.status.J) / metric2;
+    const double denom1 = lm.prev_J - metric_norm;
+    const double rho =
+        (denom1 > 0.0) ? (lm.prev_J - data.status.J) / denom1 : -1.0;
+    const double rho2 =
+        (metric2 < 0.0) ? -(lm.prev_J - data.status.J) / metric2 : -1.0;
     const double chosen_rho = std::max(rho, rho2);
 
     // reject the update if it got worse (@jzwar's practical trick) and
     // increase the penalty
-    if (chosen_rho < lm.lower_bound && data.status.J > lm.prev_J) {
+    if ((!(chosen_rho >= lm.lower_bound)) && data.status.J > lm.prev_J) {
       lm.lambda *= 2.0;
       // lambda between 2^13 and 2^14 -> exit
       if (lm.lambda > 1.e5) {

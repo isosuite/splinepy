@@ -279,8 +279,8 @@ def revolved(
             )
     else:
         _log.debug(
-            "True revolutions are only possible for rational spline types.",
-            "Creating Approximation.",
+            "True revolutions are only possible for rational spline types. "
+            "Creating Approximation."
         )
 
     if center is not None:
@@ -919,7 +919,7 @@ def parametric_view(spline, axes=True, conform=False):
             "xminor_ticks": 3,
             "xygrid": False,
         }
-        if spline.para_dim == 2:
+        if spline.para_dim >= 2:
             axes_config.update(
                 ytitle="v",
                 yrange=[lower_b[1], upper_b[1]],
@@ -1101,7 +1101,7 @@ def plate(radius=1.0):
                 [0.5, 0.5],
             ]
         )
-        * radius
+        * (radius * _np.sqrt(2))
     )
     weights = _np.tile([1.0, 1 / _np.sqrt(2)], 5)[:-1]
 
@@ -1187,14 +1187,16 @@ def torus(
       Volumetric spline in the shape of a torus with degrees (1,2,2)
     """
 
+    torus_degree = degree
     if torus_angle is None:
         torus_angle = 2 * _np.pi
-        degree = False
+        torus_degree = False
 
+    section_degree = degree
     if section_angle is None:
         section_angle = 2 * _np.pi
         section_angle_flag = False
-        degree = False
+        section_degree = False
     else:
         section_angle_flag = True
 
@@ -1208,7 +1210,8 @@ def torus(
     if not section_angle_flag and not section_inner_radius_flag:
         cross_section = plate(section_outer_radius)
         # For more than 180 degree only NURBS can be used
-        if abs(torus_angle) >= _np.pi:
+        torus_rad = _np.deg2rad(torus_angle) if torus_degree else torus_angle
+        if abs(torus_rad) >= _np.pi or torus_n_knot_spans > 1:
             cross_section = cross_section.nurbs
     else:
         cross_section = disk(
@@ -1216,7 +1219,7 @@ def torus(
             inner_radius=section_inner_radius,
             n_knot_spans=section_n_knot_spans,
             angle=section_angle,
-            degree=degree,
+            degree=section_degree,
         )
 
     # Create a surface spline representing a disk and move it from the origin
@@ -1227,7 +1230,7 @@ def torus(
         center=_np.zeros(3),
         angle=torus_angle,
         n_knot_spans=torus_n_knot_spans,
-        degree=degree,
+        degree=torus_degree,
     )
 
 

@@ -65,6 +65,12 @@ void GetInterfaceOrientation(const SplineView& spline_start,
         Status::kInvalidArgument);
   }
 
+  if (boundary_start < 0 || boundary_start >= 2 * para_dim || boundary_end < 0
+      || boundary_end >= 2 * para_dim) {
+    throw SplinepyException("GetInterfaceOrientation: boundary out of range.",
+                            Status::kOutOfBounds);
+  }
+
   // First check orientation of the boundary axis itself
   const int32_t boundary_start_p_dim = boundary_start / 2;
   const bool boundary_start_orientation = (boundary_start % 2) == 0;
@@ -87,6 +93,8 @@ void GetInterfaceOrientation(const SplineView& spline_start,
       Jacobian(spline_end, center_end.cspan(), options);
 
   // Compare angles between remaining tangent directions
+  Buffer<uint8_t> used(para_dim, 0);
+  used[boundary_end_p_dim] = 1;
   for (int32_t i_pd = 0; i_pd < para_dim; ++i_pd) {
     if (i_pd == boundary_start_p_dim) {
       continue;
@@ -98,8 +106,9 @@ void GetInterfaceOrientation(const SplineView& spline_start,
       norm_s += v * v;
     }
 
+    bool matched = false;
     for (int32_t j = 0; j < para_dim; ++j) {
-      if (j == boundary_end_p_dim) {
+      if (used[j]) {
         continue;
       }
 
@@ -118,8 +127,15 @@ void GetInterfaceOrientation(const SplineView& spline_start,
       if (cos_angle > (1.0 - tolerance)) {
         mappings_ptr[i_pd] = j;
         orientations_ptr[i_pd] = (dot_p > 0.0) ? 1 : 0;
+        used[j] = 1;
+        matched = true;
         break;
       }
+    }
+    if (!matched) {
+      throw SplinepyException(
+          "GetInterfaceOrientation: failed to match tangent axes.",
+          Status::kNotConverged);
     }
   }
 }
