@@ -22,11 +22,11 @@ def test_make_matrix_ignores_negative_padding():
     supports = np.array([[0, 2, -1], [1, 2, 0]])
     values = np.array([[0.4, 0.6, 0.0], [0.2, 0.5, 0.3]])
     expected = np.array([[0.4, 0.0, 0.6], [0.3, 0.2, 0.5]])
-    np.testing.assert_allclose(
-        splinepy.utils.data.make_matrix(values, supports, 3, as_array=True),
-        expected,
-    )
-    np.testing.assert_allclose(
-        splinepy.utils.data.make_matrix(values, supports, 3, as_array=False).toarray(),
-        expected,
-    )
+    make_matrix = splinepy.utils.data.make_matrix
+    dense = make_matrix(values, supports, 3, as_array=True)
+    np.testing.assert_allclose(dense, expected)
+    # sparse with scipy, dense without it
+    matrix = make_matrix(values, supports, 3, as_array=False)
+    if splinepy.utils.data.has_scipy:
+        matrix = matrix.toarray()
+    np.testing.assert_allclose(matrix, expected)
