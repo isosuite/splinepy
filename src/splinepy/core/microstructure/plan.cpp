@@ -241,9 +241,12 @@ SplineBatchData MicrostructurePlan::Apply(Span<const double> control_points,
           != static_cast<std::size_t>(data.control_count * data.dim)
       || weights.size()
              != static_cast<std::size_t>(data.rational ? data.control_count : 0)
-      || !finite(control_points) || !finite(weights)) {
+      || !finite(control_points) || !finite(weights)
+      || std::any_of(weights.begin(), weights.end(), [](double weight) {
+           return !(weight > 0.0);
+         })) {
     throw SplinepyException("Expected finite outer control points and "
-                            "weights with the prepared shape.");
+                            "positive weights with the prepared shape.");
   }
 
   SplineView outer = data.layout.View();
