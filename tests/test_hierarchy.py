@@ -874,3 +874,28 @@ def test_arrays_read_before_refine_stay_valid():
     np.testing.assert_array_equal(points, np.eye(4)[:, :2])  # old state kept
     assert extraction["values"].shape[0] == 4
     assert not hierarchy.control_points.flags.writeable
+
+
+def test_hierarchy_copies_and_pickles():
+    import copy
+    import pickle
+
+    rng = np.random.default_rng(0)
+    bspline = splinepy.BSpline(
+        [2, 2], [[0, 0, 0, 0.5, 1, 1, 1]] * 2, rng.random((16, 3))
+    )
+    nurbs = bspline.nurbs
+    nurbs.weights[:] = rng.random((16, 1)) + 0.5
+    queries = rng.random((20, 2))
+    for hierarchy in (bspline.thb, nurbs.rationalthb):
+        hierarchy.refine([0])
+        expected = hierarchy.evaluate(queries)
+        for other in (
+            hierarchy.copy(),
+            copy.deepcopy(hierarchy),
+            pickle.loads(pickle.dumps(hierarchy)),
+        ):
+            assert type(other) is type(hierarchy)
+            np.testing.assert_array_equal(other.evaluate(queries), expected)
+            other.refine([1])
+        np.testing.assert_array_equal(hierarchy.evaluate(queries), expected)

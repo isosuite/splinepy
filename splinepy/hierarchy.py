@@ -24,6 +24,12 @@ def _thread_count(nthreads):
     return _settings.NTHREADS if nthreads is None else nthreads
 
 
+def _from_hierarchy(cls, degrees, levels, leaf_cells, control_points, weights):
+    return cls.from_hierarchy(
+        degrees, levels, leaf_cells, control_points, weights=weights
+    )
+
+
 class HBSpline(_core.HierarchyCore):
     """Polynomial hierarchical B-spline with axis-zero-fastest coefficients.
 
@@ -104,6 +110,25 @@ class HBSpline(_core.HierarchyCore):
         _core.HierarchyCore.__init__(result)
         result._initialize(degrees, levels, leaf_cells, control_points, weights)
         return result
+
+    def __reduce__(self):
+        return _from_hierarchy, (
+            type(self),
+            self.degrees,
+            self.levels,
+            self.leaf_cells,
+            self.control_points,
+            self.weights if self.is_rational else None,
+        )
+
+    def copy(self):
+        """Returns an independent copy.
+
+        Returns
+        -------
+        spline : HBSpline
+        """
+        return _from_hierarchy(*self.__reduce__()[1])
 
     @staticmethod
     def active_keys(degrees, levels, leaf_cells):
