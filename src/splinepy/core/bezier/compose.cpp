@@ -330,14 +330,17 @@ double BatchWork(Span<const OuterLayout> layouts,
   double work = 0.0;
   for (std::size_t i = 0; i < inners.size(); ++i) {
     for (const auto& layout : layouts) {
+      // an inner axis of degree q is composed to degree q * (sum of the
+      // outer degrees)
       double outer_cps = 1.0;
-      double composed_cps = 1.0;
-      for (std::size_t d = 0; d < layout.degrees.size(); ++d) {
-        const double p = layout.degrees[d];
+      double outer_degree = 0.0;
+      for (const double p : layout.degrees) {
         outer_cps *= p + 1.0;
-        const double q =
-            d < inners[i].degrees.size() ? inners[i].degrees[d] : 1.0;
-        composed_cps *= p * q + 1.0;
+        outer_degree += p;
+      }
+      double composed_cps = 1.0;
+      for (const double q : inners[i].degrees) {
+        composed_cps *= outer_degree * q + 1.0;
       }
       work += outer_cps * composed_cps
               * (composed_cps + 3.0 * static_cast<double>(n_outer));
