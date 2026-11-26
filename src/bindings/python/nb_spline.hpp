@@ -44,7 +44,6 @@ public:
   void Query(nb::object queries,
              double tolerance,
              int max_iterations,
-             bool aggressive_search_bounds,
              int nthreads,
              nb::tuple out) const;
 

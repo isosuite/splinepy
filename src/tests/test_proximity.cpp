@@ -68,7 +68,6 @@ TEST(Proximity, BvhFindsClosestPointNextToCollapsedEdge) {
     proximity.VerboseQuery(query,
                            1e-10,
                            100,
-                           false,
                            guess,
                            nearest,
                            diff,
@@ -86,43 +85,6 @@ TEST(Proximity, BvhFindsClosestPointNextToCollapsedEdge) {
       }
     }
     EXPECT_LE(dist, best + 1e-3);
-  }
-}
-
-TEST(Proximity, SearchStepBoundsTheSearchAroundItsStart) {
-  Cone cone;
-  const auto view = cone.View();
-  const Proximity proximity(view);
-  const double target[2] = {.8, .7};
-  double query[3];
-  splinepy::core::Evaluate(view,
-                           splinepy::core::Span<const double>(target, 2),
-                           splinepy::core::Span<double>(query, 3));
-  const double start[2] = {.2, .2};
-  const double step[2] = {.1, .25};
-  for (const double* search_step :
-       {static_cast<const double*>(nullptr), step}) {
-    double guess[2], nearest[3], diff[3], dist{}, conv{}, first[6];
-    proximity.SolveFrom(query,
-                        1e-10,
-                        100,
-                        search_step,
-                        start,
-                        guess,
-                        nearest,
-                        diff,
-                        dist,
-                        conv,
-                        first,
-                        nullptr);
-    if (search_step) {
-      // the closest point of the box around the start is its corner
-      EXPECT_DOUBLE_EQ(guess[0], .3);
-      EXPECT_DOUBLE_EQ(guess[1], .45);
-    } else {
-      EXPECT_NEAR(guess[0], target[0], 1e-8);
-      EXPECT_NEAR(guess[1], target[1], 1e-8);
-    }
   }
 }
 
@@ -151,7 +113,6 @@ TEST(Proximity, IndividualSolversOnEmbeddedCurveWithOptionalOutputs) {
     proximity.VerboseQuery(query,
                            1e-10,
                            100,
-                           false,
                            &parameter,
                            nullptr,
                            nullptr,

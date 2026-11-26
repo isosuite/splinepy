@@ -236,7 +236,6 @@ def _run_proximity(
     queries,
     tolerance,
     max_iterations,
-    tight_search_bounds,
     nthreads,
     return_verbose,
     out=None,
@@ -275,7 +274,6 @@ def _run_proximity(
         queries=queries,
         tolerance=tolerance,
         max_iterations=_default_if_none(max_iterations, -1),
-        aggressive_search_bounds=bool(tight_search_bounds),
         nthreads=_default_if_none(nthreads, _settings.NTHREADS),
         out=outputs,
     )
@@ -308,7 +306,6 @@ class _PreparedProximity:
         queries,
         tolerance=None,
         max_iterations=-1,
-        tight_search_bounds=False,
         nthreads=None,
         return_verbose=False,
         out=None,
@@ -319,7 +316,6 @@ class _PreparedProximity:
             queries,
             tolerance,
             max_iterations,
-            tight_search_bounds,
             nthreads,
             return_verbose,
             out,
@@ -1210,7 +1206,6 @@ class Spline(_core.SplineCore, _SplinepyBase):
         initial_guess_sample_resolutions=None,
         tolerance=None,
         max_iterations=-1,
-        tight_search_bounds=False,
         nthreads=None,
         return_verbose=False,
         out=None,
@@ -1234,9 +1229,6 @@ class Spline(_core.SplineCore, _SplinepyBase):
           and 1e-14.
         max_iterations: int
           Default is (para_dim * 20)
-        tight_search_bounds: bool
-          Default is False.
-          Set search bound to aabb of direct neighbors from the sample grid.
         nthreads: int
         return_verbose : bool
           If False, returns only parametric coords.
@@ -1276,7 +1268,6 @@ class Spline(_core.SplineCore, _SplinepyBase):
             queries,
             tolerance,
             max_iterations,
-            tight_search_bounds,
             nthreads,
             return_verbose,
             out,

@@ -54,8 +54,6 @@ public:
     grid_.Point(best_id, guess);
   }
 
-  const double* StepSize() const override { return grid_.StepSizes().data(); }
-
 private:
   int dim_;
   splinepy::core::UniformGrid grid_;

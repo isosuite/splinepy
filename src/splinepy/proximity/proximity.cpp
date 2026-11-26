@@ -115,28 +115,14 @@ void Proximity::MakeInitialGuess(SearchData& data) const {
             data.current_guess.begin());
 }
 
-void Proximity::FindSearchBound(SearchData& data,
-                                const double* step_size) const {
+void Proximity::FindSearchBound(SearchData& data) const {
   auto pb = splinepy::core::ParametricBounds(spline_);
   std::copy(pb.begin(), pb.end(), data.search_bounds.data());
-
-  // you need to be sure that you have sampled your spline fine enough
-  if (step_size == nullptr) {
-    return;
-  }
-  // adjust bounds aggressively, but not out of the parametric bounds
-  for (int i{}; i < data.para_dim; ++i) {
-    data.lower_bound[i] =
-        std::max(data.lower_bound[i], data.current_guess[i] - step_size[i]);
-    data.upper_bound[i] =
-        std::min(data.upper_bound[i], data.current_guess[i] + step_size[i]);
-  }
 }
 
 void Proximity::SolveFrom(const double* query,
                           const double& tolerance,
                           const int& max_iterations,
-                          const double* search_step,
                           const double* start,
                           double* final_guess,
                           double* nearest,
@@ -183,7 +169,7 @@ void Proximity::SolveFrom(const double* query,
     convergence_norm = data.status.convergence_norm;
   };
 
-  FindSearchBound(data, search_step);
+  FindSearchBound(data);
 
   // run the chain of solvers, each one starts from the best guess so far
   const int base_max_iter = data.options.max_iter;
@@ -236,7 +222,6 @@ void Proximity::SolveFrom(const double* query,
 void Proximity::VerboseQuery(const double* query,
                              const double& tolerance,
                              const int& max_iterations,
-                             const bool tight_bounds,
                              double* final_guess,
                              double* nearest,
                              double* nearest_minus_query,
@@ -258,12 +243,10 @@ void Proximity::VerboseQuery(const double* query,
   nearest_minus_query = output(nearest_minus_query, dim);
   first_derivatives = output(first_derivatives, para_dim * dim);
 
-  // tight bounds are one sampling step around a start
-  const auto solve = [&](const double* start, const double* step) {
+  const auto solve = [&](const double* start) {
     SolveFrom(query,
               tolerance,
               max_iterations,
-              tight_bounds ? step : nullptr,
               start,
               final_guess,
               nearest,
@@ -278,7 +261,7 @@ void Proximity::VerboseQuery(const double* query,
     // single start from the initial guess source
     auto guess = arena.AllocateSpan<double>(para_dim);
     MakeInitialGuess({query, static_cast<std::size_t>(dim)}, guess);
-    solve(guess.data(), initial_guess_->StepSize());
+    solve(guess.data());
     return;
   }
 
@@ -287,7 +270,7 @@ void Proximity::VerboseQuery(const double* query,
     splinepy::core::ThrowError(splinepy::core::Status::kInvalidArgument,
                                "bvh did not find any element");
   }
-  solve(starts[0].guess.data(), starts[0].step.data());
+  solve(starts[0].guess.data());
 
   // further starts solve into these and are taken if they are closer
   Span<double> t_guess = arena.AllocateSpan<double>(para_dim);
@@ -295,13 +278,11 @@ void Proximity::VerboseQuery(const double* query,
   Span<double> t_diff = arena.AllocateSpan<double>(dim);
   Span<double> t_first = arena.AllocateSpan<double>(para_dim * dim);
   Span<double> t_second = arena.AllocateSpan<double>(para_dim * para_dim * dim);
-  const auto solve_and_keep_closer = [&](const double* start,
-                                         const double* step) {
+  const auto solve_and_keep_closer = [&](const double* start) {
     double t_distance{}, t_convergence{};
     SolveFrom(query,
               tolerance,
               max_iterations,
-              tight_bounds ? step : nullptr,
               start,
               t_guess.data(),
               t_nearest.data(),
@@ -351,8 +332,7 @@ void Proximity::VerboseQuery(const double* query,
         || already_found(starts[i])) {
       continue;
     }
-    const bool closer =
-        solve_and_keep_closer(starts[i].guess.data(), starts[i].step.data());
+    const bool closer = solve_and_keep_closer(starts[i].guess.data());
     std::copy_n(t_guess.data(), para_dim, found.data() + n_starts * para_dim);
     ++n_starts;
     if (closer) {
@@ -432,9 +412,8 @@ void Proximity::VerboseQuery(const double* query,
 
   constexpr std::size_t kMaxRestarts{2};
   for (std::size_t i{}; i < std::min(kMaxRestarts, restarts.size()); ++i) {
-    // the way out of a singular point is not bound to one sampling step
     sample_at(restarts[i].sample);
-    solve_and_keep_closer(u.data(), nullptr);
+    solve_and_keep_closer(u.data());
   }
 }
 

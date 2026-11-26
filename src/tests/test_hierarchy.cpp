@@ -472,7 +472,6 @@ TEST_F(HierarchyQueryTest, LeafProximityInvertsAnalyticGeometry) {
                                               resolution,
                                               1e-13,
                                               -1,
-                                              false,
                                               true,
                                               options);
     for (std::size_t i = 0; i < queries.size(); ++i) {

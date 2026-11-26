@@ -240,7 +240,7 @@ GUESSES = {
 
 
 def default_solver(
-    spline, queries, resolutions, tight=False, chain="default", guess="bvh4"
+    spline, queries, resolutions, chain="default", guess="bvh4"
 ):
     """The library's own pipeline (initial guess -> solver chain)."""
     solvers, guard = CHAINS[chain]
@@ -255,7 +255,6 @@ def default_solver(
         queries=queries,
         tolerance=min(splinepy.settings.TOLERANCE, 1e-14),
         max_iterations=-1,
-        aggressive_search_bounds=tight,
         nthreads=1,
         out=(out, None, None, None, residuals, None, None),
     )
@@ -263,11 +262,10 @@ def default_solver(
 
 
 VARIANTS = {
-    # name: (resolution factor wrt. control mesh, tight bounds)
-    "coarse(1x)": (1, False),
-    "default(2x)": (2, False),
-    "fine(8x)": (8, False),
-    "default+tight": (2, True),
+    # name: resolution factor wrt. control mesh
+    "coarse(1x)": 1,
+    "default(2x)": 2,
+    "fine(8x)": 8,
 }
 
 
@@ -297,13 +295,13 @@ def run(
             for vname, cname, gname in itertools.product(
                 variants or VARIANTS, chains, guesses
             ):
-                factor, tight = VARIANTS[vname]
+                factor = VARIANTS[vname]
                 res = np.maximum(2, cmr * factor).astype("int32")
 
                 t0 = time.perf_counter()
                 try:
                     if solver is default_solver:
-                        para = solver(spline, q, res, tight, cname, gname)
+                        para = solver(spline, q, res, cname, gname)
                     else:
                         para = solver(spline, q, res)
                     failed_call = False

@@ -60,7 +60,6 @@ HierarchyProximities(const HierarchicalSplineView& spline,
                      Span<const int32_t> resolutions,
                      double tolerance,
                      int32_t max_iterations,
-                     bool tight_bounds,
                      bool verbose,
                      const Options& options) {
   if (!data.bvh.IsValid() || spline.tensor.para_dim <= 0
@@ -119,7 +118,6 @@ HierarchyProximities(const HierarchicalSplineView& spline,
   constexpr std::size_t sample_budget = 4096;
   Buffer<int32_t> samples(pd);
   Buffer<std::size_t> strides(pd);
-  Buffer<double> step(pd);
   std::size_t sample_count = 1;
   for (std::size_t axis = 0; axis < pd; ++axis) {
     samples[axis] = std::min<std::size_t>(resolutions[axis], sample_budget);
@@ -150,10 +148,9 @@ HierarchyProximities(const HierarchicalSplineView& spline,
   for (std::size_t axis = 0; axis < pd; ++axis) {
     const auto n = samples[axis];
     strides[axis] = stride;
-    step[axis] = n == 1 ? 1.0 : 1.0 / (n - 1);
     for (std::size_t i = 0; i < sample_count; ++i) {
       unit_queries[i * pd + axis] =
-          n == 1 ? 0.5 : (i / stride % n) * step[axis];
+          n == 1 ? 0.5 : static_cast<double>(i / stride % n) / (n - 1);
     }
     stride *= n;
   }
@@ -274,7 +271,6 @@ HierarchyProximities(const HierarchicalSplineView& spline,
                 solver.SolveFrom(query.data(),
                                  tolerance,
                                  max_iterations,
-                                 tight_bounds ? step.data() : nullptr,
                                  unit_queries.data() + start * pd,
                                  candidate.data(),
                                  point.data(),

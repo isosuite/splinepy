@@ -36,7 +36,6 @@ HierarchyProximities(const HierarchicalSplineView& spline,
                      Span<const int32_t> resolutions,
                      double tolerance,
                      int32_t max_iterations,
-                     bool tight_bounds,
                      bool verbose,
                      const Options& options = {});
 

@@ -52,10 +52,6 @@ public:
 
   /// @brief writes a parametric guess (para_dim) for a physical query (dim)
   virtual void Guess(const double* query, double* guess) const = 0;
-
-  /// @brief parametric distance between samples per axis (para_dim), used to
-  /// bound the search in the neighborhood of the guess. Null if unknown.
-  virtual const double* StepSize() const { return nullptr; }
 };
 
 namespace detail {
@@ -212,12 +208,9 @@ private:
   void ComputeStatus(detail::SearchData& data,
                      const bool recompute_costs) const;
 
-  /// @brief resets search bounds to spline's parametric bounds, cut to
-  /// current_guess +- step if a step (para_dim) is given.
+  /// @brief resets search bounds to spline's parametric bounds
   /// @param data
-  /// @param step
-  void FindSearchBound(detail::SearchData& data,
-                       const double* step = nullptr) const;
+  void FindSearchBound(detail::SearchData& data) const;
 
   /// @brief Prepares lhs and rhs of newton iteration
   void PrepareIterationNewton(detail::SearchData& data) const;
@@ -260,12 +253,10 @@ private:
 
 public:
   /// @brief Runs the solver chain from a given start. Same outputs as
-  /// VerboseQuery(). With a search_step (para_dim) the search stays within
-  /// start +- search_step: the sampling step of the start, for tight bounds.
+  /// VerboseQuery().
   void SolveFrom(const double* query,
                  const double& tolerance,
                  const int& max_iterations,
-                 const double* search_step,
                  const double* start,
                  double* final_guess,
                  double* nearest,
@@ -282,7 +273,6 @@ public:
   /// @param[in] query
   /// @param[in] tolerance
   /// @param[in] max_iterations
-  /// @param[in] tight_bounds search within one sampling step of each start
   /// @param[out] final_guess (para_dim)
   /// @param[out] nearest (dim)
   /// @param[out] nearest_minus_query (dim)
@@ -293,7 +283,6 @@ public:
   void VerboseQuery(const double* query,
                     const double& tolerance,
                     const int& max_iterations,
-                    const bool tight_bounds,
                     double* final_guess,
                     double* nearest /* spline(final_guess) */,
                     double* nearest_minus_query /* difference */,

@@ -874,7 +874,6 @@ ProximityHandle::ProximityHandle(nb::handle spline,
 void ProximityHandle::Query(nb::object queries,
                             double tolerance,
                             int max_iterations,
-                            bool aggressive_search_bounds,
                             int nthreads,
                             nb::tuple out) const {
   proximity::ValidateIterationBudget(max_iterations);
@@ -923,7 +922,6 @@ void ProximityHandle::Query(nb::object queries,
       proximity_->VerboseQuery(q_ptr + static_cast<size_t>(i) * physical,
                                tolerance,
                                max_iterations,
-                               aggressive_search_bounds,
                                row(params, i, pdim),
                                row(points, i, physical),
                                row(differences, i, physical),
@@ -1074,7 +1072,6 @@ void init_nb_spline(nb::module_& m) {
            nb::arg("queries"),
            nb::arg("tolerance"),
            nb::arg("max_iterations"),
-           nb::arg("aggressive_search_bounds"),
            nb::arg("nthreads"),
            nb::arg("out"));
 }

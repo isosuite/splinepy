@@ -596,7 +596,7 @@ def test_hierarchy_proximity_on_adaptive_surface(rational):
         assert np.all(residuals >= 0)
         hierarchy.refine([0], admissible=None)
     np.testing.assert_allclose(
-        hierarchy.proximities(queries, [5, 5], tight_search_bounds=True),
+        hierarchy.proximities(queries, [5, 5]),
         expected,
         atol=1e-11,
     )

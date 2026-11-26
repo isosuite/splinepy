@@ -484,7 +484,6 @@ public:
                          nb::handle resolutions,
                          double tolerance,
                          int32_t max_iterations,
-                         bool tight,
                          int threads,
                          bool verbose) const {
     const auto state = RequireState();
@@ -523,7 +522,6 @@ public:
                                     {samples.data(), samples.size()},
                                     tolerance,
                                     max_iterations,
-                                    tight,
                                     verbose,
                                     options);
     }

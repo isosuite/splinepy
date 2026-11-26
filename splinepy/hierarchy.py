@@ -456,7 +456,6 @@ class HBSpline(_core.HierarchyCore):
         initial_guess_sample_resolutions=None,
         tolerance=None,
         max_iterations=-1,
-        tight_search_bounds=False,
         nthreads=None,
         return_verbose=False,
     ):
@@ -478,8 +477,6 @@ class HBSpline(_core.HierarchyCore):
             Convergence tolerance.
         max_iterations : int, optional
             Iteration limit. Use -1 for the kernel default.
-        tight_search_bounds : bool, optional
-            Restrict the local search around the initial guess.
         nthreads : int, optional
             Number of worker threads.
         return_verbose : bool, optional
@@ -498,7 +495,6 @@ class HBSpline(_core.HierarchyCore):
             resolutions,
             1e-14 if tolerance is None else tolerance,
             -1 if max_iterations is None else _index(max_iterations),
-            bool(tight_search_bounds),
             _thread_count(nthreads),
             bool(return_verbose),
         )
