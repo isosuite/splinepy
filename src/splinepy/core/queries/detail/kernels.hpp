@@ -116,7 +116,7 @@ inline int32_t
 KernelTermCount(int32_t para_dim, const int32_t* lo, const int32_t* hi) {
   int32_t terms = 1;
   for (int32_t d = 0; d < para_dim; ++d) {
-    if (hi[d] < lo[d] || hi[d] + 1 > kKernelMaxRows) {
+    if (hi[d] < lo[d] || hi[d] >= kKernelMaxRows) {
       return 0;
     }
     terms *= hi[d] - lo[d] + 1;
