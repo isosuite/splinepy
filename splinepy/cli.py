@@ -66,7 +66,7 @@ def show(args):
         loaded_object.show_options["control_mesh"] = args.no_control_mesh
         if args.resolution:
             loaded_object.show_options["resolutions"] = int(args.resolution)
-    viewer = _splinepy.show(loaded, backend="viewer")
+    viewer = _splinepy.show(loaded, backend="viewer", open=False)
     if args.output_file:
         viewer.save(args.output_file)
     if args.interactive or not args.output_file:
