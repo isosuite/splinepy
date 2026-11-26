@@ -30,6 +30,7 @@ endif()
 
 # global flags
 set(CMAKE_CXX_VISIBILITY_PRESET "hidden")
+set(CMAKE_C_VISIBILITY_PRESET "hidden") # slsqp.c
 
 if(SPLINEPY_VERBOSE_MAKE)
   set(CMAKE_VERBOSE_MAKEFILE ON)
