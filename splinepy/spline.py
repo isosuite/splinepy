@@ -1406,7 +1406,7 @@ class Spline(_core.SplineCore, _SplinepyBase):
             _io.iges.export(fname, [self])
 
         elif ext == ".cats":
-            _io.cats.export(fname.replace(".cats", ".xml"), [self])
+            _io.cats.export(fname[: -len(ext)] + ".xml", [self])
 
         elif ext == ".xml":
             _io.gismo.export(fname, [self])

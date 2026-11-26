@@ -714,7 +714,7 @@ def export(
     # Individual spline data
     ###
     # Export fields first, as all necessary information is already available
-    if export_fields:
+    if export_fields and multipatch.fields:
         field_xml = _copy.deepcopy(xml_data)
 
         n_patches = _spline_to_ET(
