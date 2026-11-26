@@ -202,12 +202,13 @@ TEST(CompositionTest, RejectsInvalidInput) {
   EXPECT_THROW(
       MicrostructurePlan(MakeView(outer.degrees, knots, outer.points, 2),
                          outer.added),
-      std::invalid_argument);
+      splinepy::core::SplinepyException);
   EXPECT_THROW(MicrostructurePlan(outer.View(), {outer.added.data(), 1}),
-               std::invalid_argument);
+               splinepy::core::SplinepyException);
 
   const MicrostructurePlan plan(outer.View(), outer.added);
-  EXPECT_THROW(plan.Apply({outer.points.data(), 4}, {}), std::invalid_argument);
+  EXPECT_THROW(plan.Apply({outer.points.data(), 4}, {}),
+               splinepy::core::SplinepyException);
   const auto cells = plan.Apply(outer.points, {});
   const auto views = Views(cells);
   const auto tiles = Tiles(cells.size());
@@ -218,18 +219,19 @@ TEST(CompositionTest, RejectsInvalidInput) {
                             {tiles.data(), 10},
                             {offsets.data(), 6},
                             {}),
-               std::invalid_argument);
+               splinepy::core::SplinepyException);
   // a tile in 3D
   auto wrong = tiles;
   wrong[3] = Tile({1}, {0., 0., 0., 1., 1., 1.});
   wrong[3].para_dim = 1;
   wrong[3].dim = 3;
-  EXPECT_THROW(plan.Compose(views, wrong, offsets, {}), std::invalid_argument);
+  EXPECT_THROW(plan.Compose(views, wrong, offsets, {}),
+               splinepy::core::SplinepyException);
   // macro fields of a polynomial outer take no weights
   Buffer<SplineBatchData> fields;
   const double weight = 1.;
   EXPECT_THROW(plan.Compose(views, tiles, offsets, {&weight, 1}, {}, &fields),
-               std::invalid_argument);
+               splinepy::core::SplinepyException);
 }
 
 } // namespace splinepy::core

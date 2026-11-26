@@ -4,7 +4,6 @@
 #include <cmath>
 #include <cstring>
 #include <numeric>
-#include <stdexcept>
 #include <unordered_map>
 
 #include "splinepy/core/bezier/compose.hpp"
@@ -28,7 +27,7 @@ void ValidatePairOffsets(std::size_t outer_count,
   if (offsets.size() != outer_count + 1 || offsets.front() != 0
       || offsets.back() != tile_count
       || !std::is_sorted(offsets.begin(), offsets.end())) {
-    throw std::invalid_argument("Invalid offsets for paired composition.");
+    throw SplinepyException("Invalid offsets for paired composition.");
   }
 }
 
@@ -210,12 +209,12 @@ MicrostructurePlan::MicrostructurePlan(
   ThrowIfInvalid(outer);
   if (!outer.HasKnotVectors()
       || additional_knots.size() != outer.degrees.size()) {
-    throw std::invalid_argument("Expected a B-spline or NURBS and "
-                                "additional knots per axis.");
+    throw SplinepyException("Expected a B-spline or NURBS and "
+                            "additional knots per axis.");
   }
   for (int axis = 0; axis < outer.para_dim; ++axis) {
     if (!IsClamped(outer.knot_vectors[axis], outer.degrees[axis])) {
-      throw std::invalid_argument("Expected clamped knots.");
+      throw SplinepyException("Expected clamped knots.");
     }
   }
   data_ = std::make_shared<Data>(outer, additional_knots);
@@ -243,8 +242,8 @@ SplineBatchData MicrostructurePlan::Apply(Span<const double> control_points,
       || weights.size()
              != static_cast<std::size_t>(data.rational ? data.control_count : 0)
       || !finite(control_points) || !finite(weights)) {
-    throw std::invalid_argument("Expected finite outer control points and "
-                                "weights with the prepared shape.");
+    throw SplinepyException("Expected finite outer control points and "
+                            "weights with the prepared shape.");
   }
 
   SplineView outer = data.layout.View();
@@ -267,7 +266,7 @@ MicrostructurePlan::Compose(SplineBatchView cells,
   const auto& data = *data_;
   ValidatePairOffsets(cells.size(), tiles.size(), offsets);
   if (static_cast<int64_t>(cells.size()) != data.split.Elements().size) {
-    throw std::invalid_argument("Expected the prepared set of cells.");
+    throw SplinepyException("Expected the prepared set of cells.");
   }
   for (const auto& cell : cells) {
     if (cell.IsRational() != data.rational || cell.HasKnotVectors()
@@ -276,14 +275,14 @@ MicrostructurePlan::Compose(SplineBatchView cells,
                        cell.degrees.end(),
                        data.layout.degrees.begin(),
                        data.layout.degrees.end())) {
-      throw std::invalid_argument("Expected the prepared cell layout.");
+      throw SplinepyException("Expected the prepared cell layout.");
     }
   }
   if (macro_fields
       && weights.size()
              != static_cast<std::size_t>(data.rational ? data.control_count
                                                        : 0)) {
-    throw std::invalid_argument("Expected the outer weights.");
+    throw SplinepyException("Expected the outer weights.");
   }
 
   // identical tiles share one unique id
@@ -316,7 +315,7 @@ MicrostructurePlan::Compose(SplineBatchView cells,
     const auto view = tiles[first[u]].View();
     ThrowIfInvalid(view);
     if (view.HasKnotVectors() || view.dim != para_dim) {
-      throw std::invalid_argument(
+      throw SplinepyException(
           "Expected Bézier tiles in the outer's parametric dimension.");
     }
   }
@@ -470,7 +469,7 @@ ComposeParameterFields(SplineBatchView outers,
                        const Options& options) {
   ValidatePairOffsets(outers.size(), tiles.size(), offsets);
   if (geometry.size() != tiles.size()) {
-    throw std::invalid_argument("Expected geometry for every tile patch.");
+    throw SplinepyException("Expected geometry for every tile patch.");
   }
   std::pair<std::size_t, std::size_t> previous{};
   bool first = true;
@@ -480,7 +479,7 @@ ComposeParameterFields(SplineBatchView outers,
         || (!first && key <= previous)
         || group.patches.size()
                != offsets[group.cell + 1] - offsets[group.cell]) {
-      throw std::invalid_argument("Invalid parameter sensitivity group.");
+      throw SplinepyException("Invalid parameter sensitivity group.");
     }
     previous = key;
     first = false;

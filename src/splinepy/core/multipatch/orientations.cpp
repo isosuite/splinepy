@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
-#include <stdexcept>
 
 #include "splinepy/core/concurrency/parallel_for.hpp"
 #include "splinepy/core/memory/workspace.hpp"
@@ -20,7 +19,7 @@ namespace {
 void ValidateConnectivity(Span<const int32_t> interfaces,
                           std::size_t face_count) {
   if (interfaces.size() != face_count) {
-    throw std::invalid_argument("Invalid interface shape");
+    throw SplinepyException("Invalid interface shape");
   }
   for (std::size_t face = 0; face < interfaces.size(); ++face) {
     const auto neighbor = interfaces[face];
@@ -28,8 +27,7 @@ void ValidateConnectivity(Span<const int32_t> interfaces,
       const auto other = static_cast<std::size_t>(neighbor);
       if (other >= interfaces.size() || other == face
           || interfaces[other] != static_cast<int64_t>(face)) {
-        throw std::invalid_argument(
-            "Interface connectivity must be reciprocal");
+        throw SplinepyException("Interface connectivity must be reciprocal");
       }
     }
   }
@@ -220,7 +218,7 @@ struct FaceLayout {
       const auto end = high ? knots.size() - 1 : 0;
       const auto inner = high ? end - degree : end + degree;
       if (knots[end] != knots[inner]) {
-        throw std::invalid_argument(
+        throw SplinepyException(
             "Control-point editing requires clamped interfaces");
       }
     }
@@ -277,7 +275,7 @@ SeamGroups SeamControlPoints(SplineBatchView patches,
   const int faces = 2 * dim;
   const int width = 4 + faces;
   if (dim <= 0 || orientations.size() % width) {
-    throw std::invalid_argument("Invalid seam interface or orientation shape");
+    throw SplinepyException("Invalid seam interface or orientation shape");
   }
 
   ValidateConnectivity(interfaces, patches.size() * faces);
@@ -316,14 +314,14 @@ SeamGroups SeamControlPoints(SplineBatchView patches,
     if (a < 0 || b < 0 || std::size_t(a) >= patches.size()
         || std::size_t(b) >= patches.size() || fa < 0 || fb < 0 || fa >= faces
         || fb >= faces) {
-      throw std::invalid_argument(
+      throw SplinepyException(
           "Interface orientation does not match connectivity");
     }
     const auto face_a = std::size_t(a) * faces + fa;
     const auto face_b = std::size_t(b) * faces + fb;
     const auto pair = std::min(face_a, face_b);
     if (!expected[pair] || interfaces[face_a] != static_cast<int64_t>(face_b)) {
-      throw std::invalid_argument(
+      throw SplinepyException(
           "Interface orientation does not match connectivity");
     }
     expected[pair] = false;
@@ -332,7 +330,7 @@ SeamGroups SeamControlPoints(SplineBatchView patches,
     const auto& pa = patches[a];
     const auto& pb = patches[b];
     if (pa.para_dim != dim || pb.para_dim != dim || pa.dim != pb.dim) {
-      throw std::invalid_argument(
+      throw SplinepyException(
           "Interface patches must have matching dimensions");
     }
     for (int patch : {a, b}) {
@@ -349,8 +347,7 @@ SeamGroups SeamControlPoints(SplineBatchView patches,
       const int other = axes[axis];
       if (other < 0 || other >= dim || seen[other]
           || (axis == fa / 2 && other != fb / 2)) {
-        throw std::invalid_argument(
-            "Interface has no valid axis correspondence");
+        throw SplinepyException("Interface has no valid axis correspondence");
       }
       seen[other] = true;
     }
@@ -363,14 +360,14 @@ SeamGroups SeamControlPoints(SplineBatchView patches,
       const int other = axes[axis];
       if (axis != fa / 2) {
         if (pa.degrees[axis] != pb.degrees[other]) {
-          throw std::invalid_argument("Interface degrees do not match");
+          throw SplinepyException("Interface degrees do not match");
         }
         if (!MatchKnots(pa, axis, pb, other, directions[axis], tolerance)) {
-          throw std::invalid_argument("Interface knot vectors do not match");
+          throw SplinepyException("Interface knot vectors do not match");
         }
       }
       if (left.sizes[axis] != right.sizes[other]) {
-        throw std::invalid_argument("Interface control points do not match");
+        throw SplinepyException("Interface control points do not match");
       }
       if (!directions[axis]) {
         right_first += (right.sizes[other] - 1) * right.strides[other];
@@ -393,11 +390,11 @@ SeamGroups SeamControlPoints(SplineBatchView patches,
       for (int component = 0; component < pa.dim; ++component) {
         if (!(std::abs(pa.Point(ia, component) - pb.Point(ib, component))
               <= tolerance)) {
-          throw std::invalid_argument("Interface control points do not match");
+          throw SplinepyException("Interface control points do not match");
         }
       }
       if (!(std::abs(pa.Weight(ia) / wa - pb.Weight(ib) / wb) <= tolerance)) {
-        throw std::invalid_argument("Interface weights do not match");
+        throw SplinepyException("Interface weights do not match");
       }
       const auto first = root(index({a, ia}));
       const auto second = root(index({b, ib}));
@@ -405,7 +402,7 @@ SeamGroups SeamControlPoints(SplineBatchView patches,
     }
   }
   if (remaining) {
-    throw std::invalid_argument("Missing orientation for a connected face");
+    throw SplinepyException("Missing orientation for a connected face");
   }
 
   // number the groups by their first point and count their points, then
