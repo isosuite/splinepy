@@ -14,8 +14,9 @@ class KnotVector(_np.ndarray):
     It is a :class:`numpy.ndarray` with some knot vector specific helpers.
     The array is read-only: knots change only through item assignment and
     the methods here, which write in place (so a knot vector returned by a
-    spline modifies the spline) and keep the knots non-decreasing. To edit
-    knots freely, use :meth:`Spline.edit_knot_vectors`.
+    spline modifies the spline). Such an edit moves knots: they stay
+    non-decreasing and keep their multiplicities, so a valid spline stays
+    valid. To edit knots freely, use :meth:`Spline.edit_knot_vectors`.
 
     Parameters
     ----------
@@ -52,15 +53,24 @@ class KnotVector(_np.ndarray):
         if len(a) > 1 and _np.any(a[1:] < a[:-1]):
             raise ValueError("Knot vector must be non-decreasing.")
 
-    def __setitem__(self, key, value):
+    def _edit(self, key, value):
+        """knots[key] = value, undone unless it only moves knots."""
         a = self._writable()
         backup = a.copy()
         try:
             a[key] = value
             self._check()
+            if not _np.array_equal(a[1:] > a[:-1], backup[1:] > backup[:-1]):
+                raise ValueError(
+                    "An edit in place cannot change knot multiplicities; "
+                    "use Spline.edit_knot_vectors()."
+                )
         except ValueError:
             a[:] = backup
             raise
+
+    def __setitem__(self, key, value):
+        self._edit(key, value)
 
     def numpy(self):
         """Returns a copy as plain numpy array.
@@ -129,14 +139,12 @@ class KnotVector(_np.ndarray):
         """
         if not (_np.isfinite(minimum) and _np.isfinite(maximum)):
             raise ValueError("Knot bounds must be finite.")
-        a = self._writable()
-        if len(a) == 0 or minimum >= maximum:
+        a = _np.asarray(self)
+        if len(a) == 0 or minimum >= maximum or a[-1] == a[0]:
             return None
-        current_range = a[-1] - a[0]
-        if current_range == 0:
-            return None
-        position = (a - a[0]) / current_range
-        a[:] = (1 - position) * minimum + position * maximum
+        # halves, so that the range of large knots does not overflow
+        position = (a / 2 - a[0] / 2) / (a[-1] / 2 - a[0] / 2)
+        self._edit(slice(None), (1 - position) * minimum + position * maximum)
 
     def find_span(self, u):
         """Returns the index i of the knot span with knots[i] <= u < knots[i+1].

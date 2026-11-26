@@ -135,11 +135,12 @@ def flip_axes(spline, axes, inplace=False):
         # Reverse knot vectors (keep parametric bounds unchanged)
         if spline.has_knot_vectors:
             para_bounds = spline.parametric_bounds
-            spline.knot_vectors[axis][:] = list(
-                para_bounds[0, axis]
-                + para_bounds[1, axis]
-                - _np.flip(spline.knot_vectors[axis])
-            )
+            with spline.edit_knot_vectors() as knot_vectors:
+                knot_vectors[axis] = (
+                    para_bounds[0, axis]
+                    + para_bounds[1, axis]
+                    - _np.flip(knot_vectors[axis])
+                )
     # Convert list to tuple for indexing
     indexing = tuple(indexing)
 
