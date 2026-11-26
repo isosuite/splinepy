@@ -36,6 +36,9 @@ def valid_queries(spline, queries):
 
     if not len(queries):
         return True
+    # NaN would hide every other query from the comparisons below
+    if not _np.isfinite(queries).all():
+        raise ValueError("Queries must be finite.")
 
     # Check minimum value
     min_query = _np.min(queries, axis=0)
