@@ -31,6 +31,12 @@ SplineData ExtractBoundary(const SplineView& spline,
 
   const int32_t axis = boundary_id / 2;
   const bool is_upper = (boundary_id % 2 != 0);
+  // the outer control points are on the boundary only with clamped knots
+  if (spline.HasKnotVectors()
+      && !IsClamped(spline.knot_vectors[axis], spline.degrees[axis])) {
+    throw SplinepyException("Boundaries need clamped knots.",
+                            Status::kInvalidArgument);
+  }
 
   const int64_t n_axis = spline.NumControlPointsPerAxis(axis);
   const int64_t fixed_idx = is_upper ? (n_axis - 1) : 0;

@@ -91,3 +91,12 @@ def test_extraction_rejects_unclamped_knots():
         curve.extract.beziers()
     # proximity then starts from the sampled grid
     np.testing.assert_allclose(curve.proximities([[1.0, 0.7]]), [[2.5]])
+    surface = splinepy.BSpline(
+        [2, 1], [[0, 1, 2, 3, 4, 5], [0, 0, 1, 1]], np.ones((6, 2))
+    )
+    with pytest.raises(splinepy.SplinepyError, match="clamped"):
+        surface.extract.boundaries([0])
+    assert len(surface.extract.boundaries([2, 3])) == 2
+    curve.elevate_degrees([0])
+    with pytest.raises(splinepy.SplinepyError, match="clamped"):
+        curve.reduce_degrees([0])

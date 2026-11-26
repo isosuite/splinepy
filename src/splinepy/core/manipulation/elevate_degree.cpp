@@ -339,6 +339,11 @@ SplineData ReduceDegree(const SplineView& spline,
     }
   }
 
+  if (spline.HasKnotVectors()
+      && !IsClamped(spline.knot_vectors[axis], spline.degrees[axis])) {
+    throw SplinepyException("Degree reduction needs clamped knots.",
+                            Status::kInvalidArgument);
+  }
   const double tol = (options.tolerance > 0.0) ? options.tolerance : 1e-8;
   auto result = ChangeDegree(
       spline,
