@@ -216,6 +216,12 @@ TEST(ManipulationKernelsTest, ElevateAndReduceDegreeBSpline) {
   EXPECT_LT(MaxAbsDiff(eval_orig.cspan(), eval_ele.cspan()), 1e-14);
 
   // Now reduce degree back by [1, 1]
+  const int32_t negative[] = {1, -1};
+  EXPECT_THROW(ElevateDegrees(orig_spline, Span<const int32_t>(negative, 2)),
+               SplinepyException);
+  EXPECT_THROW(ElevateDegree(orig_spline, 0, -1), SplinepyException);
+  EXPECT_THROW(ReduceDegree(orig_spline, 0, -1), SplinepyException);
+
   SplineData red0 = ReduceDegree(elevated.View(), 0, 1);
   SplineData red1 = ReduceDegree(red0.View(), 1, 1);
 

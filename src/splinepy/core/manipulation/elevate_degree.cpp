@@ -260,7 +260,11 @@ SplineData Elevate(const SplineView& spline,
                    const Options& options) {
   int32_t total = 0;
   for (const int32_t amount : amounts) {
-    total += std::max(amount, 0);
+    if (amount < 0) {
+      throw SplinepyException("Elevation amounts cannot be negative.",
+                              Status::kInvalidArgument);
+    }
+    total += amount;
   }
   Buffer<AxisMap> maps(total);
   Buffer<AxisStep> steps(total);
@@ -324,11 +328,11 @@ SplineData ReduceDegree(const SplineView& spline,
     throw SplinepyException("ReduceDegree: axis out of range [0, para_dim).",
                             Status::kOutOfBounds);
   }
-  if (amount <= 0) {
+  if (amount == 0) {
     return SplineData::FromView(spline);
   }
   {
-    if (spline.degrees[axis] - amount < 0) {
+    if (amount < 0 || spline.degrees[axis] - amount < 0) {
       throw SplinepyException(
           "ReduceDegree: resulting degree cannot be negative.",
           Status::kInvalidArgument);
