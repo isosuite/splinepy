@@ -49,15 +49,18 @@ const LIGHTING = {
   shiny: [0.2, 0.1, 0.6], glossy: [0.15, 0, 0.5], ambient: [1, 0, 0],
 };
 
-let envTexture = null;
+// per renderer: a texture lives in the WebGL context it was rendered in
+const envTextures = new WeakMap();
 function environment(renderer) {
-  if (envTexture === null) {
+  if (!envTextures.has(renderer)) {
+    let texture = null;
     try {
       const pmrem = new THREE.PMREMGenerator(renderer);
-      envTexture = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    } catch (e) { envTexture = false; }
+      texture = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    } catch (e) { /* no environment */ }
+    envTextures.set(renderer, texture);
   }
-  return envTexture || null;
+  return envTextures.get(renderer);
 }
 
 function surfaceMaterial(layer, opts, renderer) {
