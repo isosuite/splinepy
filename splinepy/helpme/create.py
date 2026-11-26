@@ -779,17 +779,18 @@ def determinant_spline(spline):
         # initialize lists for knot vectors
         knot_vectors_determinant_spline = []
 
-        for u_kv, kn_m, m in zip(
+        for u_kv, kn_m, m, degree in zip(
             spline.unique_knots,
             spline.knot_multiplicities,
             multiplicity_increase,
+            degrees_determinant_spline,
             strict=True,
         ):
             # increase knot multiplicities:
-            #   @ each inner knot -> mult_inc + 1
+            #   @ each inner knot -> mult_inc + 1, up to a discontinuity
             #   @ begin & end -> mult_inc
             # since continuity at inner knots further decreases by 1
-            kn_m[1:-1] += 1
+            kn_m[1:-1] = _np.minimum(kn_m[1:-1] + 1, degree + 1 - m)
             temp_knot_vector = _np.repeat(u_kv, kn_m + m)
             knot_vectors_determinant_spline.append(temp_knot_vector)
 
