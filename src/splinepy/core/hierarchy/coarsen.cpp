@@ -168,7 +168,8 @@ void GaussRule(Span<double> nodes, Span<double> weights) {
       x -= step;
     }
     if (!converged) {
-      throw SplinepyException("coarsening quadrature did not converge");
+      throw SplinepyException("coarsening quadrature did not converge",
+                              Status::kNotConverged);
     }
     nodes[i] = (1.0 - x) / 2.0;
     nodes[n - i - 1] = (1.0 + x) / 2.0;
@@ -422,7 +423,7 @@ void Project(MemoryArena& arena,
                 << " for component " << component
                 << " (relative preconditioned residual " << std::sqrt(squared)
                 << ", target " << solver_tolerance << ')';
-        throw SplinepyException(message.str());
+        throw SplinepyException(message.str(), Status::kNotConverged);
       }
       for (std::size_t i = 0; i < count; ++i) {
         solution[i] = (inverse_scale[i] * solution[i] * norm) * scale;
