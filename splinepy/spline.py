@@ -1069,7 +1069,7 @@ class Spline(_core.SplineCore, _SplinepyBase):
 
         Returns
         --------
-        results: (n, para_dim, dim) np.ndarray
+        results: (n, dim, para_dim) np.ndarray
         """
         return _core.jacobian(
             self,
