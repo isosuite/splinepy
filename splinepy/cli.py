@@ -57,15 +57,6 @@ def show(args):
     from splinepy import io
 
     loaded = io.load(fname)
-    interactive = args.interactive or not args.output_file
-    close = not bool(args.output_file)
-    if interactive and not close:
-        print(
-            "Interactive mode is on and output file is set. "
-            "Output file will be ignored. Instead, use S (Shift+S) in the "
-            "interactive window to save a screenshot "
-            "(saved as screenshot.png.)"
-        )
     if not isinstance(loaded, list):
         loaded = [loaded]
     for loaded_object in loaded:
@@ -75,11 +66,11 @@ def show(args):
         loaded_object.show_options["control_mesh"] = args.no_control_mesh
         if args.resolution:
             loaded_object.show_options["resolutions"] = int(args.resolution)
-    show_vedo = _splinepy.show(
-        loaded, backend="vedo", interactive=interactive, close=close
-    )
-    if args.output_file and not interactive:
-        show_vedo.screenshot(args.output_file)
+    viewer = _splinepy.show(loaded, backend="viewer")
+    if args.output_file:
+        viewer.save(args.output_file)
+    if args.interactive or not args.output_file:
+        viewer.open(block=True)
 
 
 def entry():
@@ -150,14 +141,14 @@ def entry():
         "-o",
         "--output-file",
         type=str,
-        help="Export graphic to file.",
+        help="Write the viewer to a standalone HTML file.",
         required=False,
     )
     parser_plot.add_argument(
         "-e",
         "--interactive",
         action="store_true",
-        help="Show graphic in interactive window even if save to file is on.",
+        help="Open the viewer even if it is written to a file.",
     )
     parser_plot.add_argument(
         "-c",
@@ -212,7 +203,6 @@ def entry():
             "vedo",
             "scipy",
             "meshio",
-            "k3d",
         ]
         print(f"splinepy version: {__version__}")
         for lib in dependent_versions:
