@@ -774,9 +774,18 @@ nb::list GrevilleAbscissae(nb::handle spline, const double tolerance) {
   return result;
 }
 
+/// Pin() of a spline whose layout is complete and valid.
+SplineArrays PinValid(nb::handle spline) {
+  SplineArrays wrapper = Pin(spline);
+  if (!NativeOf(spline).layout_validated) {
+    core::ThrowIfInvalid(wrapper.view);
+  }
+  return wrapper;
+}
+
 /// Lower and upper parametric bounds, shape (2, para_dim).
 nb::object ParametricBounds(nb::handle spline) {
-  const SplineArrays wrapper = Pin(spline);
+  const SplineArrays wrapper = PinValid(spline);
   const auto box = core::ParametricBounds(wrapper.view);
   const size_t shape[2] = {2, static_cast<size_t>(wrapper.view.para_dim)};
   return CopyNumPyArray(box.data(), {shape, 2});
@@ -784,7 +793,7 @@ nb::object ParametricBounds(nb::handle spline) {
 
 /// Control points per axis.
 nb::object ControlMeshResolutions(nb::handle spline) {
-  const SplineArrays wrapper = Pin(spline);
+  const SplineArrays wrapper = PinValid(spline);
   const auto grid = core::ControlGrid(wrapper.view);
   core::AxisArray<int32_t> n;
   n.assign(grid.n.begin(), grid.n.end());
@@ -794,11 +803,8 @@ nb::object ControlMeshResolutions(nb::handle spline) {
 
 /// Distinct knots of every axis inside its domain; its bounds for a Bezier.
 nb::list UniqueKnots(nb::handle spline) {
-  const SplineArrays wrapper = Pin(spline);
+  const SplineArrays wrapper = PinValid(spline);
   const auto& view = wrapper.view;
-  if (!NativeOf(spline).layout_validated) {
-    core::ThrowIfInvalid(view);
-  }
   nb::list result;
   for (int32_t d = 0; d < view.para_dim; ++d) {
     const core::AxisKnots axis(view, d);
