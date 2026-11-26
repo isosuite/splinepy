@@ -790,3 +790,29 @@ def test_high_para_dim(para_dim, np_rng):
 def test_para_dim_above_cap():
     with pytest.raises(Exception, match="SPLINEPY_MAX_PARA_DIM"):
         splinepy.Bezier([1] * 9, np.zeros((2**9, 1)))
+
+
+@pytest.mark.parametrize(
+    "degree, knots",
+    [
+        (2, [0, 1, 2, 2, 3, 4, 5]),
+        (2, [0, 1, 2, 3, 3, 4, 5]),
+        (3, [0, 1, 1, 1, 2, 3, 3, 3, 4, 5]),
+    ],
+)
+@pytest.mark.parametrize("rational", [False, True])
+def test_unclamped_knots_repeated_at_a_domain_end(degree, knots, rational, np_rng):
+    """The first and the last span of the domain may be empty."""
+    n = len(knots) - degree - 1
+    spline = splinepy.BSpline([degree], [knots], np_rng.random((n, 2)))
+    if rational:
+        spline = splinepy.NURBS(**spline.todict(), weights=np_rng.random(n) + 0.5)
+    ends = spline.parametric_bounds
+    inside = ends + [[1e-9], [-1e-9]]
+    for query in (
+        spline.evaluate,
+        spline.jacobian,
+        lambda u: spline.derivative(u, [2]),
+        lambda u: spline.basis_and_support(u)[0],
+    ):
+        np.testing.assert_allclose(query(ends), query(inside), atol=1e-6)

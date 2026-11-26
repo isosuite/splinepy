@@ -10,15 +10,24 @@
 
 namespace splinepy::core::kernels {
 
-/// Knot span index i with u in [knots[i], knots[i+1]), clamped to [p, n_cps-1].
-/// The NURBS Book, Algorithm A2.1.
+/// Knot span index i with u in [knots[i], knots[i+1]), clamped to the first
+/// and the last span of the domain that is not empty: unclamped knots may
+/// repeat an end of the domain. The NURBS Book, Algorithm A2.1.
 SPLINEPY_HD inline int32_t
 FindSpan(int32_t n_cps, int32_t p, double u, const double* knots) noexcept {
   if (u >= knots[n_cps]) {
-    return n_cps - 1;
+    int32_t span = n_cps - 1;
+    while (span > p && knots[span] == knots[n_cps]) {
+      --span;
+    }
+    return span;
   }
   if (u <= knots[p]) {
-    return p;
+    int32_t span = p;
+    while (span < n_cps - 1 && knots[span + 1] == knots[p]) {
+      ++span;
+    }
+    return span;
   }
   int32_t low = p;
   int32_t high = n_cps;
