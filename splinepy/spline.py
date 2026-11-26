@@ -64,7 +64,12 @@ class RequiredProperties(_SplinepyBase):
         # extract pure `type`
         s_type = spline if isinstance(spline, type) else type(spline)
 
-        # __getitem__ checks if it is supported
+        # a subclass requires what its spline type does
+        for base in s_type.__mro__:
+            if base.__qualname__ in cls.__required_spline_properties:
+                return cls.__getitem__(base.__qualname__)
+
+        # __getitem__ raises, as it is not supported
         return cls.__getitem__(s_type.__qualname__)
 
     @classmethod
@@ -322,6 +327,10 @@ class _PreparedProximity:
         )
 
 
+def _from_properties(cls, properties):
+    return cls(**properties)
+
+
 class Spline(_core.SplineCore, _SplinepyBase):
     r"""
     Spline base class.
@@ -348,8 +357,6 @@ class Spline(_core.SplineCore, _SplinepyBase):
 
     Parameters
     -----------
-    spline: Spline
-        Initialize from another spline, sharing its current geometry arrays.
     degrees: (para_dim,) array-like
         Keyword only parameter.
     knot_vectors: (para_dim, n) list of array-like
@@ -381,25 +388,35 @@ class Spline(_core.SplineCore, _SplinepyBase):
 
     __show_option__ = _visualize.SplineShowOption
 
-    def __init__(self, spline=None, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__()
         self._multi_index = None
 
-        # spline based init - shares the other spline's current arrays
-        if spline is not None:
-            self._assign(
-                spline._degrees,
-                spline._knot_vectors,
-                spline._control_points,
-                spline._weights,
-                validate=False,
-                trusted=spline._layout_validated,
-            )
-            return None
-
-        # property based init. all at once, so validation happens only once
+        # all at once, so validation happens only once
         if any(v is not None for v in kwargs.values()):
             self._set_properties(**kwargs)
+
+    @classmethod
+    def _retyped(cls, spline):
+        """A cls that takes over the arrays of a spline the core returned."""
+        new = cls()
+        new._assign(
+            spline._degrees,
+            spline._knot_vectors,
+            spline._control_points,
+            spline._weights,
+            validate=False,
+            trusted=spline._layout_validated,
+        )
+        return new
+
+    def __reduce__(self):
+        properties = self._properties()
+        if "knot_vectors" in properties:
+            properties["knot_vectors"] = [
+                _np.array(kv) for kv in properties["knot_vectors"]
+            ]
+        return _from_properties, (type(self), properties)
 
     @staticmethod
     def _normalize_property(key, value):
@@ -465,8 +482,7 @@ class Spline(_core.SplineCore, _SplinepyBase):
 
     def _set_property(self, key, value):
         if value is None:
-            self.clear()
-            return
+            raise ValueError(f"{key} cannot be None; clear() empties a spline.")
         properties = self._properties()
         if value is properties.get(key):
             return

@@ -406,9 +406,8 @@ class Bezier(BezierBase):
 
     __slots__ = ()
 
-    def __init__(self, degrees=None, control_points=None, spline=None):
+    def __init__(self, degrees=None, control_points=None):
         super().__init__(
-            spline=spline,
             degrees=degrees,
             control_points=control_points,
         )
@@ -487,8 +486,8 @@ class Bezier(BezierBase):
         -------
         spline : BSpline
         """
-        return _settings.NAME_TO_TYPE["BSpline"](
-            spline=_core.same_spline_with_knot_vectors(self)
+        return _settings.NAME_TO_TYPE["BSpline"]._retyped(
+            _core.same_spline_with_knot_vectors(self)
         )
 
     @property
@@ -503,8 +502,6 @@ class Bezier(BezierBase):
         -------
         spline : NURBS
         """
-        return _settings.NAME_TO_TYPE["NURBS"](
-            spline=_core.same_spline_with_knot_vectors(
-                self.rationalbezier
-            )
+        return _settings.NAME_TO_TYPE["NURBS"]._retyped(
+            _core.same_spline_with_knot_vectors(self.rationalbezier)
         )

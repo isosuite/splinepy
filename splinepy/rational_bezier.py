@@ -108,7 +108,6 @@ class RationalBezier(_BezierBase):
     degrees: (para_dim,) array-like
     control_points: (m, dim) array-like
     weights: (m) array-like
-    spline: Spline
 
     Returns
     --------
@@ -117,11 +116,8 @@ class RationalBezier(_BezierBase):
 
     __slots__ = ()
 
-    def __init__(
-        self, degrees=None, control_points=None, weights=None, spline=None
-    ):
+    def __init__(self, degrees=None, control_points=None, weights=None):
         super().__init__(
-            spline=spline,
             degrees=degrees,
             control_points=control_points,
             weights=weights,
@@ -169,6 +165,6 @@ class RationalBezier(_BezierBase):
         -------
         spline : NURBS
         """
-        return _settings.NAME_TO_TYPE["NURBS"](
-            spline=_core.same_spline_with_knot_vectors(self)
+        return _settings.NAME_TO_TYPE["NURBS"]._retyped(
+            _core.same_spline_with_knot_vectors(self)
         )

@@ -125,4 +125,4 @@ def dict_to_spline(spline_dictionary):
     from splinepy.spline import Spline as _Spline
 
     spline_list = [_Spline(**spd) for spd in spline_dictionary]
-    return [_NAME_TO_TYPE[spl.name](spline=spl) for spl in spline_list]
+    return [_NAME_TO_TYPE[spl.name]._retyped(spl) for spl in spline_list]

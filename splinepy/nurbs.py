@@ -147,10 +147,8 @@ class NURBS(_BSplineBase):
         knot_vectors=None,
         control_points=None,
         weights=None,
-        spline=None,
     ):
         super().__init__(
-            spline=spline,
             degrees=degrees,
             knot_vectors=knot_vectors,
             control_points=control_points,

@@ -475,7 +475,6 @@ class BSpline(BSplineBase):
     knot_vectors: (para_dim) list
         list of array-like
     control_points: (n, dim) array-like
-    spline: Spline
 
     Returns
     -------
@@ -489,10 +488,8 @@ class BSpline(BSplineBase):
         degrees=None,
         knot_vectors=None,
         control_points=None,
-        spline=None,
     ):
         super().__init__(
-            spline=spline,
             degrees=degrees,
             knot_vectors=knot_vectors,
             control_points=control_points,

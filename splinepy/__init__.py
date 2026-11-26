@@ -55,7 +55,7 @@ def to_derived(spline):
     -------
     derived_spline: DerivedSpline
     """
-    return settings.NAME_TO_TYPE[spline.name](spline=spline)
+    return settings.NAME_TO_TYPE[spline.name]._retyped(spline)
 
 
 __all__ = [

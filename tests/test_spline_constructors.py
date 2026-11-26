@@ -1,3 +1,5 @@
+import pickle
+
 import numpy as np
 import pytest
 
@@ -332,8 +334,62 @@ def test_copies_keep_the_validated_layout():
     spline = splinepy.BSpline([1], [[0, 0, 0.5, 1, 1]], [[0.0], [1.0], [2.0]])
     staged = splinepy.BSpline(degrees=[1])
     assert spline._layout_validated and not staged._layout_validated
-    for other in (spline.copy(), splinepy.BSpline(spline=spline)):
+    for other in (spline.copy(), pickle.loads(pickle.dumps(spline))):
         assert other._layout_validated
         np.testing.assert_allclose(other.evaluate([[0.25]]), [[0.5]])
     assert not staged.copy()._layout_validated
     np.testing.assert_array_equal(staged.copy().degrees, [1])
+
+
+def test_copy_module_and_pickle_round_trip():
+    import copy
+
+    nurbs = splinepy.NURBS([1], [[0, 0, 0.5, 1, 1]], [[0.0], [1.0], [2.0]], [1, 2, 1])
+    for other in (copy.deepcopy(nurbs), pickle.loads(pickle.dumps(nurbs))):
+        assert type(other) is splinepy.NURBS
+        other.control_points[0] = 5.0
+        np.testing.assert_array_equal(nurbs.control_points[0], 0.0)
+        np.testing.assert_array_equal(other.knot_vectors[0], nurbs.knot_vectors[0])
+        np.testing.assert_array_equal(other.weights, nurbs.weights)
+
+
+def test_subclass_keeps_the_properties_of_its_spline_type():
+    class Mine(splinepy.BSpline):
+        pass
+
+    mine = Mine([1], [[0, 0, 1, 1]], [[0.0], [1.0]])
+    assert mine.required_properties == splinepy.BSpline().required_properties
+    assert type(mine.nurbs) is splinepy.NURBS
+    np.testing.assert_allclose(mine.evaluate([[0.25]]), [[0.25]])
+
+
+def test_incomplete_and_emptied_layouts_raise():
+    staged = splinepy.BSpline(degrees=[5], knot_vectors=[[0.0, 1.0]])
+    for name in ("parametric_bounds", "control_mesh_resolutions", "unique_knots"):
+        with pytest.raises(ValueError):
+            getattr(staged, name)
+    nurbs = splinepy.NURBS([1], [[0, 0, 1, 1]], [[0.0], [1.0]], [1, 1])
+    with pytest.raises(ValueError, match="clear"):
+        nurbs.weights = None
+    np.testing.assert_array_equal(nurbs.degrees, [1])
+
+
+def test_knot_edits_in_place_keep_multiplicities():
+    spline = splinepy.BSpline([1], [[0, 0, 0.5, 1, 1]], [[0.0], [1.0], [2.0]])
+    knots = spline.knot_vectors[0]
+    knots[2] = 0.25
+    np.testing.assert_allclose(spline.evaluate([[0.25]]), [[1.0]])
+    for value in ([0, 0, 0, 1, 1], [0, 0, 0, 0, 0]):
+        with pytest.raises(ValueError, match="multiplicities"):
+            knots[:] = value
+    np.testing.assert_array_equal(knots, [0, 0, 0.25, 1, 1])
+    large = splinepy.KnotVector([-1e308, 0, 1e308])
+    large.scale(0, 1)
+    np.testing.assert_array_equal(large, [0, 0.5, 1])
+
+
+def test_nan_queries_do_not_hide_queries_out_of_bounds(monkeypatch):
+    spline = splinepy.BSpline([1], [[0, 0, 1, 1]], [[0.0], [1.0]])
+    monkeypatch.setattr(splinepy.settings, "CHECK_BOUNDS", True)
+    with pytest.raises(ValueError, match="finite"):
+        spline.evaluate([[np.nan], [999.0]])
