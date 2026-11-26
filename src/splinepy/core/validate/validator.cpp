@@ -12,9 +12,7 @@ namespace {
 
 bool IsFinite(double val) noexcept { return std::isfinite(val); }
 
-Status ValidateImpl(const SplineView& view,
-                    const Options& options,
-                    bool throw_on_error) {
+Status ValidateImpl(const SplineView& view, bool throw_on_error) {
   auto fail = [&](Status status, auto&& build_msg) -> Status {
     if (throw_on_error) {
       std::ostringstream oss;
@@ -70,7 +68,7 @@ Status ValidateImpl(const SplineView& view,
             os << "Non-finite knot value at axis " << i << ", index " << j;
           });
         }
-        if (j > 0 && kv[j] < kv[j - 1] - options.tolerance) {
+        if (j > 0 && kv[j] < kv[j - 1]) {
           return fail(Status::kInvalidArgument, [&](auto& os) {
             os << "Knot vector at axis " << i << " is not non-decreasing: knot["
                << (j - 1) << "]=" << kv[j - 1] << " > knot[" << j
@@ -131,8 +129,8 @@ Status ValidateImpl(const SplineView& view,
 
 } // namespace
 
-Status Validate(const SplineView& view, const Options& options) {
-  return ValidateImpl(view, options, false);
+Status Validate(const SplineView& view, const Options&) {
+  return ValidateImpl(view, false);
 }
 
 Status Validate(SplineBatchView batch, const Options& options) {
@@ -145,8 +143,8 @@ Status Validate(SplineBatchView batch, const Options& options) {
   return Status::kOk;
 }
 
-void ThrowIfInvalid(const SplineView& view, const Options& options) {
-  ValidateImpl(view, options, true);
+void ThrowIfInvalid(const SplineView& view, const Options&) {
+  ValidateImpl(view, true);
 }
 
 void ThrowIfInvalidQueryValues(const SplineView& view,
