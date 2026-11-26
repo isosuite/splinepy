@@ -195,6 +195,13 @@ nb::object TakeNumPyBuffer(splinepy::core::Buffer<T>& buffer,
                             : nb::cast(WrapBuffer<T>(buffer, extents));
 }
 
+/// The result of kernel(), computed without the GIL.
+template<typename Kernel>
+auto Released(Kernel&& kernel) {
+  nb::gil_scoped_release release;
+  return kernel();
+}
+
 template<typename T>
 nb::object CopyNumPyArray(const T* data,
                           splinepy::core::Span<const size_t> shape) {

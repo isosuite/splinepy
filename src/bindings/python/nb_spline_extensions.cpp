@@ -88,9 +88,11 @@ InsertKnots(nb::handle spline, int para_dim, nb::object knots, double tol) {
   }
 
   if (!valid_knots.empty()) {
-    SetSplineData(
-        spline,
-        splinepy::core::InsertKnots(view, para_dim, valid_knots.cspan()));
+    SetSplineData(spline, Released([&] {
+                    return splinepy::core::InsertKnots(view,
+                                                       para_dim,
+                                                       valid_knots.cspan());
+                  }));
   }
   return MakeNumPyArray1D<bool>(successful.cspan());
 }
@@ -105,8 +107,12 @@ nb::list RemoveKnots(nb::handle spline,
   ContiguousAdapter<double> knots_adapter(knots, "float64");
   splinepy::core::Span<const double> knots_span(knots_adapter.data(),
                                                 knots_adapter.size());
-  auto res =
-      splinepy::core::RemoveKnots(holder.view, para_dim, knots_span, options);
+  auto res = Released([&] {
+    return splinepy::core::RemoveKnots(holder.view,
+                                       para_dim,
+                                       knots_span,
+                                       options);
+  });
 
   SetSplineData(spline, std::move(res.spline));
 
@@ -120,21 +126,25 @@ nb::list RemoveKnots(nb::handle spline,
 nb::object Multiply(nb::handle a, nb::handle b) {
   const SplineArrays holder_a = Pin(a);
   const SplineArrays holder_b = Pin(b);
-  auto result = splinepy::core::Multiply(holder_a.view, holder_b.view);
+  auto result = Released(
+      [&] { return splinepy::core::Multiply(holder_a.view, holder_b.view); });
   return SplineFromData(std::move(result));
 }
 
 nb::object Add(nb::handle a, nb::handle b) {
   const SplineArrays holder_a = Pin(a);
   const SplineArrays holder_b = Pin(b);
-  auto result = splinepy::core::Add(holder_a.view, holder_b.view);
+  auto result = Released(
+      [&] { return splinepy::core::Add(holder_a.view, holder_b.view); });
   return SplineFromData(std::move(result));
 }
 
 nb::object Compose(nb::handle outer, nb::handle inner) {
   const SplineArrays holder_outer = Pin(outer);
   const SplineArrays holder_inner = Pin(inner);
-  auto result = splinepy::core::Compose(holder_outer.view, holder_inner.view);
+  auto result = Released([&] {
+    return splinepy::core::Compose(holder_outer.view, holder_inner.view);
+  });
   return SplineFromData(std::move(result));
 }
 
@@ -515,8 +525,10 @@ nb::list CompositionDerivativeBatch(nb::list outers,
 nb::list ComposeSensitivities(nb::handle outer, nb::handle inner) {
   const SplineArrays holder_outer = Pin(outer);
   const SplineArrays holder_inner = Pin(inner);
-  auto sensitivities = splinepy::core::ComposeSensitivities(holder_outer.view,
-                                                            holder_inner.view);
+  auto sensitivities = Released([&] {
+    return splinepy::core::ComposeSensitivities(holder_outer.view,
+                                                holder_inner.view);
+  });
 
   nb::list result;
   for (auto& s : sensitivities) {
@@ -530,7 +542,9 @@ nb::object DerivativeSpline(nb::handle spline, nb::object orders) {
   ContiguousAdapter<int32_t> orders_adapter(orders, "int32");
   splinepy::core::Span<const int32_t> orders_span(orders_adapter.data(),
                                                   orders_adapter.size());
-  auto result = splinepy::core::DerivativeSpline(holder.view, orders_span);
+  auto result = Released([&] {
+    return splinepy::core::DerivativeSpline(holder.view, orders_span);
+  });
   return SplineFromData(std::move(result));
 }
 
@@ -538,10 +552,11 @@ nb::list Split(nb::handle spline, int para_dim, nb::object locations) {
   const SplineArrays holder = Pin(spline);
   ContiguousAdapter<double> locs_adapter(locations, "float64");
   // Split sorts the locations itself
-  auto split_result =
-      splinepy::core::Split(holder.view,
-                            para_dim,
-                            {locs_adapter.data(), locs_adapter.size()});
+  auto split_result = Released([&] {
+    return splinepy::core::Split(holder.view,
+                                 para_dim,
+                                 {locs_adapter.data(), locs_adapter.size()});
+  });
 
   nb::list result;
   for (auto& s : split_result) {
@@ -552,7 +567,8 @@ nb::list Split(nb::handle spline, int para_dim, nb::object locations) {
 
 nb::list ExtractBezierPatches(nb::handle spline) {
   const SplineArrays holder = Pin(spline);
-  auto patches = splinepy::core::ExtractBezierPatches(holder.view);
+  auto patches = Released(
+      [&] { return splinepy::core::ExtractBezierPatches(holder.view); });
 
   nb::list result;
   for (auto& p : patches) {
@@ -607,9 +623,11 @@ nb::object CompositionDerivative(nb::handle outer,
   const SplineArrays holder_outer = Pin(outer);
   const SplineArrays holder_inner = Pin(inner);
   const SplineArrays holder_inner_der = Pin(inner_derivative);
-  auto result = splinepy::core::CompositionDerivative(holder_outer.view,
-                                                      holder_inner.view,
-                                                      holder_inner_der.view);
+  auto result = Released([&] {
+    return splinepy::core::CompositionDerivative(holder_outer.view,
+                                                 holder_inner.view,
+                                                 holder_inner_der.view);
+  });
   return SplineFromData(std::move(result));
 }
 
