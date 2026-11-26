@@ -12,8 +12,6 @@ namespace splinepy::core {
 namespace {
 
 constexpr int64_t kLeafSize = 2;
-// same tolerance as the bezier extraction, to keep element orders identical
-constexpr double kSpanTolerance = 1e-12;
 
 } // namespace
 
@@ -25,10 +23,11 @@ ElementBvh::ElementBvh(const SplineView& spline)
   }
 
   // finite control points and positive weights are required for convex hull
-  const int64_t total_coords = spline.num_control_points * dim_;
-  for (int64_t i{}; i < total_coords; ++i) {
-    if (!std::isfinite(spline.control_points_data[i])) {
-      return;
+  for (int64_t i{}; i < spline.num_control_points; ++i) {
+    for (int32_t k{}; k < dim_; ++k) {
+      if (!std::isfinite(spline.Point(i, k))) {
+        return;
+      }
     }
   }
   if (spline.IsRational()) {
@@ -57,7 +56,8 @@ ElementBvh::ElementBvh(const SplineView& spline)
       }
       for (int64_t k = spline.degrees[d]; k < spline.NumControlPointsPerAxis(d);
            ++k) {
-        if (kv[k + 1] - kv[k] > kSpanTolerance) {
+        // as the bezier extraction, to keep element orders identical
+        if (kv[k + 1] > kv[k]) {
           span_lo[d].push_back(kv[k]);
           span_hi[d].push_back(kv[k + 1]);
         }
