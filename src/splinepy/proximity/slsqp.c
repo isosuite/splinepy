@@ -1,3 +1,5 @@
+/* only slsqp() is visible outside of this file */
+#define SPLINEPY_SLSQP_C
 #include "splinepy/proximity/slsqp/slsqp.h"
 
 #ifdef __cplusplus
@@ -2372,59 +2374,6 @@ L60:
   ret_val = dtemp;
   return ret_val;
 } /* ddot_sl */
-
-double dnrm1(const int* n, const double* x, const int* i__, const int* j) {
-  (void) n;
-  /* Initialized data */
-
-  const double zero = 0.;
-  const double one = 1.;
-
-  /* System generated locals */
-  int i__1;
-  double ret_val, d__1, d__2, d__3;
-
-  /* Local variables */
-  int k;
-  double sum, temp, scale, snormx;
-
-  /* Parameter adjustments */
-  --x;
-
-  /* Function Body */
-
-  snormx = zero;
-  i__1 = *j;
-  for (k = *i__; k <= i__1; ++k) {
-    /* L10: */
-    /* Computing MAX */
-    d__2 = snormx, d__3 = (d__1 = x[k], fabs(d__1));
-    snormx = max(d__2, d__3);
-  }
-  ret_val = snormx;
-  if (snormx == zero) {
-    return ret_val;
-  }
-  scale = snormx;
-  if (snormx >= one) {
-    scale = sqrt(snormx);
-  }
-  sum = zero;
-  i__1 = *j;
-  for (k = *i__; k <= i__1; ++k) {
-    temp = zero;
-    if ((d__1 = x[k], fabs(d__1)) + scale != scale) {
-      temp = x[k] / snormx;
-    }
-    if (one + temp != one) {
-      sum += temp * temp;
-    }
-    /* L20: */
-  }
-  sum = sqrt(sum);
-  ret_val = snormx * sum;
-  return ret_val;
-} /* dnrm1 */
 
 double dnrm2(const int* n, const double* dx, const int* incx) {
   /* Initialized data */

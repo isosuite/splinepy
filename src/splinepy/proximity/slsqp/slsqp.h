@@ -260,6 +260,9 @@ int slsqp(int* m,
           int* n3,
           SlsqpLineSearchState* line_search);
 
+/* The routines below are local to slsqp.c. */
+#ifdef SPLINEPY_SLSQP_C
+
 /*   NONLINEAR PROGRAMMING BY SOLVING SEQUENTIALLY QUADRATIC PROGRAMS */
 /*        -  L1 - LINE SEARCH,  POSITIVE DEFINITE  BFGS UPDATE  - */
 /*                      BODY SUBROUTINE FOR SLSQP */
@@ -267,48 +270,48 @@ int slsqp(int* m,
 /*                     +(N1-MEQ+1)*(MINEQ+2) + 2*MINEQ */
 /*                     +(N1+MINEQ)*(N1-MEQ) + 2*MEQ + N1       for LSEI */
 /*                      with MINEQ = M - MEQ + 2*N1  &  N1 = N+1 */
-int slsqpb(int* m,
-           int* meq,
-           int* la,
-           int* n,
-           double* x,
-           double* xl,
-           double* xu,
-           double* f,
-           double* c__,
-           double* g,
-           double* a,
-           double* acc,
-           int* iter,
-           int* mode,
-           double* r__,
-           double* l,
-           double* x0,
-           double* mu,
-           double* s,
-           double* u,
-           double* v,
-           double* w,
-           int* iw,
-           double* alpha,
-           double* f0,
-           double* gs,
-           double* h1,
-           double* h2,
-           double* h3,
-           double* h4,
-           double* t,
-           double* t0,
-           double* tol,
-           int* iexact,
-           int* incons,
-           int* ireset,
-           int* itermx,
-           int* line,
-           int* n1,
-           int* n2,
-           int* n3,
-           SlsqpLineSearchState* line_search);
+static int slsqpb(int* m,
+                  int* meq,
+                  int* la,
+                  int* n,
+                  double* x,
+                  double* xl,
+                  double* xu,
+                  double* f,
+                  double* c__,
+                  double* g,
+                  double* a,
+                  double* acc,
+                  int* iter,
+                  int* mode,
+                  double* r__,
+                  double* l,
+                  double* x0,
+                  double* mu,
+                  double* s,
+                  double* u,
+                  double* v,
+                  double* w,
+                  int* iw,
+                  double* alpha,
+                  double* f0,
+                  double* gs,
+                  double* h1,
+                  double* h2,
+                  double* h3,
+                  double* h4,
+                  double* t,
+                  double* t0,
+                  double* tol,
+                  int* iexact,
+                  int* incons,
+                  int* ireset,
+                  int* itermx,
+                  int* line,
+                  int* n1,
+                  int* n2,
+                  int* n3,
+                  SlsqpLineSearchState* line_search);
 
 /*   MINIMIZE with respect to X */
 /*             ||E*X - F|| */
@@ -344,22 +347,22 @@ int slsqpb(int* m,
 /*               7: RANK DEFECT IN HFTI */
 /*     coded            Dieter Kraft, april 1987 */
 /*     revised                        march 1989 */
-int lsq(const int* m,
-        const int* meq,
-        const int* n,
-        const int* nl,
-        const int* la,
-        const double* l,
-        const double* g,
-        const double* a,
-        const double* b,
-        const double* xl,
-        const double* xu,
-        double* x,
-        double* y,
-        double* w,
-        int* jw,
-        int* mode);
+static int lsq(const int* m,
+               const int* meq,
+               const int* n,
+               const int* nl,
+               const int* la,
+               const double* l,
+               const double* g,
+               const double* a,
+               const double* b,
+               const double* xl,
+               const double* xu,
+               double* x,
+               double* y,
+               double* w,
+               int* jw,
+               int* mode);
 
 /*     FOR MODE=1, THE SUBROUTINE RETURNS THE SOLUTION X OF */
 /*     EQUALITY & INEQUALITY CONSTRAINED LEAST SQUARES PROBLEM LSEI : */
@@ -397,24 +400,24 @@ int lsq(const int* m,
 /*               7: RANK DEFECT IN HFTI */
 /*     18.5.1981, DIETER KRAFT, DFVLR OBERPFAFFENHOFEN */
 /*     20.3.1987, DIETER KRAFT, DFVLR OBERPFAFFENHOFEN */
-int lsei(double* c__,
-         double* d__,
-         double* e,
-         double* f,
-         double* g,
-         double* h__,
-         const int* lc,
-         const int* mc,
-         const int* le,
-         const int* me,
-         const int* lg,
-         const int* mg,
-         const int* n,
-         double* x,
-         double* xnrm,
-         double* w,
-         int* jw,
-         int* mode);
+static int lsei(double* c__,
+                double* d__,
+                double* e,
+                double* f,
+                double* g,
+                double* h__,
+                const int* lc,
+                const int* mc,
+                const int* le,
+                const int* me,
+                const int* lg,
+                const int* mg,
+                const int* n,
+                double* x,
+                double* xnrm,
+                double* w,
+                int* jw,
+                int* mode);
 
 /*     FOR MODE=1, THE SUBROUTINE RETURNS THE SOLUTION X OF */
 /*     INEQUALITY CONSTRAINED LINEAR LEAST SQUARES PROBLEM: */
@@ -446,20 +449,20 @@ int lsei(double* c__,
 /*               5: MATRIX E IS NOT OF FULL RANK */
 /*     03.01.1980, DIETER KRAFT: CODED */
 /*     20.03.1987, DIETER KRAFT: REVISED TO FORTRAN 77 */
-int lsi(double* e,
-        double* f,
-        double* g,
-        double* h__,
-        const int* le,
-        const int* me,
-        const int* lg,
-        const int* mg,
-        const int* n,
-        double* x,
-        double* xnorm,
-        double* w,
-        int* jw,
-        int* mode);
+static int lsi(double* e,
+               double* f,
+               double* g,
+               double* h__,
+               const int* le,
+               const int* me,
+               const int* lg,
+               const int* mg,
+               const int* n,
+               double* x,
+               double* xnorm,
+               double* w,
+               int* jw,
+               int* mode);
 
 /*                     T */
 /*     MINIMIZE   1/2 X X    SUBJECT TO   G * X >= H. */
@@ -489,16 +492,16 @@ int lsi(double* e,
 /*               2: ERROR RETURN BECAUSE OF WRONG DIMENSIONS (N.LE.0) */
 /*               3: ITERATION COUNT EXCEEDED BY NNLS */
 /*               4: INEQUALITY CONSTRAINTS INCOMPATIBLE */
-int ldp(const double* g,
-        const int* mg,
-        const int* m,
-        const int* n,
-        const double* h__,
-        double* x,
-        double* xnorm,
-        double* w,
-        int* index,
-        int* mode);
+static int ldp(const double* g,
+               const int* mg,
+               const int* m,
+               const int* n,
+               const double* h__,
+               double* x,
+               double* xnorm,
+               double* w,
+               int* index,
+               int* mode);
 
 /*     C.L.LAWSON AND R.J.HANSON, JET PROPULSION LABORATORY: */
 /*     'SOLVING LEAST SQUARES PROBLEMS'. PRENTICE-HALL.1974 */
@@ -536,17 +539,17 @@ int ldp(const double* g,
 /*            2    THE DIMENSIONS OF THE PROBLEM ARE WRONG, */
 /*                 EITHER M <= 0 OR N <= 0. */
 /*            3    ITERATION COUNT EXCEEDED, MORE THAN 3*N ITERATIONS. */
-int nnls(double* a,
-         const int* mda,
-         const int* m,
-         const int* n,
-         double* b,
-         double* x,
-         double* rnorm,
-         double* w,
-         double* z__,
-         int* index,
-         int* mode);
+static int nnls(double* a,
+                const int* mda,
+                const int* m,
+                const int* n,
+                double* b,
+                double* x,
+                double* rnorm,
+                double* w,
+                double* z__,
+                int* index,
+                int* mode);
 
 /*     RANK-DEFICIENT LEAST SQUARES ALGORITHM AS DESCRIBED IN: */
 /*     C.L.LAWSON AND R.J.HANSON, JET PROPULSION LABORATORY, 1973 JUN 12 */
@@ -575,19 +578,19 @@ int nnls(double* a,
 /*     H(), G()         ARRAYS OF WORKING SPACE OF LENGTH >= N. */
 /*     IP()             INTEGER ARRAY OF WORKING SPACE OF LENGTH >= N */
 /*                      RECORDING PERMUTATION INDICES OF COLUMN VECTORS */
-int hfti(double* a,
-         const int* mda,
-         const int* m,
-         const int* n,
-         double* b,
-         const int* mdb,
-         const int* nb,
-         const double* tau,
-         int* krank,
-         double* rnorm,
-         double* h__,
-         double* g,
-         int* ip);
+static int hfti(double* a,
+                const int* mda,
+                const int* m,
+                const int* n,
+                double* b,
+                const int* mdb,
+                const int* nb,
+                const double* tau,
+                int* krank,
+                double* rnorm,
+                double* h__,
+                double* g,
+                int* ip);
 
 /*     C.L.LAWSON AND R.J.HANSON, JET PROPULSION LABORATORY, 1973 JUN 12 */
 /*     TO APPEAR IN 'SOLVING LEAST SQUARES PROBLEMS', PRENTICE-HALL, 1974 */
@@ -614,17 +617,17 @@ int hfti(double* a,
 /*     ICV    STORAGE INCREMENT BETWEEN VECTORS IN C(). */
 /*     NCV    NUMBER OF VECTORS IN C() TO BE TRANSFORMED. */
 /*            IF NCV <= 0 NO OPERATIONS WILL BE DONE ON C(). */
-int h12(const int* mode,
-        const int* lpivot,
-        const int* l1,
-        const int* m,
-        double* u,
-        const int* iue,
-        double* up,
-        double* c__,
-        const int* ice,
-        const int* icv,
-        const int* ncv);
+static int h12(const int* mode,
+               const int* lpivot,
+               const int* l1,
+               const int* m,
+               double* u,
+               const int* iue,
+               double* up,
+               double* c__,
+               const int* ice,
+               const int* icv,
+               const int* ncv);
 
 /*   LDL     LDL' - RANK-ONE - UPDATE */
 /*   PURPOSE: */
@@ -651,7 +654,8 @@ int h12(const int* mode,
 /*               D-8031  OBERPFAFFENHOFEN */
 /*   STATUS: 15. JANUARY 1980 */
 /*   SUBROUTINES REQUIRED: NONE */
-int ldl(const int* n, double* a, double* z__, const double* sigma, double* w);
+static int
+ldl(const int* n, double* a, double* z__, const double* sigma, double* w);
 
 /*   LINMIN  LINESEARCH WITHOUT DERIVATIVES */
 /*   PURPOSE: */
@@ -685,51 +689,40 @@ int ldl(const int* n, double* a, double* z__, const double* sigma, double* w);
 /*   SUBROUTINES REQUIRED: NONE */
 /*  EPS = SQUARE - ROOT OF MACHINE PRECISION */
 /*  C = GOLDEN SECTION RATIO = (3-SQRT(5))/2 */
-double linmin(int* mode,
-              const double* ax,
-              const double* bx,
-              const double* f,
-              const double* tol,
-              SlsqpLineSearchState* state);
+static double linmin(int* mode,
+                     const double* ax,
+                     const double* bx,
+                     const double* f,
+                     const double* tol,
+                     SlsqpLineSearchState* state);
 
 /*     CONSTANT TIMES A VECTOR PLUS A VECTOR. */
 /*     USES UNROLLED LOOPS FOR INCREMENTS EQUAL TO ONE. */
 /*     JACK DONGARRA, LINPACK, 3/11/78. */
-int daxpy_sl(const int* n,
-             const double* da,
-             const double* dx,
-             const int* incx,
-             double* dy,
-             const int* incy);
+static int daxpy_sl(const int* n,
+                    const double* da,
+                    const double* dx,
+                    const int* incx,
+                    double* dy,
+                    const int* incy);
 
 /*     COPIES A VECTOR, X, TO A VECTOR, Y. */
 /*     USES UNROLLED LOOPS FOR INCREMENTS EQUAL TO ONE. */
 /*     JACK DONGARRA, LINPACK, 3/11/78. */
-int dcopy(const int* n,
-          const double* dx,
-          const int* incx,
-          double* dy,
-          const int* incy);
+static int dcopy(const int* n,
+                 const double* dx,
+                 const int* incx,
+                 double* dy,
+                 const int* incy);
 
 /*     FORMS THE DOT PRODUCT OF TWO VECTORS. */
 /*     USES UNROLLED LOOPS FOR INCREMENTS EQUAL TO ONE. */
 /*     JACK DONGARRA, LINPACK, 3/11/78. */
-double ddot_sl(const int* n,
-               const double* dx,
-               const int* incx,
-               const double* dy,
-               const int* incy);
-
-/*      DNRM1 - COMPUTES THE I-NORM OF A VECTOR */
-/*              BETWEEN THE ITH AND THE JTH ELEMENTS */
-/*      INPUT - */
-/*      N       LENGTH OF VECTOR */
-/*      X       VECTOR OF LENGTH N */
-/*      I       INITIAL ELEMENT OF VECTOR TO BE USED */
-/*      J       FINAL ELEMENT TO USE */
-/*      OUTPUT - */
-/*      DNRM1   NORM */
-double dnrm1(const int* n, const double* x, const int* i__, const int* j);
+static double ddot_sl(const int* n,
+                      const double* dx,
+                      const int* incx,
+                      const double* dy,
+                      const int* incy);
 
 /* Function Body */
 /*     EUCLIDEAN NORM OF THE N-VECTOR STORED IN DX() WITH STORAGE */
@@ -764,29 +757,32 @@ double dnrm1(const int* n, const double* x, const int* i__, const int* j);
 /*     CUTHI, D.P.   SAME AS S.P.  CUTHI = 1.30438D19 */
 /*     DATA CUTLO, CUTHI / 8.232D-11,  1.304D19 / */
 /*     DATA CUTLO, CUTHI / 4.441E-16,  1.304E19 / */
-double dnrm2(const int* n, const double* dx, const int* incx);
+static double dnrm2(const int* n, const double* dx, const int* incx);
 
 /*     APPLIES A PLANE ROTATION. */
 /*     JACK DONGARRA, LINPACK, 3/11/78. */
-int dsrot(const int* n,
-          double* dx,
-          const int* incx,
-          double* dy,
-          const int* incy,
-          const double* c__,
-          const double* s);
+static int dsrot(const int* n,
+                 double* dx,
+                 const int* incx,
+                 double* dy,
+                 const int* incy,
+                 const double* c__,
+                 const double* s);
 
 /*     CONSTRUCT GIVENS PLANE ROTATION. */
 /*     JACK DONGARRA, LINPACK, 3/11/78. */
 /*                    MODIFIED 9/27/86. */
-int dsrotg(double* da, double* db, double* c__, double* s);
+static int dsrotg(double* da, double* db, double* c__, double* s);
 
 /*     SCALES A VECTOR BY A CONSTANT. */
 /*     USES UNROLLED LOOPS FOR INCREMENT EQUAL TO ONE. */
 /*     JACK DONGARRA, LINPACK, 3/11/78. */
-int dscal_sl(const int* n, const double* da, double* dx, const int* incx);
+static int
+dscal_sl(const int* n, const double* da, double* dx, const int* incx);
 
-int bound(const int* n, double* x, const double* xl, const double* xu);
+static int bound(const int* n, double* x, const double* xl, const double* xu);
+
+#endif /* SPLINEPY_SLSQP_C */
 
 #ifdef __cplusplus
 } /* extern "C */
