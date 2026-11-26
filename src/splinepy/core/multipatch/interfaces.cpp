@@ -17,7 +17,7 @@ ParametricBox ParametricBounds(const SplineView& spline) {
   const int32_t para_dim = spline.para_dim;
   ParametricBox bounds(para_dim);
 
-  if (spline.knot_vectors.empty()) {
+  if (!spline.HasKnotVectors()) {
     for (int32_t d = 0; d < para_dim; ++d) {
       bounds[d] = 0.0;
       bounds[para_dim + d] = 1.0;
