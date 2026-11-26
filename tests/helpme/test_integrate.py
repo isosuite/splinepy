@@ -350,3 +350,25 @@ def test_default_quadrature_integrates_the_mass_matrix():
     mass = np.einsum("qi,qj,q->ij", basis, basis, trafo._quad_weights)
     assert np.linalg.matrix_rank(mass) == 5
     np.testing.assert_allclose(mass.sum(), 1.0)
+
+
+def test_field_integrator_on_curves_and_coarser_fields():
+    integrator_type = splinepy.helpme.integrate.FieldIntegrator
+    curve = splinepy.BSpline(
+        [2], [[0, 0, 0, 0.5, 1, 1, 1]], np.linspace(0, 1, 4).reshape(-1, 1)
+    )
+    integrator = integrator_type(curve)
+    np.testing.assert_array_equal(integrator.get_boundary_dofs(), [0, 3])
+    np.testing.assert_allclose(
+        integrator.L2_projection(lambda x: x[:, :1]), curve.cps.ravel(), atol=1e-12
+    )
+    # elements end at the knots of the geometry and of the field
+    geometry = splinepy.BSpline(
+        [1, 1],
+        [[0, 0, 0.5, 1, 1], [0, 0, 1, 1]],
+        [[0, 0], [1, 0], [1.5, 0], [0, 1], [1, 1], [1.5, 1]],
+    )
+    field = splinepy.BSpline([1, 1], [[0, 0, 1, 1]] * 2, np.zeros((4, 1)))
+    integrator = integrator_type(geometry, field)
+    assert integrator._trafo._n_elems == 2
+    assert integrator.supports.max() == 3

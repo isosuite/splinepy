@@ -310,10 +310,15 @@ class Transformation:
         if self._para_dim == 3:
             raise NotImplementedError("Not yet tested for 3D")
 
-        if solution_field is None:
-            self._ukv = spline.unique_knots
-        else:
-            self._ukv = self._solution_field.unique_knots
+        self._ukv = spline.unique_knots
+        if solution_field is not None:
+            # both are polynomial only between the knots of either
+            self._ukv = [
+                _np.union1d(geometry, field)
+                for geometry, field in zip(
+                    self._ukv, solution_field.unique_knots, strict=True
+                )
+            ]
         n_elems_per_dim = [len(kv) - 1 for kv in self._ukv]
         self._n_elems = _np.prod(n_elems_per_dim)
 
@@ -825,7 +830,7 @@ class FieldIntegrator:
             The supports
         """
         if self._supports is None:
-            self._supports = self._helpee.support(
+            self._supports = self._solution_field.support(
                 self._trafo.all_quad_points.reshape(-1, self._helpee.para_dim)
             )
 
@@ -1067,7 +1072,7 @@ class FieldIntegrator:
             quad_points_forward = mapper._geometry_reference.evaluate(
                 quad_points
             )
-            function_values = function(quad_points_forward)
+            function_values = _np.reshape(function(quad_points_forward), -1)
             element_vector = _np.einsum(
                 "qj,q,q,q->j",
                 bf_values,
@@ -1152,20 +1157,21 @@ class FieldIntegrator:
 
         multi_index = relevant_spline.multi_index
 
-        multi_indices = [
-            multi_index[0, :],
-            multi_index[-1, :],
-            multi_index[:, 0],
-            multi_index[:, -1],
-        ]
+        # west, east, south, north: both ends of every axis
+        multi_indices = []
+        for axis in range(relevant_spline.para_dim):
+            for end in (0, -1):
+                face = [slice(None)] * relevant_spline.para_dim
+                face[axis] = end
+                multi_indices.append(multi_index[tuple(face)])
 
         # If at least one boundary is True, set all_boundaries to False
         if north or east or south or west:
             all_boundaries = False
 
-        boundaries = (
-            [True] * 4 if all_boundaries else [west, east, south, north]
-        )
+        boundaries = [west, east, south, north][: len(multi_indices)]
+        if all_boundaries:
+            boundaries = [True] * len(multi_indices)
 
         indices = _np.unique(
             _np.hstack(
