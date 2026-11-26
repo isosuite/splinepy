@@ -42,15 +42,7 @@ test = ["pytest", "gustaf>=0.0.25", "scipy"]
 splinepy = "splinepy.cli:entry"
 
 [tool.scikit-build]
-wheel.packages = [
-    "splinepy",
-    "splinepy.io",
-    "splinepy.utils",
-    "splinepy.helpme",
-    "splinepy.microstructure",
-    "splinepy.microstructure.tiles",
-    "splinepy.viewer",
-]
+wheel.packages = ["splinepy"]
 # The viewer's JS sources build static/viewer.bundle.js (committed); only the
 # bundle ships.
 wheel.exclude = ["splinepy/viewer/js/"]
@@ -114,9 +106,7 @@ lint.ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"setup.py" = ["T201"]
 "examples/*.py" = ["T201"]
-"tests/common.py" = ["T201"]
 "tests/generate_golden_data.py" = ["T201"]
 "benchmarks/*.py" = ["T201"]
 "splinepy/cli.py" = ["T201"]

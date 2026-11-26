@@ -755,7 +755,7 @@ def determinant_spline(spline):
     if spline.dim != spline.para_dim:
         raise ValueError(
             "Dimension of parameter space and physical space"
-            "are not the same ({spline.whatami})!"
+            f"are not the same ({spline.whatami})!"
         )
 
     # checks if spline is rational and if weights differ

@@ -1252,7 +1252,7 @@ def export(
             for key, value in kwargs.items():
                 try:
                     object.show_options[key] = value
-                except BaseException:
+                except Exception:
                     continue
 
         if isinstance(object, Spline):
