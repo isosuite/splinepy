@@ -212,12 +212,12 @@ private:
   void ComputeStatus(detail::SearchData& data,
                      const bool recompute_costs) const;
 
-  /// @brief resets search bounds to spline's parametric bounds. if tight==true,
-  /// current_guess +- the sampling step size of the initial guess source.
+  /// @brief resets search bounds to spline's parametric bounds, cut to
+  /// current_guess +- step if a step (para_dim) is given.
   /// @param data
-  /// @param tight
+  /// @param step
   void FindSearchBound(detail::SearchData& data,
-                       const bool tight = false) const;
+                       const double* step = nullptr) const;
 
   /// @brief Prepares lhs and rhs of newton iteration
   void PrepareIterationNewton(detail::SearchData& data) const;
@@ -260,11 +260,12 @@ private:
 
 public:
   /// @brief Runs the solver chain from a given start. Same outputs as
-  /// VerboseQuery().
+  /// VerboseQuery(). With a search_step (para_dim) the search stays within
+  /// start +- search_step: the sampling step of the start, for tight bounds.
   void SolveFrom(const double* query,
                  const double& tolerance,
                  const int& max_iterations,
-                 const bool tight_bounds,
+                 const double* search_step,
                  const double* start,
                  double* final_guess,
                  double* nearest,
@@ -281,7 +282,7 @@ public:
   /// @param[in] query
   /// @param[in] tolerance
   /// @param[in] max_iterations
-  /// @param[in] tight_bounds
+  /// @param[in] tight_bounds search within one sampling step of each start
   /// @param[out] final_guess (para_dim)
   /// @param[out] nearest (dim)
   /// @param[out] nearest_minus_query (dim)

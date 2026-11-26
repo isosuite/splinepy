@@ -17,16 +17,6 @@ namespace {
 
 using detail::CheckedProduct;
 
-class SamplingStep : public proximity::InitialGuess {
-public:
-  explicit SamplingStep(Span<const double> step) : step_(step) {}
-  void Guess(const double*, double*) const override {}
-  const double* StepSize() const override { return step_.data(); }
-
-private:
-  Span<const double> step_;
-};
-
 double SquaredDistance(Span<const double> a, Span<const double> b) {
   double result = 0.0;
   for (std::size_t i = 0; i < a.size(); ++i) {
@@ -230,9 +220,6 @@ HierarchyProximities(const HierarchicalSplineView& spline,
         std::size_t best_leaf = 0;
         bool found = false;
         proximity::Proximity solver(SplineView{});
-        if (tight_bounds) {
-          solver.SetInitialGuess(std::make_unique<SamplingStep>(step));
-        }
 
         data.bvh.Traverse(
             query.data(),
@@ -287,7 +274,7 @@ HierarchyProximities(const HierarchicalSplineView& spline,
                 solver.SolveFrom(query.data(),
                                  tolerance,
                                  max_iterations,
-                                 tight_bounds,
+                                 tight_bounds ? step.data() : nullptr,
                                  unit_queries.data() + start * pd,
                                  candidate.data(),
                                  point.data(),
