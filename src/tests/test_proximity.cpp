@@ -88,6 +88,32 @@ TEST(Proximity, BvhFindsClosestPointNextToCollapsedEdge) {
   }
 }
 
+TEST(Proximity, LevenbergMarquardtLeavesACornerItsStepIsClippedTo) {
+  // sheared plane: the first step from the corner points out of both bounds,
+  // while the closest point is on the edge u = 0
+  Cone plane;
+  plane.cps = {0, 0, 0, 1, 0, 0, -.9, .436, 0, .1, .436, 0};
+  Proximity proximity(plane.View());
+  const auto solver = Solver::kLevenbergMarquart;
+  proximity.SetSolverChain({&solver, 1});
+  const double query[3] = {-10., -19.5, 0.};
+  const double start[2] = {0., 0.};
+  double guess[2], nearest[3], diff[3], dist{}, conv{}, first[6];
+  proximity.SolveFrom(query,
+                      1e-10,
+                      100,
+                      start,
+                      guess,
+                      nearest,
+                      diff,
+                      dist,
+                      conv,
+                      first,
+                      nullptr);
+  EXPECT_DOUBLE_EQ(guess[0], 0.);
+  EXPECT_NEAR(guess[1], (9. - .436 * 19.5) / (.81 + .436 * .436), 1e-6);
+}
+
 TEST(Proximity, IndividualSolversOnEmbeddedCurveWithOptionalOutputs) {
   const int32_t degrees[] = {1};
   const double points[] = {0, 0, 0, 2, 0, 0};

@@ -117,6 +117,21 @@ void Proximity::LevenbergMarquart(SearchData& data) const {
               data.spline_gradient_AAt.end(),
               lhs.begin());
     CopyNegated(data.djdu, rhs);
+    // an axis that is pushed out of its bound stays, and so do not drag the
+    // others with it
+    for (int i{}; i < para_dim; ++i) {
+      if (!PushesOutOfBounds(data.current_guess[i],
+                             data.djdu[i],
+                             data.lower_bound[i],
+                             data.upper_bound[i])) {
+        continue;
+      }
+      for (int j{}; j < para_dim; ++j) {
+        lhs[i * para_dim + j] = lhs[j * para_dim + i] = 0.0;
+      }
+      lhs[i * para_dim + i] = 1.0;
+      rhs[i] = 0.0;
+    }
     if (!SolvePivoted(lhs, rhs, data.delta_guess, rows)) {
       break;
     }
@@ -159,9 +174,10 @@ void Proximity::LevenbergMarquart(SearchData& data) const {
         (metric2 < 0.0) ? -(lm.prev_J - data.status.J) / metric2 : -1.0;
     const double chosen_rho = std::max(rho, rho2);
 
-    // reject the update if it got worse (@jzwar's practical trick) and
-    // increase the penalty
-    if ((!(chosen_rho >= lm.lower_bound)) && data.status.J > lm.prev_J) {
+    // reject the update if it did not get better (@jzwar's practical trick)
+    // and increase the penalty. This includes a step that is clipped back to
+    // where it started.
+    if ((!(chosen_rho >= lm.lower_bound)) && data.status.J >= lm.prev_J) {
       lm.lambda *= 2.0;
       // lambda between 2^13 and 2^14 -> exit
       if (lm.lambda > 1.e5) {
