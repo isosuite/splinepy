@@ -97,6 +97,19 @@ TEST(TeamTest, FirstOfSeveralExceptionsIsRethrown) {
                std::invalid_argument);
 }
 
+TEST(TeamTest, ThrowOutsideOfAStageReleasesTheOthers) {
+  std::atomic<int> later{0};
+  EXPECT_THROW(RunTeam(4,
+                       [&](Team& team) {
+                         if (team.Id() == 1) {
+                           throw std::invalid_argument("setup");
+                         }
+                         team.For(4, [&](std::size_t) {});
+                         team.For(4, [&](std::size_t) { ++later; });
+                       }),
+               std::invalid_argument);
+}
+
 TEST(TeamTest, SoloRunsInlineAndPropagates) {
   Team solo = Team::Solo();
   EXPECT_EQ(solo.Id(), 0);

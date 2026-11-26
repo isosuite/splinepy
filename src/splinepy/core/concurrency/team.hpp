@@ -26,7 +26,7 @@ public:
   explicit TeamState(int size) : size_(size) {}
 
   /// Blocks until all size members arrived. Reusable: each round waits for
-  /// its own generation.
+  /// its own generation. Nobody waits once a member left.
   void ArriveAndWait() {
     std::unique_lock<std::mutex> lock(mutex_);
     const std::size_t generation = generation_;
@@ -36,7 +36,15 @@ public:
       cv_.notify_all();
       return;
     }
-    cv_.wait(lock, [&] { return generation_ != generation; });
+    cv_.wait(lock, [&] { return generation_ != generation || left_; });
+  }
+
+  /// A member threw outside of a stage and will not arrive anymore.
+  void Leave(std::exception_ptr error) {
+    Fail(std::move(error));
+    std::lock_guard<std::mutex> lock(mutex_);
+    left_ = true;
+    cv_.notify_all();
   }
 
   void Fail(std::exception_ptr error) {
@@ -61,6 +69,7 @@ private:
   const int size_;
   int arrived_{0};
   std::size_t generation_{0};
+  bool left_{false};
   std::atomic<bool> failed_{false};
   std::exception_ptr error_;
 };
@@ -112,7 +121,8 @@ private:
 /// Runs body(team) on ResolveThreadCount(nthreads) threads, the caller
 /// included, which are woken once and synchronize at every team.For. body
 /// must do all its work inside team.For, so that every member reaches each
-/// barrier. The first exception is rethrown after all members finished.
+/// barrier; if it throws outside, the others skip their remaining stages.
+/// The first exception is rethrown after all members finished.
 template<typename Body>
 void RunTeam(int nthreads, Body&& body) {
   const int n = ResolveThreadCount(nthreads);
@@ -126,7 +136,11 @@ void RunTeam(int nthreads, Body&& body) {
   // member does everything
   const bool together = RunOnThreads(n, [&](int id) {
     Team team(id, n, &state);
-    body(team);
+    try {
+      body(team);
+    } catch (...) {
+      state.Leave(std::current_exception());
+    }
   });
   if (!together) {
     Team solo = Team::Solo();
