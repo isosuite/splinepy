@@ -155,7 +155,6 @@ struct SearchData {
   struct LMData {
     double lambda;
     double prev_J;
-    bool modified_update{false};
     double lower_bound;
     double upper_bound;
     Span<double> metric;

@@ -20,7 +20,6 @@ except ImportError:
 
 __all__ = [
     "_DataHolder",
-    "enforce_contiguous_values",
     "cartesian_product",
     "SplineDataAdaptor",
     "SplineData",
@@ -107,43 +106,6 @@ def enforce_contiguous(array, dtype=None, asarray=False):
         return _np.ascontiguousarray(array, dtype=dtype)
 
     return array
-
-
-def enforce_contiguous_values(dict_):
-    """
-    Returns a new dict where values are contiguous. If the value is
-    an array, enforces contiguous elements for one recursive level.
-    This also removes None values.
-
-    Parameters
-    ----------
-    dict_: dict
-
-    Returns
-    -------
-    dict_with_contiguous: dict
-    """
-    dict_with_contiguous = {}
-    for key, value in dict_.items():
-        # most likely will be asking about np.ndarray
-        if isinstance(value, _np.ndarray):
-            contig_value = enforce_contiguous(value)
-
-        # or, list. only check if the first element is np.ndarray
-        elif isinstance(value, list) and isinstance(value[0], _np.ndarray):
-            contig_value = [enforce_contiguous(v) for v in value]
-
-        # abandon Nones
-        elif value is None:
-            continue
-
-        else:
-            contig_value = value
-
-        # set item
-        dict_with_contiguous[key] = contig_value
-
-    return dict_with_contiguous
 
 
 def cartesian_product(arrays, reverse=True):

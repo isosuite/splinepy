@@ -108,13 +108,6 @@ void Proximity::MakeInitialGuess(Span<const double> goal,
   initial_guess_->Guess(goal.data(), guess.data());
 }
 
-void Proximity::MakeInitialGuess(SearchData& data) const {
-  MakeInitialGuess(data.phys_query, data.initial_guess);
-  std::copy(data.initial_guess.begin(),
-            data.initial_guess.end(),
-            data.current_guess.begin());
-}
-
 void Proximity::FindSearchBound(SearchData& data) const {
   auto pb = splinepy::core::ParametricBounds(spline_);
   std::copy(pb.begin(), pb.end(), data.search_bounds.data());

@@ -78,12 +78,8 @@ void Proximity::PrepareIterationLevenbergMarquart(SearchData& data) const {
   ComputeCostAndDerivatives(data, 1);
   ComputeGramMatrix(data);
 
-  const bool modified = data.LM.modified_update;
-  const double diag_contribution = data.LM.lambda + (modified ? 1.0 : 0.0);
   for (int i{}; i < data.para_dim; ++i) {
-    double& diagonal = data.spline_gradient_AAt[i * data.para_dim + i];
-    diagonal =
-        modified ? diagonal * diag_contribution : diagonal + diag_contribution;
+    data.spline_gradient_AAt[i * data.para_dim + i] += data.LM.lambda;
   }
 }
 

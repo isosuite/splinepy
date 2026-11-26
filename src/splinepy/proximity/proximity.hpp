@@ -184,11 +184,6 @@ public:
   void MakeInitialGuess(Span<const double> goal, Span<double> guess) const;
 
 private:
-  /// @brief make initial guess from the initial guess source.
-  /// Initial guess is saved to both initial_guess and current_guess
-  /// @param data
-  void MakeInitialGuess(detail::SearchData& data) const;
-
   /// @brief updates current_guess with delta_guess and clips result
   /// @param data
   void UpdateAndClip(detail::SearchData& data) const;
