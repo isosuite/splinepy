@@ -777,8 +777,7 @@ L330:
     dcopy(m, &w[iw], &c__1, &y[1], &c__1);
     /*   set rest of the multipliers to nan (they are not used) */
     if (n3 > 0) {
-      y[*m + 1] = 0.;
-      y[*m + 1] = 0 / y[*m + 1];
+      y[*m + 1] = NAN;
       i__1 = *m + n3 + n3;
       for (i__ = *m + 2; i__ <= i__1; ++i__) {
         y[i__] = y[*m + 1];

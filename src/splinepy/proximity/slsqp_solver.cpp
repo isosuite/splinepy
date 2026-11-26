@@ -42,8 +42,9 @@ void SearchData::SLSQPData::Setup(SearchData& d) {
   xl = d.lower_bound.data();
   xu = d.upper_bound.data();
   f = d.status.J;
-  c = nullptr;
-  a = nullptr;
+  // unused without constraints, but slsqp() offsets into them
+  c = d.arena->AllocateSpan<double>(1).data();
+  a = d.arena->AllocateSpan<double>(n + 1).data();
 
   // filled by CopyDerivative() before each call
   g_space = d.arena->AllocateSpan<double>(n + 1);
