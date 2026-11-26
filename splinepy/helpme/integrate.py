@@ -321,27 +321,11 @@ class Transformation:
         spline_for_quad = spline if solution_field is None else solution_field
 
         if orders is None:
-            quad_positions = []
-            quad_weights = []
-            for dim_quadrature_order in _default_quadrature_orders(
-                spline_for_quad
-            ):
-                quad_position, quad_weight = _np.polynomial.legendre.leggauss(
-                    deg=dim_quadrature_order
-                )
-                # Make quadrature points go from [0,1] instead of [-1,1]
-                quad_positions.append((quad_position + 1) / 2)
-                # Adjust weights accordingly
-                quad_weights.append(quad_weight / 2)
-
-            self._quad_positions = _cartesian_product(quad_positions)
-            self._quad_weights = _np.prod(
-                _cartesian_product(quad_weights), axis=1
-            )
-        else:
-            self._quad_positions, self._quad_weights = (
-                _get_quadrature_information(spline_for_quad, orders)
-            )
+            # products of two basis functions (mass matrix) on affine elements
+            orders = spline_for_quad.degrees + 1
+        self._quad_positions, self._quad_weights = _get_quadrature_information(
+            spline_for_quad, orders
+        )
 
         # Precompute grid IDs
         self._grid_ids = _cartesian_product(
@@ -1358,7 +1342,7 @@ class FieldIntegrator:
         error_integration = _np.einsum(
             "i...,i,i->...",
             error_norm_values,
-            self._trafo._all_jacobian_determinants.ravel()
+            _np.abs(self._trafo._all_jacobian_determinants.ravel())
             * _np.repeat(self._trafo._all_element_measures, n_weights),
             quad_weights,
             optimize=True,

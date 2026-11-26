@@ -339,3 +339,14 @@ def test_field_assembly_scales_nonuniform_elements():
     )
     np.testing.assert_allclose(combined_matrix, matrix)
     np.testing.assert_allclose(combined_rhs, rhs)
+
+
+def test_default_quadrature_integrates_the_mass_matrix():
+    curve = splinepy.BSpline(
+        [4], [[0] * 5 + [1] * 5], np.linspace(0, 1, 5).reshape(-1, 1)
+    )
+    trafo = splinepy.helpme.integrate.Transformation(curve, curve.copy())
+    basis = curve.basis(trafo._quad_positions)
+    mass = np.einsum("qi,qj,q->ij", basis, basis, trafo._quad_weights)
+    assert np.linalg.matrix_rank(mass) == 5
+    np.testing.assert_allclose(mass.sum(), 1.0)
