@@ -58,6 +58,8 @@ wheel.exclude = ["splinepy/viewer/js/"]
 build-dir = "build"
 
 install.strip = true
+# only the extension module, not the C++ library and headers
+install.components = ["PythonModule"]
 
 [tool.scikit-build.metadata.version]
 provider = "scikit_build_core.metadata.regex"
