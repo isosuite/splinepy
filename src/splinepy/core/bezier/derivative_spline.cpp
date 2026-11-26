@@ -6,8 +6,8 @@
 #include <stdexcept>
 
 #include "splinepy/core/bezier/multiply.hpp"
+#include "splinepy/core/manipulation/axis_map.hpp"
 #include "splinepy/core/manipulation/detail/manipulation_helpers.hpp"
-#include "splinepy/core/manipulation/elevate_degree.hpp"
 #include "splinepy/core/model/grid.hpp"
 #include "splinepy/core/validate/validator.hpp"
 
@@ -95,57 +95,85 @@ SplineData DerivativeSpline(const SplineView& spline,
     }
   }
 
-  // Polynomial: differentiate the control net. Rational R = N / W: per step
-  // along d, R' = (W N' - W' N) / W^2, with H = (N, W) the homogeneous net
-  // and E = H' elevated back to the degrees of H, so that numerator
-  // W E_N - E_W N and denominator W W share degrees 2 p_d along d.
+  // Polynomial: differentiate the control net. Rational R = N / W: after m
+  // steps the derivative is A / W^(m + 1), and a step along d gives
+  // (W A' - (m + 1) W' A) / W^(m + 2), so every step adds the degrees of W.
+  // A' and W' are elevated back along d, so that both products share their
+  // degrees.
   const bool rational = spline.IsRational();
-  const int32_t width = rational ? dim + 1 : dim;
   Options inner = options;
   inner.validate = false;
   AxisArray<int32_t> degrees(spline.degrees);
-  Buffer<double> net = rational ? detail::ToHomogeneous(spline)
-                                : SplineData::FromView(spline).control_points;
+  Buffer<double> net = SplineData::FromView(spline).control_points;
+  Buffer<double> weight; // W
+  Buffer<double> power;  // W^(m + 1)
+  if (rational) {
+    weight = Buffer<double>::Uninitialized(spline.num_control_points);
+    for (int64_t i = 0; i < spline.num_control_points; ++i) {
+      weight[i] = spline.Weight(i);
+      for (int32_t c = 0; c < dim; ++c) {
+        net[i * dim + c] *= weight[i];
+      }
+    }
+    power = weight;
+  }
+  const auto w = detail::PolynomialView(spline.degrees, weight.data(), 1);
+  int32_t m = 0;
   for (int32_t d = 0; d < para_dim; ++d) {
-    for (int32_t step = 0; step < orders[d]; ++step) {
+    // derivative along d of a net of `width` values per point, elevated back
+    // along d with `map` (built if empty)
+    const auto elevated_derivative = [&](Span<const int32_t> of,
+                                         const Buffer<double>& cps,
+                                         int32_t width,
+                                         AxisMap& map) {
       Buffer<double> derivative;
-      DifferentiateAxisByOne(para_dim,
-                             width,
-                             degrees,
-                             d,
-                             net.cspan(),
-                             derivative);
+      DifferentiateAxisByOne(para_dim, width, of, d, cps.cspan(), derivative);
+      AxisArray<int32_t> lower(of);
+      --lower[d];
+      if (map.knots.empty()) {
+        map = DegreeElevationMap(OpenKnots(lower[d]).cspan(), lower[d]);
+      }
+      const AxisStep step{d, &map};
+      return ApplyAxisMaps(
+          detail::PolynomialView(lower, derivative.data(), width),
+          {&step, 1},
+          false,
+          inner);
+    };
+    AxisMap weight_map;
+    SplineData dw;
+    for (int32_t step = 0; step < orders[d]; ++step) {
       if (!rational) {
+        Buffer<double> derivative;
+        DifferentiateAxisByOne(para_dim,
+                               dim,
+                               degrees,
+                               d,
+                               net.cspan(),
+                               derivative);
         net = std::move(derivative);
         --degrees[d];
         continue;
       }
-      AxisArray<int32_t> lower(degrees);
-      --lower[d];
-      const SplineData e =
-          ElevateDegree(detail::PolynomialView(lower, derivative.data(), width),
-                        d,
-                        1,
-                        inner);
-      // N and W parts of a homogeneous net: strided views, no copies
-      const auto part = [&](Span<const int32_t> of, const double* h, bool n) {
-        return detail::PolynomialView(of, n ? h : h + dim, n ? dim : 1, width);
-      };
-      const double* ec = e.control_points.data();
-      const auto w = part(degrees, net.data(), false);
-      const SplineData next = Multiply(w, part(degrees, ec, true), inner);
-      const SplineData minus = Multiply(part(degrees, ec, false),
-                                        part(degrees, net.data(), true),
-                                        inner);
-      const SplineData square = Multiply(w, w, inner);
-      const auto n_out = square.control_points.size();
-      net = Buffer<double>::Uninitialized(n_out * width);
-      for (std::size_t i = 0; i < n_out; ++i) {
-        for (int32_t c = 0; c < dim; ++c) {
-          net[i * width + c] = next.control_points[i * dim + c]
-                               - minus.control_points[i * dim + c];
-        }
-        net[i * width + dim] = square.control_points[i];
+      if (step == 0) {
+        dw = elevated_derivative(spline.degrees, weight, 1, weight_map);
+      }
+      // A has the degrees of W before the first step of all
+      AxisMap own_map;
+      const SplineData da =
+          elevated_derivative(degrees, net, dim, m == 0 ? weight_map : own_map);
+      SplineData next = Multiply(w, da.View(), inner);
+      const SplineData minus =
+          Multiply(dw.View(),
+                   detail::PolynomialView(degrees, net.data(), dim),
+                   inner);
+      power = std::move(
+          Multiply(w, detail::PolynomialView(degrees, power.data(), 1), inner)
+              .control_points);
+      ++m;
+      net = std::move(next.control_points);
+      for (std::size_t i = 0; i < net.size(); ++i) {
+        net[i] -= m * minus.control_points[i];
       }
       degrees.assign(next.degrees.cspan());
     }
@@ -156,15 +184,14 @@ SplineData DerivativeSpline(const SplineView& spline,
   result.dim = dim;
   result.degrees.assign(degrees.begin(), degrees.end());
   if (rational) {
-    detail::FromHomogeneous(net.cspan(),
-                            SupportGrid(degrees).size,
-                            dim,
-                            true,
-                            result.control_points,
-                            result.weights);
-  } else {
-    result.control_points = std::move(net);
+    for (std::size_t i = 0; i < power.size(); ++i) {
+      for (int32_t c = 0; c < dim; ++c) {
+        net[i * dim + c] /= power[i];
+      }
+    }
+    result.weights = std::move(power);
   }
+  result.control_points = std::move(net);
   return result;
 }
 

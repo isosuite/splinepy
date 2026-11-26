@@ -60,6 +60,24 @@ def test_rational_sixth_derivative_spline_matches_analytic_derivative():
     )
 
 
+def test_rational_derivative_spline_adds_the_weight_degrees_per_order(np_rng):
+    spline = splinepy.RationalBezier(
+        [3, 2], np_rng.random((12, 2)), np_rng.random(12) + 0.5
+    )
+    queries = np_rng.random((5, 2))
+    for orders in ([1, 0], [1, 1], [2, 1], [0, 3]):
+        result = spline.derivative_spline(orders)
+        np.testing.assert_array_equal(
+            result.degrees, (sum(orders) + 1) * spline.degrees
+        )
+        np.testing.assert_allclose(
+            result.evaluate(queries),
+            spline.derivative(queries, orders),
+            rtol=1e-10,
+            atol=1e-10,
+        )
+
+
 def test_composition():
     # Here we only try 2D compositions (surface-line is tested in bezman)
     # Init Splines to be tested
