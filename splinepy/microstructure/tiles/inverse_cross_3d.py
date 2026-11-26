@@ -124,9 +124,13 @@ class InverseCross3D(_TileBase):
                 aux_column_width = 0.0
                 v_zero, v_one_half, v_one = [0.0] * 3
                 if closure == "z_min":
-                    branch_thickness = parameter_sensitivities.flatten()[5]
+                    branch_thickness = parameter_sensitivities[
+                        5, 0, i_derivative - 1
+                    ]
                 elif closure == "z_max":
-                    branch_thickness = parameter_sensitivities.flatten()[4]
+                    branch_thickness = parameter_sensitivities[
+                        4, 0, i_derivative - 1
+                    ]
             spline_list = []
             if closure == "z_min":
                 branch_neighbor_x_min_ctps = _np.array(

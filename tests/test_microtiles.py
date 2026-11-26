@@ -482,3 +482,23 @@ def test_affine_flag(tile_class, np_rng):
         assert np.allclose(design @ coefficients, values, atol=1e-12), (
             f"{tile_class.__name__} is not affine for closure {closure}"
         )
+
+
+@mark.parametrize("closure", ["z_min", "z_max"])
+def test_inverse_cross_closure_sensitivities_match_finite_differences(closure):
+    from splinepy.microstructure.tiles import InverseCross3D
+
+    tile = InverseCross3D()
+    parameters = 0.25 + 0.005 * np.arange(6.0).reshape(6, 1)
+    seed = np.zeros((6, 1, 6))
+    seed[np.arange(6), 0, np.arange(6)] = 1
+    base, derivatives = tile.create_tile(
+        parameters=parameters, parameter_sensitivities=seed, closure=closure
+    )
+    step = 1e-6
+    for k in range(6):
+        moved = parameters.copy()
+        moved[k] += step
+        patches, _ = tile.create_tile(parameters=moved, closure=closure)
+        for a, b, d in zip(base, patches, derivatives[k], strict=True):
+            np.testing.assert_allclose((b.cps - a.cps) / step, d.cps, atol=1e-8)
