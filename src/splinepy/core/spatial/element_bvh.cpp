@@ -51,6 +51,10 @@ ElementBvh::ElementBvh(const SplineView& spline)
           return;
         }
       }
+      // no Bezier elements without clamped knots
+      if (!IsClamped(kv, spline.degrees[d])) {
+        return;
+      }
       for (int64_t k = spline.degrees[d]; k < spline.NumControlPointsPerAxis(d);
            ++k) {
         if (kv[k + 1] - kv[k] > kSpanTolerance) {

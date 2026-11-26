@@ -81,12 +81,17 @@ AxisMap KnotRefinementMap(Span<const double> knots,
                           int32_t degree,
                           Span<const double> refined);
 
-/// Raises the degree by one: every distinct knot gains one multiplicity, so
-/// the continuity stays.
+/// Whether the first and the last knot bound the domain, so that the end
+/// control points are the end points. knots holds at least 2 * (degree + 1).
+bool IsClamped(Span<const double> knots, int32_t degree) noexcept;
+
+/// Raises the degree by one: every distinct knot of the domain gains one
+/// multiplicity, so the continuity and the domain stay.
 AxisMap DegreeElevationMap(Span<const double> knots, int32_t degree);
 
 /// Inserts `insertions`, then raises every interior knot to multiplicity
-/// degree, which splits the axis into Bezier elements.
+/// degree, which splits the axis into Bezier elements. Throws for unclamped
+/// knots.
 AxisMap BezierDecompositionMap(Span<const double> knots,
                                int32_t degree,
                                Span<const double> insertions = {});

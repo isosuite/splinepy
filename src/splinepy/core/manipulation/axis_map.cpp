@@ -296,6 +296,11 @@ void BlossomRow(const double* knots,
   }
 }
 
+bool IsClamped(Span<const double> knots, int32_t degree) noexcept {
+  return knots[degree] == knots.front()
+         && knots[knots.size() - degree - 1] == knots.back();
+}
+
 Buffer<double> OpenKnots(int32_t degree) {
   Buffer<double> knots(2 * (static_cast<std::size_t>(degree) + 1), 0.0);
   std::fill(knots.begin() + degree + 1, knots.end(), 1.0);
@@ -337,9 +342,14 @@ AxisMap KnotRefinementMap(Span<const double> knots,
 
 AxisMap DegreeElevationMap(Span<const double> knots, int32_t degree) {
   CheckKnots(knots, degree);
+  // knots outside of the domain carry no continuity; raising them would move
+  // the domain of unclamped knots
+  const double lower = knots[degree];
+  const double upper = knots[knots.size() - degree - 1];
   DynamicBuffer<double> raised(2 * knots.size());
   for (std::size_t i = 0; i < knots.size(); ++i) {
-    if (i == 0 || knots[i] != knots[i - 1]) {
+    if ((i == 0 || knots[i] != knots[i - 1]) && knots[i] >= lower
+        && knots[i] <= upper) {
       raised.push_back(knots[i]);
     }
     raised.push_back(knots[i]);
@@ -351,6 +361,10 @@ AxisMap BezierDecompositionMap(Span<const double> knots,
                                int32_t degree,
                                Span<const double> insertions) {
   CheckKnots(knots, degree);
+  if (!IsClamped(knots, degree)) {
+    throw SplinepyException("Bezier elements need clamped knots.",
+                            Status::kInvalidArgument);
+  }
   const auto merged = MergeKnots(knots, degree, insertions);
   DynamicBuffer<double> split(merged.size() * (degree + 1));
   for (std::size_t first = 0; first < merged.size();) {

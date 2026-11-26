@@ -214,10 +214,7 @@ MicrostructurePlan::MicrostructurePlan(
                                 "additional knots per axis.");
   }
   for (int axis = 0; axis < outer.para_dim; ++axis) {
-    const auto knots = outer.knot_vectors[axis];
-    const auto degree = outer.degrees[axis];
-    if (knots[degree] != knots.front()
-        || knots[knots.size() - degree - 1] != knots.back()) {
+    if (!IsClamped(outer.knot_vectors[axis], outer.degrees[axis])) {
       throw std::invalid_argument("Expected clamped knots.");
     }
   }

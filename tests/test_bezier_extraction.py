@@ -80,3 +80,14 @@ def test_extraction_0th_degree():
     )
     for i, patch in enumerate(test.extract.beziers()):
         assert np.allclose(test.cps[i], patch.cps[0])
+
+
+def test_extraction_rejects_unclamped_knots():
+    """End control points of unclamped knots are no end points."""
+    curve = splinepy.BSpline(
+        [2], [[0, 1, 2, 3, 4, 5]], [[0.0, 0.0], [1.0, 1.0], [2.0, 0.0]]
+    )
+    with pytest.raises(splinepy.SplinepyError, match="clamped"):
+        curve.extract.beziers()
+    # proximity then starts from the sampled grid
+    np.testing.assert_allclose(curve.proximities([[1.0, 0.7]]), [[2.5]])

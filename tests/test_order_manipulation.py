@@ -1,6 +1,8 @@
 import numpy as np
 import pytest
 
+import splinepy
+
 # fixtures for test_elevate_degree
 all_2p2d_splines = (
     "rational_bezier_2p2d",
@@ -78,3 +80,15 @@ def test_reduce_degree(splinetype, request, are_items_close, np_rng):
 
     # test evaluation
     assert np.allclose(spline.evaluate(q2D), ref_spline.evaluate(q2D))
+
+
+def test_elevate_degree_keeps_domain_of_unclamped_knots(np_rng):
+    """Only knots of the domain gain multiplicity."""
+    knots = [-1, -0.5, 0, 0, 0.3, 0.3, 0.6, 1, 1.2, 2]
+    spline = splinepy.BSpline([3, 1], [knots, [0, 0, 1, 1]], np_rng.random((12, 3)))
+    bounds = spline.parametric_bounds.copy()
+    queries = bounds[0] + np_rng.random((20, 2)) * (bounds[1] - bounds[0])
+    expected = spline.evaluate(queries)
+    spline.elevate_degrees([0, 1, 0])
+    np.testing.assert_array_equal(spline.parametric_bounds, bounds)
+    np.testing.assert_allclose(spline.evaluate(queries), expected, atol=1e-13)
