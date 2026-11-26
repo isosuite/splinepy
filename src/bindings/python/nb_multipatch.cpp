@@ -37,6 +37,9 @@ struct PatchViews {
   explicit PatchViews(const nb::list& patches)
       : holders(patches.size()),
         views(patches.size()),
+        splines(patches.size()),
+        natives(patches.size()),
+        layouts_pinned(patches.size()),
         homogeneous(!views.empty()) {
     for (std::size_t i = 0; i < views.size(); ++i) {
       PinPatch(i, patches[i]);
@@ -62,6 +65,9 @@ struct PatchViews {
     // resize() copies; start from a fresh Buffer
     holders = core::Buffer<SplineArrays>(count);
     views.resize(count);
+    splines = core::Buffer<nb::object>(count);
+    natives = core::Buffer<const NativeSpline*>(count);
+    layouts_pinned = core::Buffer<uint64_t>(count);
     std::size_t next = 0;
     for (std::size_t i = 0; i < patches.size(); ++i) {
       auto patch = patches[i];
@@ -95,10 +101,26 @@ struct PatchViews {
   const core::SplineView& View(std::size_t patch) const {
     return IsZero(patch) ? layouts->views[patch] : views[active_index(patch)];
   }
+  /// False once a patch replaced an array that is pinned here.
+  bool Current() const {
+    for (std::size_t i = 0; i < views.size(); ++i) {
+      // the pinned arrays are alive, so no other array has their address
+      const auto& now = *natives[i];
+      if (now.layout != layouts_pinned[i]
+          || now.arrays.view.control_points_data != views[i].control_points_data
+          || now.arrays.view.weights_data != views[i].weights_data) {
+        return false;
+      }
+    }
+    return !layouts || layouts->Current();
+  }
 
 private:
   void PinPatch(std::size_t i, nb::handle patch) {
     const auto& spline = NativeOf(patch);
+    splines[i] = nb::borrow(patch);
+    natives[i] = &spline;
+    layouts_pinned[i] = spline.layout;
     holders[i] = spline.arrays;
     views[i] = holders[i].view;
     // Snapshot layout validity with its storage. Queries still check results
@@ -107,6 +129,10 @@ private:
         spline.layout_validated && views[i].para_dim > 0 && views[i].dim > 0;
   }
 
+  // the patches, to tell when one replaced its arrays
+  core::Buffer<nb::object> splines;
+  core::Buffer<const NativeSpline*> natives;
+  core::Buffer<uint64_t> layouts_pinned;
   nb::object layout_owner;
   const PatchViews* layouts{nullptr};
   core::Buffer<std::size_t> patch_indices;
@@ -639,6 +665,7 @@ void init_nb_multipatch(nb::module_& m) {
   nb::class_<PatchViews>(m, "_MultipatchCache")
       .def(nb::init<const nb::list&>())
       .def(nb::init<const nb::list&, nb::object>())
+      .def("current", &PatchViews::Current)
       .def("seam_control_points", &SeamControlPoints)
       .def("evaluate",
            &EvaluateMultipatch,

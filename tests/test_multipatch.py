@@ -838,3 +838,17 @@ def test_boundaries_from_continuity_compares_tangent_planes():
     np.testing.assert_array_equal(
         mp.interfaces, [[-1, 6, -2, -3, -4, -5], [1, -6, -7, -8, -4, -5]]
     )
+
+
+def test_queries_follow_patches_that_replace_their_arrays():
+    patches = [
+        splinepy.Bezier([1, 1], [[x, 0], [x + 1, 0], [x, 1], [x + 1, 1]]).bspline
+        for x in (0.0, 1.0)
+    ]
+    multipatch = splinepy.Multipatch(patches)
+    np.testing.assert_allclose(multipatch.evaluate([[0.5, 0.5]])[0], [0.5, 0.5])
+    patches[0].control_points = patches[0].control_points + 10.0
+    np.testing.assert_allclose(multipatch.evaluate([[0.5, 0.5]])[0], [10.5, 10.5])
+    patches[0].insert_knots(0, [0.5])
+    patches[0].control_points[:] -= 10.0
+    np.testing.assert_allclose(multipatch.evaluate([[0.5, 0.5]])[0], [0.5, 0.5])

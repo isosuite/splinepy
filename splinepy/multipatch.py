@@ -339,7 +339,8 @@ class Multipatch(_SplinepyBase):
 
     def _patch_cache(self, sparse=False):
         entries = self._patch_entries if sparse else self._patches
-        if self._native_cache is None:
+        # a patch may have replaced its arrays since
+        if self._native_cache is None or not self._native_cache.current():
             if sparse and self._zero_layout_cache is not None:
                 self._native_cache = _core._MultipatchCache(
                     entries, self._zero_layout_cache
