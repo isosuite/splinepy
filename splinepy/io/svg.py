@@ -855,13 +855,7 @@ def _export_spline(
                 )
 
         # Sanity check
-        if not (
-            (spline_approximation.degrees[0] == 3)
-            or (not spline_approximation.is_rational)
-            or (
-                original_spline.is_rational and original_spline.degrees[0] <= 1
-            )
-        ):
+        if spline_approximation.degrees[0] != 3:
             raise RuntimeError(
                 "Spline Approximation returned unexpected result that is "
                 "non-compliant to svg standard. Expected cubic bezier spline."
