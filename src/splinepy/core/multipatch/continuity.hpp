@@ -9,8 +9,10 @@
 namespace splinepy::core {
 
 /// Groups boundary patches (the boundary faces of a multipatch, in order)
-/// into smooth boundaries: neighbours whose tangents across their shared face
-/// are parallel (1 - |cos| < tolerance) share one. Their entries in
+/// into smooth boundaries: neighbours that share their tangent space at the
+/// center of their shared face share one. That is, their outward conormals
+/// there, the tangents at a right angle to the face, are opposite
+/// (1 + cos < tolerance). Their entries in
 /// global_interfaces become -1, -2, ... per group. Returns the number of
 /// groups.
 int32_t GroupBoundariesByContinuity(const SplineBatchView& boundaries,

@@ -814,3 +814,27 @@ def test_boundary_patch_ids_rejects_zero():
     mp = splinepy.Multipatch([p0, p1])
     with pytest.raises(ValueError, match="Boundary IDs start at 1"):
         mp.boundary_patch_ids(0)
+
+
+def test_boundaries_from_continuity_compares_tangent_planes():
+    """Coplanar faces are smooth, however their parameter lines cross the edge."""
+
+    def box(xy):
+        return splinepy.Bezier(
+            [1, 1, 1],
+            [
+                [*xy(u, v), w]
+                for w in (0.0, 1.0)
+                for v in (0.0, 1.0)
+                for u in (0.0, 1.0)
+            ],
+        )
+
+    sheared = box(lambda u, v: (u, v + 0.5 * (1 - u)))
+    straight = box(lambda u, v: (1 + u, v))
+    mp = splinepy.Multipatch([sheared, straight])
+    mp.boundaries_from_continuity()
+    # the faces of w = 0 and of w = 1 are planes, those of v are kinked
+    np.testing.assert_array_equal(
+        mp.interfaces, [[-1, 6, -2, -3, -4, -5], [1, -6, -7, -8, -4, -5]]
+    )
