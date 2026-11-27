@@ -372,3 +372,19 @@ def test_field_integrator_on_curves_and_coarser_fields():
     integrator = integrator_type(geometry, field)
     assert integrator._trafo._n_elems == 2
     assert integrator.supports.max() == 3
+
+
+def test_field_assembly_keeps_rows_and_follows_a_refined_field():
+    field = splinepy.BSpline([1], [[0, 0, 1, 1]], np.zeros((2, 1)))
+    curve = splinepy.BSpline([1], [[0, 0, 1, 1]], [[0.0], [1.0]])
+    integrator = splinepy.helpme.integrate.FieldIntegrator(curve, field)
+    element_matrix = np.array([[1.0, 2.0], [3.0, 4.0]])
+    assembled = np.zeros((2, 2))
+    integrator.assemble_matrix(lambda **_: element_matrix.ravel(), assembled)
+    np.testing.assert_array_equal(assembled, element_matrix)
+
+    field.insert_knots(0, [0.5])
+    integrator.reset()
+    np.testing.assert_allclose(
+        integrator.L2_projection(lambda x: 2 * x[:, 0] + 1), [1, 2, 3], atol=1e-12
+    )

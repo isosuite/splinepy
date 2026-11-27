@@ -730,6 +730,13 @@ class Transformation:
         )
 
 
+def _add_element_matrix(system_matrix, support, element_matrix):
+    """Adds a row-major (flattened) element matrix to its global entries."""
+    rows = _np.repeat(support, len(support))
+    columns = _np.tile(support, len(support))
+    system_matrix[rows, columns] += _np.ravel(element_matrix)
+
+
 class FieldIntegrator:
     """
     Class for the numerical evaluation of a PDE on a single-patch geometry.
@@ -773,7 +780,6 @@ class FieldIntegrator:
             )
         else:
             self._solution_field = solution_field
-        self._ndofs = len(self._solution_field.control_points)
         self._mapper = self._solution_field.mapper(reference=self._helpee)
 
         self.reset(orders)
@@ -796,6 +802,7 @@ class FieldIntegrator:
         )
         self.precompute_transformation()
 
+        self._ndofs = len(self._solution_field.control_points)
         self._supports = None
         self._global_rhs = None
         self._global_system_matrix = None
@@ -887,12 +894,7 @@ class FieldIntegrator:
                 quad_weights=quad_weights * measure,
                 jacobian_det=element_jacobian_det,
             )
-            matrix_element_support = _cartesian_product(
-                [element_support, element_support]
-            )
-            system_matrix[
-                matrix_element_support[:, 0], matrix_element_support[:, 1]
-            ] += element_matrix
+            _add_element_matrix(system_matrix, element_support, element_matrix)
 
     def assemble_vector(self, function, current_sol=None, vectorout=None):
         """Assemble the rhs for a given function. If rhs is already assembled,
@@ -1029,12 +1031,7 @@ class FieldIntegrator:
             element_matrix, element_vector = function(**function_args)
 
             # Add element vector to global system matrix
-            matrix_element_support = _cartesian_product(
-                [element_support, element_support]
-            )
-            system_matrix[
-                matrix_element_support[:, 0], matrix_element_support[:, 1]
-            ] += element_matrix
+            _add_element_matrix(system_matrix, element_support, element_matrix)
 
             # Add element vector to global rhs vector
             rhs_vector[element_support] += element_vector
