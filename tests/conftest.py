@@ -1,5 +1,4 @@
 import os
-import re
 
 import numpy as np
 import pytest
@@ -371,38 +370,3 @@ def are_items_same():
         return all_same
 
     return _are_items_same
-
-
-@pytest.fixture
-def are_stripped_lines_same():
-    number = re.compile(r"-?\d+(?:\.\d*)?(?:[eE][-+]?\d+)?")
-
-    def _words(line):
-        """splits an xml-ish line into words. numbers, also inside attributes
-        such as points="1.0,2.0", are rounded so that the last digits do not
-        matter"""
-        return [
-            number.sub(lambda m: repr(round(float(m.group()), 9)), word)
-            for word in filter(None, re.split(r" |\>|\<|\t|,", line))
-        ]
-
-    def _are_stripped_lines_same(a, b, ignore_order=False):
-        """returns True if lines in a and b are the same, ignoring leading and
-        trailing whitespaces. With ignore_order, each line only needs to have
-        the same words (e.g. reordered attributes); numbers compare by value."""
-        all_same = True
-        for i, (line_a, line_b) in enumerate(zip(a, b, strict=True)):
-            stripped_a, stripped_b = line_a.strip(), line_b.strip()
-            if stripped_a == stripped_b:
-                continue
-            if ignore_order and sorted(_words(stripped_a)) == sorted(
-                _words(stripped_b)
-            ):
-                continue
-            error_log(f"stripped line at index-{i} are not the same")
-            error_log(f"  from first: {line_a}")
-            error_log(f"  from second: {line_b}")
-            all_same = False
-        return all_same
-
-    return _are_stripped_lines_same

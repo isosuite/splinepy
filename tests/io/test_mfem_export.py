@@ -1,4 +1,3 @@
-import os
 import tempfile
 
 import numpy as np
@@ -7,137 +6,49 @@ import pytest
 import splinepy
 
 
-def test_mfem_export(to_tmpf, are_stripped_lines_same):
-    """
-    Test MFEM export routine
-    """
-    # Define some splines
-    bez_el0 = splinepy.Bezier(
-        degrees=[1, 1], control_points=[[0, 0], [1, 0], [0, 1], [1, 1]]
-    )
-    rbz_el1 = splinepy.RationalBezier(
-        degrees=[1, 1],
-        control_points=[[1, 0], [2, 0], [1, 1], [2, 1]],
-        weights=[1, 1, 1, 1],
-    )
-    bsp_el2 = splinepy.BSpline(
-        degrees=[1, 1],
-        control_points=[[0, 1], [1, 1], [0, 2], [1, 2]],
-        knot_vectors=[[0, 0, 1, 1], [0, 0, 1, 1]],
-    )
-    nur_el3 = splinepy.NURBS(
-        degrees=[1, 1],
-        control_points=[[1, 1], [2, 1], [1, 2], [2, 2]],
-        weights=[1, 1, 1, 1],
-        knot_vectors=[[0, 0, 1, 1], [0, 0, 1, 1]],
-    )
+def _patch_sections(fname):
+    """degrees, knot vectors, control points and weights of each patch"""
+    with open(fname) as f:
+        text = f.read()
+    for section in text.split("\nknotvectors\n")[1:]:
+        lines = section.split("\n\n")[0].splitlines()
+        para_dim = int(lines[0])
+        dim = int(lines[para_dim + 2])
+        rows = [line.split() for line in lines[1 : para_dim + 1]]
+        degrees = [int(row[0]) for row in rows]
+        knots = [np.array(row[2:], dtype=float) for row in rows]
+        points = np.array([line.split() for line in lines[para_dim + 4 :]], float)
+        yield degrees, knots, points[:, :dim], points[:, dim]
 
-    # Make it more tricky
-    bez_el0.elevate_degrees(0)
-    bsp_el2.elevate_degrees(0)
 
-    bsp_el2.insert_knots(1, [0.5])
-    nur_el3.insert_knots(1, [0.5])
+@pytest.mark.parametrize(
+    "fixture, n_knot_vectors, n_vertices, n_boundaries",
+    [("four_patches", 4, 9, 8), ("four_solids", 5, 18, 16)],
+)
+def test_mfem_export_cartesian(
+    fixture, n_knot_vectors, n_vertices, n_boundaries, request, tmp_path
+):
+    patches = request.getfixturevalue(fixture)
+    fname = str(tmp_path / "patches.mesh")
+    splinepy.io.mfem.export_cartesian(fname, patches)
 
-    # Test Output
-    with tempfile.TemporaryDirectory() as tmpd:
-        tmpf = to_tmpf(tmpd)
-        patches = [bez_el0, bsp_el2, nur_el3, rbz_el1]
-        splinepy.io.mfem.export_cartesian(tmpf, patches)
-        assert _check_edges(tmpf, patches) == 4
-
-        with (
-            open(tmpf) as tmp_read,
-            open(
-                os.path.dirname(__file__) + "/../data/mfem_cartesian_2d.mesh"
-            ) as base_file,
-        ):
-            assert are_stripped_lines_same(
-                base_file.readlines(), tmp_read.readlines(), True
-            )
-
-    # Test Also 3D Meshes
-    bez_el0 = splinepy.Bezier(
-        degrees=[1, 1, 1],
-        control_points=[
-            [0, 0, 0],
-            [1, 0, 0],
-            [0, 1, 0],
-            [1, 1, 0],
-            [0, 0, 1],
-            [1, 0, 1],
-            [0, 1, 1],
-            [1, 1, 1],
-        ],
-    )
-    rbz_el1 = splinepy.RationalBezier(
-        degrees=[1, 1, 1],
-        control_points=[
-            [1, 0, 0],
-            [2, 0, 0],
-            [1, 1, 0],
-            [2, 1, 0],
-            [1, 0, 1],
-            [2, 0, 1],
-            [1, 1, 1],
-            [2, 1, 1],
-        ],
-        weights=[1] * 8,
-    )
-    bsp_el2 = splinepy.BSpline(
-        degrees=[1, 1, 1],
-        control_points=[
-            [0, 1, 0],
-            [1, 1, 0],
-            [0, 2, 0],
-            [1, 2, 0],
-            [0, 1, 1],
-            [1, 1, 1],
-            [0, 2, 1],
-            [1, 2, 1],
-        ],
-        knot_vectors=[[0, 0, 1, 1]] * 3,
-    )
-    nur_el3 = splinepy.NURBS(
-        degrees=[1, 1, 1],
-        control_points=[
-            [1, 1, 0],
-            [2, 1, 0],
-            [1, 2, 0],
-            [2, 2, 0],
-            [1, 1, 1],
-            [2, 1, 1],
-            [1, 2, 1],
-            [2, 2, 1],
-        ],
-        weights=[1] * 8,
-        knot_vectors=[[0, 0, 1, 1]] * 3,
-    )
-
-    # Make it more tricky
-    bez_el0.elevate_degrees(0)
-    bsp_el2.elevate_degrees(0)
-    bsp_el2.insert_knots(1, [0.5])
-    nur_el3.insert_knots(1, [0.5])
-    for s in [bez_el0, bsp_el2, nur_el3, rbz_el1]:
-        s.elevate_degrees(2)
-
-    # Test output
-    with tempfile.TemporaryDirectory() as tmpd:
-        tmpf = to_tmpf(tmpd)
-        patches = [bez_el0, bsp_el2, nur_el3, rbz_el1]
-        splinepy.io.mfem.export_cartesian(tmpf, patches)
-        assert _check_edges(tmpf, patches) == 5
-
-        with (
-            open(tmpf) as tmp_read,
-            open(
-                os.path.dirname(__file__) + "/../data/mfem_cartesian_3d.mesh"
-            ) as base_file,
-        ):
-            assert are_stripped_lines_same(
-                base_file.readlines(), tmp_read.readlines(), True
-            )
+    assert _check_edges(fname, patches) == n_knot_vectors
+    with open(fname) as f:
+        lines = f.read().splitlines()
+    assert lines[0] == "MFEM NURBS mesh v1.0"
+    assert lines[lines.index("dimension") + 1] == str(patches[0].dim)
+    assert lines[lines.index("elements") + 1] == "4"
+    assert lines[lines.index("boundary") + 1] == str(n_boundaries)
+    assert lines[lines.index("vertices") + 1] == str(n_vertices)
+    for (degrees, knots, points, weights), patch in zip(
+        _patch_sections(fname), patches, strict=True
+    ):
+        nurbs = patch.nurbs
+        assert degrees == list(nurbs.degrees)
+        for read, expected in zip(knots, nurbs.knot_vectors, strict=True):
+            np.testing.assert_array_equal(read, expected)
+        np.testing.assert_array_equal(points, nurbs.cps)
+        np.testing.assert_array_equal(weights, nurbs.weights.ravel())
 
 
 def test_mfem_single_patch_export(to_tmpf, are_splines_equal, np_rng):
@@ -159,6 +70,8 @@ def test_mfem_single_patch_export(to_tmpf, are_splines_equal, np_rng):
             spline.insert_knots(i, np_rng.random([5]))
 
         spline.elevate_degrees(list(range(dim)) * 2)
+        if spline.is_rational:
+            spline.weights[:] = np_rng.random(spline.weights.shape) + 0.5
 
         for i in range(dim):
             if not spline.has_knot_vectors:

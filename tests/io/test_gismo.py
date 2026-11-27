@@ -1,5 +1,4 @@
-import os
-import tempfile
+import xml.etree.ElementTree as ET
 
 import numpy as np
 import pytest
@@ -7,358 +6,183 @@ import pytest
 import splinepy
 
 
-@pytest.fixture
-def gismo_2D_multipatch():
-    bez_el0 = splinepy.Bezier(
-        degrees=[1, 1], control_points=[[0, 0], [1, 0], [0, 1], [1, 1]]
-    )
-    rbz_el1 = splinepy.RationalBezier(
-        degrees=[1, 1],
-        control_points=[[1, 0], [2, 0], [1, 1], [2, 1]],
-        weights=[1, 1, 1, 1],
-    )
-    bsp_el2 = splinepy.BSpline(
-        degrees=[1, 1],
-        control_points=[[0, 1], [1, 1], [0, 2], [1, 2]],
-        knot_vectors=[[0, 0, 1, 1], [0, 0, 1, 1]],
-    )
-    nur_el3 = splinepy.NURBS(
-        degrees=[1, 1],
-        control_points=[[1, 1], [2, 1], [1, 2], [2, 2]],
-        weights=[1, 1, 1, 1],
-        knot_vectors=[[0, 0, 1, 1], [0, 0, 1, 1]],
-    )
-
-    # Make it more tricky
-    bez_el0.elevate_degrees(0)
-    bsp_el2.elevate_degrees(0)
-
-    bsp_el2.insert_knots(1, [0.5])
-    nur_el3.insert_knots(1, [0.5])
-
-    # Init multipatch
-    multipatch = splinepy.Multipatch(
-        splines=[bez_el0, rbz_el1, bsp_el2, nur_el3]
-    )
-
-    # Define some functions for boundary identification
-    def is_bottom(x):
-        return x[:, 0] < 0.01
-
-    def is_top(x):
-        return x[:, 0] > 1.99
-
-    # Add boundary
-    multipatch.boundary_from_function(is_bottom)
-    multipatch.boundary_from_function(is_top)
-
+@pytest.fixture(params=["four_patches", "four_solids"])
+def multipatch(request):
+    """four patches with the sides x = 0 and x = 2 as boundaries 2 and 3"""
+    multipatch = splinepy.Multipatch(request.getfixturevalue(request.param))
+    multipatch.boundary_from_function(lambda x: x[:, 0] < 0.01)
+    multipatch.boundary_from_function(lambda x: x[:, 0] > 1.99)
     return multipatch
 
 
-@pytest.fixture
-def gismo_multipatch_3D():
-    bez_el0 = splinepy.Bezier(
-        degrees=[1, 1, 1],
-        control_points=[
-            [0, 0, 0],
-            [1, 0, 0],
-            [0, 1, 0],
-            [1, 1, 0],
-            [0, 0, 1],
-            [1, 0, 1],
-            [0, 1, 1],
-            [1, 1, 1],
-        ],
+def _rows(element):
+    return [[int(i) for i in row.split()] for row in element.text.splitlines()]
+
+
+def _numbers(element):
+    return np.array(element.text.split(), dtype=float)
+
+
+@pytest.mark.parametrize("indent", [False, True])
+@pytest.mark.parametrize("labels", [False, True])
+def test_gismo_export_content(multipatch, tmp_path, indent, labels):
+    fname = str(tmp_path / "multipatch.xml")
+    splinepy.io.gismo.export(
+        fname, multipatch, indent=indent, labeled_boundaries=labels
     )
-    rbz_el1 = splinepy.RationalBezier(
-        degrees=[1, 1, 1],
-        control_points=[
-            [1, 0, 0],
-            [2, 0, 0],
-            [1, 1, 0],
-            [2, 1, 0],
-            [1, 0, 1],
-            [2, 0, 1],
-            [1, 1, 1],
-            [2, 1, 1],
-        ],
-        weights=[1] * 8,
-    )
-    bsp_el2 = splinepy.BSpline(
-        degrees=[1, 1, 1],
-        control_points=[
-            [0, 1, 0],
-            [1, 1, 0],
-            [0, 2, 0],
-            [1, 2, 0],
-            [0, 1, 1],
-            [1, 1, 1],
-            [0, 2, 1],
-            [1, 2, 1],
-        ],
-        knot_vectors=[[0, 0, 1, 1]] * 3,
-    )
-    nur_el3 = splinepy.NURBS(
-        degrees=[1, 1, 1],
-        control_points=[
-            [1, 1, 0],
-            [2, 1, 0],
-            [1, 2, 0],
-            [2, 2, 0],
-            [1, 1, 1],
-            [2, 1, 1],
-            [1, 2, 1],
-            [2, 2, 1],
-        ],
-        weights=[1] * 8,
-        knot_vectors=[[0, 0, 1, 1]] * 3,
-    )
+    para_dim = multipatch.para_dim
 
-    # Make it more tricky
-    bez_el0.elevate_degrees(0)
-    bsp_el2.elevate_degrees(0)
-    bsp_el2.insert_knots(1, [0.5])
-    nur_el3.insert_knots(1, [0.5])
-    for s in [bez_el0, bsp_el2, nur_el3, rbz_el1]:
-        s.elevate_degrees(2)
+    root = ET.parse(fname).getroot()
+    topology = root.find("MultiPatch")
+    assert topology.attrib == {"id": "0", "parDim": str(para_dim)}
+    assert topology.find("patches").attrib == {"type": "id_range"}
+    assert topology.find("patches").text == "100 103"
+    # patch, side, patch, side (sides count from 1), then the orientation:
+    # same axis order and same direction on every axis
+    aligned = [0, 1, 1, 1] if para_dim == 2 else [0, 1, 2, 1, 1, 1]
+    assert _rows(topology.find("interfaces")) == [
+        [100, 2, 101, 1, *aligned],
+        [100, 4, 102, 3, *aligned],
+        [101, 4, 103, 3, *aligned],
+        [102, 2, 103, 1, *aligned],
+    ]
+    boundaries = topology.findall("boundary")
+    left, right = [[100, 1], [102, 1]], [[101, 2], [103, 2]]
+    rest = [
+        [100 + patch, side]
+        for patch in range(4)
+        for side in range(1, 2 * para_dim + 1)
+        if [100 + patch, side] not in left + right
+        and multipatch.interfaces[patch, side - 1] < 0
+    ]
+    if labels:
+        assert [b.attrib for b in boundaries] == [
+            {"name": f"BID{i}"} for i in (1, 2, 3)
+        ]
+        assert [_rows(b) for b in boundaries] == [rest, left, right]
+    else:
+        assert [b.attrib for b in boundaries] == [{}]
+        assert _rows(boundaries[0]) == sorted(rest + left + right)
 
-    # Define some functions for boundary identification
-    def is_bottom(x):
-        return x[:, 0] < 0.01
-
-    def is_top(x):
-        return x[:, 0] > 1.99
-
-    # Add boundary
-    multipatch = splinepy.Multipatch(
-        splines=[bez_el0, bsp_el2, nur_el3, rbz_el1]
-    )
-    multipatch.boundary_from_function(is_bottom)
-    multipatch.boundary_from_function(is_top)
-    return multipatch
-
-
-@pytest.mark.parametrize(
-    "case",
-    [
-        ("gismo_2D_multipatch", False, False, "noindent_nolabels_ascii_2d"),
-        ("gismo_2D_multipatch", True, False, "indent_nolabels_ascii_2d"),
-        ("gismo_2D_multipatch", False, True, "noindent_labels_ascii_2d"),
-        ("gismo_2D_multipatch", True, True, "indent_labels_ascii_2d"),
-        ("gismo_multipatch_3D", False, False, "noindent_nolabels_ascii_3d"),
-        ("gismo_multipatch_3D", True, False, "indent_nolabels_ascii_3d"),
-    ],
-)
-def test_gismo_export(case, request, to_tmpf, are_stripped_lines_same):
-    """Export matches the stored file for each indent and label option"""
-    multipatch, indent, labels, reference = case
-    with tempfile.TemporaryDirectory() as tmpd:
-        tmpf = to_tmpf(tmpd)
-        splinepy.io.gismo.export(
-            tmpf,
-            multipatch=request.getfixturevalue(multipatch),
-            indent=indent,
-            labeled_boundaries=labels,
+    geometries = root.findall("Geometry")
+    assert [g.attrib["id"] for g in geometries] == ["100", "101", "102", "103"]
+    for geometry, patch in zip(geometries, multipatch.patches, strict=True):
+        kind = "Nurbs" if patch.is_rational else "BSpline"
+        assert geometry.attrib["type"] == f"Tensor{kind}{para_dim}"
+        coefs = geometry.find("coefs")
+        assert coefs.attrib == {"format": "ASCII", "geoDim": str(patch.dim)}
+        np.testing.assert_array_equal(_numbers(coefs), patch.cps.ravel())
+        knot_vectors = list(geometry.iter("KnotVector"))
+        assert [int(kv.attrib["degree"]) for kv in knot_vectors] == list(
+            patch.degrees
         )
-
-        with (
-            open(tmpf) as tmp_read,
-            open(
-                os.path.dirname(__file__) + f"/../data/gismo_{reference}.xml"
-            ) as base_file,
+        for element, knots in zip(
+            knot_vectors, patch.nurbs.knot_vectors, strict=True
         ):
-            assert are_stripped_lines_same(
-                base_file.readlines(), tmp_read.readlines(), True
+            np.testing.assert_array_equal(_numbers(element), knots)
+        weights = geometry.find("Basis/weights")
+        assert (weights is not None) == patch.is_rational
+        if patch.is_rational:
+            np.testing.assert_array_equal(
+                _numbers(weights), patch.weights.ravel()
             )
 
 
-def test_gismo_export_additional_blocks(
-    gismo_2D_multipatch, to_tmpf, are_stripped_lines_same
-):
-    """Test if the export of additional xml-blocks are correctly handled by splinepy's
-    g+smo export function. This inlucdes scalar and vector-valued function and
-    boundary condition blocks and also the default assembly options.
-    """
-    # Test only runs for Python version 3.9 and higher
-    # Initialize AdditionalBlocks to manage various blocks for export
-    additional_blocks = splinepy.io.gismo.AdditionalBlocks()
+def _assert_same_multipatch(loaded, multipatch, are_splines_equal):
+    for patch, read in zip(multipatch.patches, loaded.patches, strict=True):
+        expected = patch.nurbs if patch.is_rational else patch.bspline
+        assert are_splines_equal(expected, read)
+    np.testing.assert_array_equal(loaded.interfaces, multipatch.interfaces)
 
-    # Function block for scalar variable
-    additional_blocks.add_function(
-        dim=2,
-        block_id=1,
-        function_string="2*pi^2*sin(pi*x)*sin(pi*y)",
-        comment="Scalar-valued function",
-    )
-    # Function block for vector-valued variable
-    additional_blocks.add_function(
-        dim=2,
-        block_id=2,
-        function_string=("x", "y"),
-        comment="Vector-valued function",
+
+@pytest.mark.parametrize("labels", [False, True])
+@pytest.mark.parametrize("as_base64", [False, True])
+def test_gismo_roundtrip(multipatch, tmp_path, are_splines_equal, labels, as_base64):
+    fname = str(tmp_path / "multipatch.xml")
+    splinepy.io.gismo.export(
+        fname, multipatch, labeled_boundaries=labels, as_base64=as_base64
     )
 
-    # Create block for boundary conditions
-    additional_blocks.add_boundary_conditions(
+    loaded = splinepy.io.gismo.load(fname, load_options=False)
+
+    if not labels:  # all boundaries are written as one
+        multipatch.interfaces = np.maximum(multipatch.interfaces, -1)
+    _assert_same_multipatch(loaded, multipatch, are_splines_equal)
+
+
+def test_gismo_roundtrip_of_a_refined_volume(tmp_path, np_rng, are_splines_equal):
+    nurbs = splinepy.helpme.create.box(1, 1, 1).nurbs
+    nurbs.elevate_degrees([0, 1, 2, 2])
+    for axis in range(3):
+        nurbs.insert_knots(axis, np_rng.random(4))
+    nurbs.cps[:] = np_rng.random(nurbs.cps.shape)
+    nurbs.weights[:] = np_rng.random(nurbs.weights.shape) + 0.5
+    multipatch = splinepy.Multipatch([nurbs])
+    fname = str(tmp_path / "volume.xml")
+    splinepy.io.gismo.export(fname, multipatch, as_base64=True)
+
+    with open(fname) as f:
+        assert 'format="B64Float64"' in f.read()
+    loaded = splinepy.io.gismo.load(fname, load_options=False)
+    _assert_same_multipatch(loaded, multipatch, are_splines_equal)
+
+
+def test_gismo_export_additional_blocks(four_patches, tmp_path):
+    blocks = splinepy.io.gismo.AdditionalBlocks()
+    blocks.add_function(
+        dim=2, block_id=1, function_string="sin(pi*x)", comment="scalar"
+    )
+    blocks.add_function(dim=2, block_id=2, function_string=("x", "y"))
+    blocks.add_boundary_conditions(
         block_id=3,
         dim=2,
-        function_list=[
-            "sin(pi*x) * sin(pi*y)",
-            ("pi*cos(pi*x) * sin(pi*y)", "pi*sin(pi*x) * cos(pi*y)"),
-            "0",
-        ],
+        function_list=["sin(pi*x)", ("cos(x)", "sin(y)"), "0"],
         bc_list=[("BID2", "Dirichlet", 0), ("BID1", "Neumann", 1)],
-        cv_list=[
-            ("0", "0", "1", "0"),
-            ("0", "0", "2", "sin(x)"),
-        ],  # unknown, patch, corner, function
+        cv_list=[("0", "0", "1", "0"), ("0", "0", "2", "sin(x)")],
         unknown_id=0,
         multipatch_id=0,
-        comment="Boundary conditions",
+    )
+    blocks.add_assembly_options(block_id=4)
+    fname = str(tmp_path / "blocks.xml")
+    splinepy.io.gismo.export(
+        fname,
+        splinepy.Multipatch(four_patches),
+        additional_blocks=blocks.to_list(),
     )
 
-    # Create dictionary for assembly options
-    additional_blocks.add_assembly_options(
-        block_id=4, comment="Assembler options"
-    )
-
-    with tempfile.TemporaryDirectory() as tmpd:
-        tmpf = to_tmpf(tmpd)
-        splinepy.io.gismo.export(
-            tmpf,
-            multipatch=gismo_2D_multipatch,
-            indent=True,
-            labeled_boundaries=True,
-            additional_blocks=additional_blocks.to_list(),
-        )
-
-        with (
-            open(tmpf) as tmp_read,
-            open(
-                os.path.dirname(__file__)
-                + "/../data/gismo_additional_blocks.xml"
-            ) as base_file,
-        ):
-            assert are_stripped_lines_same(
-                base_file.readlines(), tmp_read.readlines(), True
-            )
-
-
-def test_gismo_import(to_tmpf, are_splines_equal):
-    """
-    Test gismo export routine
-    """
-    # Define some splines
-    bsp_el2 = splinepy.BSpline(
-        degrees=[1, 1],
-        control_points=[[0, 0], [1, 0], [0, 1], [1, 1]],
-        knot_vectors=[[0, 0, 1, 1], [0, 0, 1, 1]],
-    )
-    nur_el3 = splinepy.NURBS(
-        degrees=[1, 1],
-        control_points=[[1, 0], [2, 0], [1, 1], [2, 1]],
-        weights=[1, 1, 1, 1],
-        knot_vectors=[[0, 0, 1, 1], [0, 0, 1, 1]],
-    )
-
-    # Make it more tricky
-    bsp_el2.elevate_degrees(0)
-    bsp_el2.elevate_degrees(1)
-    nur_el3.elevate_degrees(0)
-    nur_el3.elevate_degrees(1)
-    bsp_el2.insert_knots(1, [0.5])
-    nur_el3.insert_knots(1, [0.5])
-
-    # Test Output against input
-    multipatch_geometry = splinepy.Multipatch([bsp_el2, nur_el3])
-    with tempfile.TemporaryDirectory() as tmpd:
-        tmpf = to_tmpf(tmpd)
-        splinepy.io.gismo.export(
-            tmpf,
-            multipatch=multipatch_geometry,
-            indent=False,
-            labeled_boundaries=False,
-        )
-        multipatch_geometry_loaded = splinepy.io.gismo.load(
-            tmpf, load_options=False
-        )
-        assert all(
-            are_splines_equal(a, b)
-            for a, b in zip(
-                multipatch_geometry.patches,
-                multipatch_geometry_loaded.patches,
-                strict=True,
-            )
-        )
-
-        assert np.allclose(
-            multipatch_geometry.interfaces,
-            multipatch_geometry_loaded.interfaces,
-        )
-
-        # Now with modified boundaries
-        multipatch_geometry.boundaries_from_continuity()
-    with tempfile.TemporaryDirectory() as tmpd:
-        tmpf = to_tmpf(tmpd)
-        splinepy.io.gismo.export(
-            tmpf,
-            multipatch=multipatch_geometry,
-            indent=False,
-            labeled_boundaries=True,
-        )
-        multipatch_geometry_loaded = splinepy.io.gismo.load(
-            tmpf, load_options=False
-        )
-        assert all(
-            are_splines_equal(a, b)
-            for a, b in zip(
-                multipatch_geometry.patches,
-                multipatch_geometry_loaded.patches,
-                strict=True,
-            )
-        )
-
-        assert np.allclose(
-            multipatch_geometry.interfaces,
-            multipatch_geometry_loaded.interfaces,
-        )
+    root = ET.parse(fname).getroot()
+    scalar, vector = root.findall("Function")
+    assert scalar.attrib == {"id": "1", "type": "FunctionExpr", "dim": "2"}
+    assert scalar.text == "sin(pi*x)"
+    assert vector.attrib["c"] == "2"
+    assert [(c.attrib["index"], c.text) for c in vector] == [("0", "x"), ("1", "y")]
+    conditions = root.find("boundaryConditions[@id='3']")
+    assert conditions.attrib == {"id": "3", "multipatch": "0"}
+    assert [f.attrib["index"] for f in conditions.findall("Function")] == [
+        "0",
+        "1",
+        "2",
+    ]
+    assert [bc.attrib for bc in conditions.findall("bc")] == [
+        {"name": "BID2", "type": "Dirichlet", "unknown": "0", "function": "0"},
+        {"name": "BID1", "type": "Neumann", "unknown": "0", "function": "1"},
+    ]
+    assert [(cv.attrib, cv.text) for cv in conditions.findall("cv")] == [
+        ({"unknown": "0", "patch": "0", "corner": "1"}, "0"),
+        ({"unknown": "0", "patch": "0", "corner": "2"}, "sin(x)"),
+    ]
+    options = {o.attrib["label"]: o.attrib["value"] for o in root.find("OptionList")}
+    assert options["DirichletStrategy"] == "11"
+    assert len(options) == 9
 
 
-def test_gismo_import_with_options(to_tmpf, are_splines_equal):
-    """
-    Test gismo export routine
-    """
-    # Define some splines
-    bsp_el2 = splinepy.BSpline(
-        degrees=[1, 1],
-        control_points=[[0, 0], [1, 0], [0, 1], [1, 1]],
-        knot_vectors=[[0, 0, 1, 1], [0, 0, 1, 1]],
-    )
-    nur_el3 = splinepy.NURBS(
-        degrees=[1, 1],
-        control_points=[[1, 0], [2, 0], [1, 1], [2, 1]],
-        weights=[1, 1, 1, 1],
-        knot_vectors=[[0, 0, 1, 1], [0, 0, 1, 1]],
-    )
-
-    # Make it more tricky
-    bsp_el2.elevate_degrees(0)
-    bsp_el2.elevate_degrees(1)
-    nur_el3.elevate_degrees(0)
-    nur_el3.elevate_degrees(1)
-    bsp_el2.insert_knots(1, [0.5])
-    nur_el3.insert_knots(1, [0.5])
-
-    # Test Output against input
-    multipatch_geometry = splinepy.Multipatch([bsp_el2, nur_el3])
-
-    # Set some options
-    gismo_options = [
+def test_gismo_import_with_options(four_patches, tmp_path, are_splines_equal):
+    multipatch = splinepy.Multipatch(four_patches)
+    options = [
         {
             "tag": "OptionNumber1",
             "attributes": {"Mambo": "No. 5", "id": "5"},
-            "text": "One, two, three, four, five\nEverybody in the car, "
-            "so come on, let's ride",
+            "text": "One, two, three, four, five",
             "children": [
                 {
                     "tag": "AnotherOne",
@@ -369,96 +193,15 @@ def test_gismo_import_with_options(to_tmpf, are_splines_equal):
             ],
         }
     ]
-    with tempfile.TemporaryDirectory() as tmpd:
-        tmpf = to_tmpf(tmpd)
-        splinepy.io.gismo.export(
-            tmpf,
-            multipatch=multipatch_geometry,
-            indent=False,
-            labeled_boundaries=False,
-            additional_blocks=gismo_options,
-        )
-        (
-            multipatch_geometry_loaded,
-            gismo_options_loaded,
-        ) = splinepy.io.gismo.load(tmpf, load_options=True)
-        assert all(
-            are_splines_equal(a, b)
-            for a, b in zip(
-                multipatch_geometry.patches,
-                multipatch_geometry_loaded.patches,
-                strict=True,
-            )
-        )
-
-        assert np.allclose(
-            multipatch_geometry.interfaces,
-            multipatch_geometry_loaded.interfaces,
-        )
-
-        assert gismo_options_loaded == gismo_options
-
-
-def test_gismo_io_binary(to_tmpf, are_stripped_lines_same, are_splines_equal):
-    """Test the base64 io-routines"""
-    # We test this with just one (big, 3D) spline
-    nurbs = splinepy.NURBS(
-        degrees=[1, 1, 1],
-        knot_vectors=[[0, 0, 1, 1], [0, 0, 1, 1], [0, 0, 1, 1]],
-        control_points=np.ones((8, 3)),
-        weights=np.ones((8, 1)),
+    fname = str(tmp_path / "options.xml")
+    splinepy.io.gismo.export(
+        fname, multipatch, indent=False, additional_blocks=options
     )
-    nurbs.elevate_degrees([0, 1, 2, 2])
-    np_rng = np.random.RandomState(19284918)
-    for i in range(3):
-        nurbs.insert_knots(i, np_rng.random(4))
 
-    # Randomize points
-    nurbs.cps = np_rng.random(nurbs.cps.shape)
-    nurbs.weights = np_rng.random(nurbs.weights.shape)
+    loaded, loaded_options = splinepy.io.gismo.load(fname, load_options=True)
 
-    # Create a multipatch geometry
-    multipatch_geometry = splinepy.Multipatch([nurbs])
-
-    # Export
-    with tempfile.TemporaryDirectory() as tmpd:
-        tmpf = to_tmpf(tmpd)
-        splinepy.io.gismo.export(
-            tmpf,
-            multipatch=multipatch_geometry,
-            indent=False,
-            labeled_boundaries=False,
-            as_base64=True,
-        )
-        (
-            multipatch_geometry_loaded,
-            gismo_options_loaded,
-        ) = splinepy.io.gismo.load(tmpf, load_options=True)
-
-        with (
-            open(tmpf) as tmp_read,
-            open(
-                os.path.dirname(os.path.dirname(__file__))
-                + "/data/gismo_noindent_nolabels_b64_3d.xml"
-            ) as base_file,
-        ):
-            assert are_stripped_lines_same(
-                base_file.readlines(), tmp_read.readlines(), True
-            )
-
-        assert all(
-            are_splines_equal(a, b)
-            for a, b in zip(
-                multipatch_geometry.patches,
-                multipatch_geometry_loaded.patches,
-                strict=True,
-            )
-        )
-
-        assert np.allclose(
-            multipatch_geometry.interfaces,
-            multipatch_geometry_loaded.interfaces,
-        )
+    _assert_same_multipatch(loaded, multipatch, are_splines_equal)
+    assert loaded_options == options
 
 
 def test_gismo_boundary_conditions_without_corner_values():
@@ -493,8 +236,6 @@ def test_gismo_import_ignores_incomplete_interfaces(tmp_path):
 
 
 def test_gismo_import_orders_patches_by_id(tmp_path):
-    import xml.etree.ElementTree as ET
-
     boxes = [splinepy.helpme.create.box(1, 1).bspline for _ in range(3)]
     for i, box in enumerate(boxes):
         box.control_points[:, 0] += i
