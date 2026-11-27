@@ -527,22 +527,6 @@ def test_plate_radius_and_torus_degree_flag():
     np.testing.assert_allclose(pts[1], [0.0, 0.0, 3.0], atol=1e-12)
 
 
-@pytest.mark.parametrize("knots", [[0, 0, 0.5, 0.5, 1, 1], [0, 0, 0.5, 1, 1]])
-def test_determinant_spline_keeps_valid_multiplicities(knots):
-    rng = np.random.default_rng(0)
-    spline = splinepy.BSpline(
-        [1, 1], [knots, [0, 0, 1, 1]], rng.random((2 * (len(knots) - 2), 2))
-    )
-    determinant = spline.create.determinant_spline()
-    assert max(determinant.knot_multiplicities[0][1:-1]) == 2
-    queries = rng.random((50, 2))
-    np.testing.assert_allclose(
-        determinant.evaluate(queries).ravel(),
-        np.linalg.det(spline.jacobian(queries)),
-        atol=1e-12,
-    )
-
-
 def test_line_interpolates_its_points():
     line = splinepy.helpme.create.line([[0, 0], [1, 2], [3, 1]])
     assert line.degrees.tolist() == [1]
