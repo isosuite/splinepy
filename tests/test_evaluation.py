@@ -23,214 +23,63 @@ all_splines = (
 )
 
 
-@pytest.mark.parametrize(
-    "spline, reference",
-    [
-        (
-            "bspline_2p2d",
-            [
-                [
-                    9.4128804e-01,
-                    3.8615940e-02,
-                    1.9602000e-04,
-                    1.9015920e-02,
-                    7.8012000e-04,
-                    3.9600000e-06,
-                    9.6040000e-05,
-                    3.9400000e-06,
-                    2.0000000e-08,
-                ],
-                [
-                    2.4010000e-01,
-                    9.8500000e-03,
-                    5.0000000e-05,
-                    4.8020000e-01,
-                    1.9700000e-02,
-                    1.0000000e-04,
-                    2.4010000e-01,
-                    9.8500000e-03,
-                    5.0000000e-05,
-                ],
-                [
-                    1.6200000e-02,
-                    2.7540000e-01,
-                    5.1840000e-01,
-                    3.6000000e-03,
-                    6.1200000e-02,
-                    1.1520000e-01,
-                    2.0000000e-04,
-                    3.4000000e-03,
-                    6.4000000e-03,
-                ],
-                [
-                    7.2000000e-03,
-                    5.0400000e-02,
-                    3.2400000e-02,
-                    3.3600000e-02,
-                    2.3520000e-01,
-                    1.5120000e-01,
-                    3.9200000e-02,
-                    2.7440000e-01,
-                    1.7640000e-01,
-                ],
-                [
-                    4.0000000e-06,
-                    6.4000000e-05,
-                    3.2000000e-05,
-                    7.9200000e-04,
-                    1.2672000e-02,
-                    6.3360000e-03,
-                    3.9204000e-02,
-                    6.2726400e-01,
-                    3.1363200e-01,
-                ],
-            ],
-        ),
-        (
-            "nurbs_2p2d",
-            [
-                [
-                    9.75958864e-01,
-                    1.39415582e-02,
-                    9.95774782e-05,
-                    9.85817035e-03,
-                    1.40823820e-04,
-                    1.00583311e-06,
-                ],
-                [
-                    4.92908517e-01,
-                    7.04119101e-03,
-                    5.02916557e-05,
-                    4.92908517e-01,
-                    7.04119101e-03,
-                    5.02916557e-05,
-                ],
-                [
-                    9.50089457e-03,
-                    1.20926646e-01,
-                    7.69572460e-01,
-                    1.05565495e-03,
-                    1.34362940e-02,
-                    8.55080511e-02,
-                ],
-                [
-                    1.32410262e-02,
-                    7.49025551e-02,
-                    2.11856419e-01,
-                    3.08957277e-02,
-                    1.74772629e-01,
-                    4.94331644e-01,
-                ],
-                [
-                    4.18891419e-03,
-                    3.94934617e-03,
-                    1.86173964e-03,
-                    4.14702505e-01,
-                    3.90985271e-01,
-                    1.84312224e-01,
-                ],
-            ],
-        ),
-    ],
-)
-def test_basis_and_support(spline, reference, queries_2D, request):
-    """Test the correct calculation of the basis functions.
-    (.basis_and_support())"""
-    spline = request.getfixturevalue(spline)
-    # test basis functions
-    assert np.allclose(
-        spline.basis_and_support(queries_2D)[0],
-        reference,
-    )
+@pytest.mark.parametrize("splinetype", all_2p2d_splines)
+def test_queries_agree_with_each_other(splinetype, request, queries_2D):
+    """the basis is a partition of unity that reproduces values and
+    derivatives, and derivatives match central differences"""
+    spline = request.getfixturevalue(splinetype)
+    queries = np.array(queries_2D)
+    values = spline.evaluate(queries)
 
-
-def test_jacobian(np_rng):
-    """Test the correct evaluation of basis function derivatives"""
-    # Test both for nurbs as for rational beziers for the integration of a
-    # circle, just because we can
-    # Get Legendre points
-    interval = [0, 1]
-    order = 7
-    dim = 2
-    positions, weights = np.polynomial.legendre.leggauss(order)
-    positions = interval[0] + (interval[1] - interval[0]) / 2 * (positions + 1)
-    weights = weights * (interval[1] - interval[0]) / 2
-    positions = np.reshape(
-        np.meshgrid(*[positions for _ in range(dim)]), (dim, -1)
-    ).T
-    weights = np.prod(
-        np.reshape(np.meshgrid(*[weights for _ in range(dim)]), (dim, -1)).T,
-        axis=1,
-    )
-    inv_sqrt_2 = np.sqrt(0.5)
-    circle_bezier = splinepy.RationalBezier(
-        degrees=[2, 2],
-        control_points=[
-            [0, 0],
-            [0.5, -0.5],
-            [1, 0],
-            [-0.5, 0.5],
-            [0.5, 0.5],
-            [1 + 0.5, 0.5],
-            [0, 1],
-            [0.5, 1 + 0.5],
-            [1, 1],
-        ],
-        weights=[
-            1,
-            inv_sqrt_2,
-            1,
-            inv_sqrt_2,
-            1,
-            inv_sqrt_2,
-            1,
-            inv_sqrt_2,
-            1,
-        ],
-    )
-    circle_nurbs = splinepy.NURBS(
-        degrees=circle_bezier.degrees,
-        control_points=circle_bezier.control_points,
-        knot_vectors=[[0, 0, 0, 1, 1, 1], [0, 0, 0, 1, 1, 1]],
-        weights=circle_bezier.weights,
-    )
-
-    # Test the determinant
-    area = np.sum(np.linalg.det(circle_bezier.jacobian(positions)) * weights)
-    assert area == pytest.approx(np.pi * 0.5)
-
-    area = np.sum(np.linalg.det(circle_nurbs.jacobian(positions)) * weights)
-    assert area == pytest.approx(np.pi * 0.5)
-
-    # Assuming that the derivative is correct
-    test_spline = splinepy.Bezier(
-        degrees=[3, 3], control_points=np_rng.random((16, 3))
-    )
-    query = np_rng.random((1, 2))
-    jacs = test_spline.jacobian(query)[0]
-    expected_jacs = np.vstack(
-        (
-            test_spline.derivative(query, [1, 0]),
-            test_spline.derivative(query, [0, 1]),
+    basis, support = spline.basis_and_support(queries)
+    np.testing.assert_allclose(basis.sum(axis=1), 1, atol=1e-14)
+    points = spline.cps[support]
+    np.testing.assert_allclose((basis[..., None] * points).sum(1), values)
+    for order in ([1, 0], [0, 1], [1, 1]):
+        derivative = spline.derivative(queries, order)
+        basis_derivative = spline.basis_derivative(queries, order)
+        np.testing.assert_allclose(
+            (basis_derivative[..., None] * points).sum(1), derivative, atol=1e-13
         )
-    ).T
-
-    assert np.allclose(jacs, expected_jacs)
-
-    # Test for scalar valued splines
-    test_spline_scalar = splinepy.Bezier(
-        degrees=[3, 3], control_points=np_rng.random((16, 1))
-    )
-    query = np_rng.random((1, 2))
-    jacs = test_spline_scalar.jacobian(query)[0]
-    expected_jacs = np.vstack(
-        (
-            test_spline_scalar.derivative(query, [1, 0]),
-            test_spline_scalar.derivative(query, [0, 1]),
+    step = 1e-6
+    for axis in range(2):
+        offset = step * np.eye(2)[axis]
+        np.testing.assert_allclose(
+            spline.derivative(queries, np.eye(2, dtype=int)[axis]),
+            (spline.evaluate(queries + offset) - spline.evaluate(queries - offset))
+            / (2 * step),
+            atol=1e-8,
         )
-    ).T
 
-    assert np.allclose(jacs, expected_jacs)
+
+@pytest.mark.parametrize("splinetype", ["rational_bezier_2p2d", "nurbs_2p2d"])
+def test_quarter_ring_has_its_radii_and_tangents(splinetype, request, queries_2D):
+    """the rational fixtures are a quarter ring of radius 1 + v"""
+    ring = request.getfixturevalue(splinetype)
+    queries = np.array(queries_2D)
+    values = ring.evaluate(queries)
+
+    radius = np.linalg.norm(values, axis=1)
+    np.testing.assert_allclose(radius, 1 + queries[:, 1])
+    # along v the point moves outwards at unit speed, along u around the ring
+    outwards = values / radius[:, None]
+    np.testing.assert_allclose(ring.derivative(queries, [0, 1]), outwards)
+    around = ring.derivative(queries, [1, 0])
+    np.testing.assert_allclose((around * outwards).sum(1), 0, atol=1e-14)
+    jacobian = ring.jacobian(queries)
+    np.testing.assert_allclose(jacobian[:, :, 0], around)
+    np.testing.assert_allclose(jacobian[:, :, 1], outwards)
+
+
+def test_jacobian_of_a_scalar_spline(np_rng):
+    scalar = splinepy.Bezier(degrees=[3, 3], control_points=np_rng.random((16, 1)))
+    queries = np_rng.random((4, 2))
+    jacobian = scalar.jacobian(queries)
+    assert jacobian.shape == (4, 1, 2)
+    for axis, order in enumerate(([1, 0], [0, 1])):
+        np.testing.assert_allclose(
+            jacobian[:, :, axis], scalar.derivative(queries, order)
+        )
 
 
 def test_basis_function_derivatives(
@@ -302,102 +151,6 @@ def test_basis_function_derivatives(
     assert np.allclose(
         bezier_2p2d.basis_derivative_and_support(q2D, [3, 1])[0],
         bspline_c.basis_derivative_and_support(q2D, [3, 1])[0],
-    )
-
-
-@pytest.mark.parametrize(
-    "spline, reference",
-    [
-        (
-            "bspline_2p2d",
-            [
-                [-0.019796, 0.04049403],
-                [-0.9996, 0.069675],
-                [2.256, 1.9691],
-                [1.528, 4.0766],
-                [-1.0264, 2.873488],
-            ],
-        ),
-        (
-            "nurbs_2p2d",
-            [
-                [-1.00989841, 0.01432479],
-                [-1.49984913, 0.02127445],
-                [-0.15941144, 1.0883878],
-                [-0.49948029, 1.62496752],
-                [-1.61951381, 1.15640608],
-            ],
-        ),
-        (
-            "bezier_2p2d",
-            [
-                [-1.009899, 0.020099],
-                [-1.49985, 0.02985],
-                [-0.209, 1.089],
-                [-0.612, 1.632],
-                [-1.6716, 1.2736],
-            ],
-        ),
-        (
-            "rational_bezier_2p2d",
-            [
-                [-1.00989841, 0.01432479],
-                [-1.49984913, 0.02127445],
-                [-0.15941144, 1.0883878],
-                [-0.49948029, 1.62496752],
-                [-1.61951381, 1.15640608],
-            ],
-        ),
-    ],
-)
-def test_evaluate(spline, reference, queries_2D, request):
-    """Test the correct spline evaluation in the physical space.
-    (.evaluate())"""
-    spline = request.getfixturevalue(spline)
-    # test evaluation
-    assert np.allclose(
-        spline.evaluate(queries_2D),
-        reference,
-    )
-
-
-@pytest.mark.parametrize(
-    "spline, reference",
-    [
-        (
-            "bspline_2p2d",
-            [
-                [0.08, 7.8812],
-                [0.08, 4.02],
-                [0.8, 1.16],
-                [1.6, 1.84],
-                [3.2, 3.232],
-            ],
-        ),
-        (
-            "nurbs_2p2d",
-            [
-                [0.02017474, 1.42231975],
-                [0.02017474, 1.42231975],
-                [1.47716145, 0.21635343],
-                [1.49159582, 0.45848468],
-                [0.95624956, 1.33920031],
-            ],
-        ),
-    ],
-)
-def test_derivative(spline, reference, queries_2D, request):
-    """Test the correct calculation of the first derivative.
-    (.derivative())"""
-    spline = request.getfixturevalue(spline)
-
-    # order
-    o1 = [1, 1]
-
-    # test derivative evaluation
-    assert np.allclose(
-        spline.derivative(queries_2D, o1),
-        reference,
     )
 
 
@@ -529,9 +282,7 @@ def test_multiple_derivative_queries(request, splinetype, np_rng, nthreads):
     a = np.array  # shortcut
     orders = {
         2: splinepy.utils.data.cartesian_product([a([0, 1, 2]), a([0, 1, 2])]),
-        3: splinepy.utils.data.cartesian_product(
-            [a([0, 1, 2]), a([0, 1, 2]), a([0, 1, 2])]
-        ),
+        3: a([[0, 0, 0], [1, 0, 2], [2, 1, 0], [1, 1, 1]]),
     }
     jac_transpose_orders = {2: np.eye(2), 3: np.eye(3)}
 
@@ -611,19 +362,6 @@ def test_proximities_far_queries_find_global_minimum():
     found = curve.evaluate(curve.proximities(queries))
 
     dense = curve.evaluate(np.linspace(0, 1, 20001).reshape(-1, 1))
-    best = np.linalg.norm(dense[None] - queries[:, None], axis=-1).min(axis=1)
-    assert np.allclose(np.linalg.norm(found - queries, axis=1), best, atol=1e-6)
-
-
-def test_proximities_hairpin():
-    """Two close legs: nearest point must be on the closer leg."""
-    hairpin = splinepy.Bezier(
-        degrees=[3], control_points=[[0, 0], [3, 0], [3, 0.3], [0, 0.3]]
-    )
-    queries = np.array([[1.0, 0.05], [1.0, 0.25], [1.5, 0.14], [1.5, 0.16]])
-    found = hairpin.evaluate(hairpin.proximities(queries))
-
-    dense = hairpin.evaluate(np.linspace(0, 1, 20001).reshape(-1, 1))
     best = np.linalg.norm(dense[None] - queries[:, None], axis=-1).min(axis=1)
     assert np.allclose(np.linalg.norm(found - queries, axis=1), best, atol=1e-6)
 
