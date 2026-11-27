@@ -287,9 +287,12 @@ TEST(DynamicBufferTest, FinishShrinksLargeSlack) {
   splinepy::core::DynamicBuffer<double> builder(100);
   builder.push_back(1.0);
   builder.push_back(2.0);
+  const double* before = builder.data();
   auto finished = std::move(builder).Finish();
   ASSERT_EQ(finished.size(), 2u);
   EXPECT_EQ(finished[1], 2.0);
+  // the two values moved out of the block reserved for 100
+  EXPECT_NE(finished.data(), before);
 }
 
 TEST(DynamicBufferTest, MovesNonTrivialElements) {

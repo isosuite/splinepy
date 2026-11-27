@@ -84,7 +84,28 @@ TEST(Proximity, BvhFindsClosestPointNextToCollapsedEdge) {
         best = std::min(best, Distance(view, u, query));
       }
     }
-    EXPECT_LE(dist, best + 1e-3);
+    // the minimum is at least as close as the best of the samples
+    EXPECT_LE(dist, best + 1e-12);
+    EXPECT_NEAR(dist, Distance(view, guess, query), 1e-14);
+    double x[3];
+    splinepy::core::Evaluate(view,
+                             splinepy::core::Span<const double>(guess, 2),
+                             splinepy::core::Span<double>(x, 3));
+    for (int i = 0; i < 3; ++i) {
+      EXPECT_NEAR(nearest[i], x[i], 1e-14);
+      EXPECT_NEAR(diff[i], x[i] - query[i], 1e-14);
+    }
+    // the first derivatives are those of the bilinear patch along u and v
+    for (int i = 0; i < 3; ++i) {
+      const double* c = cone.cps.data();
+      const double du =
+          (1 - guess[1]) * (c[3 + i] - c[i]) + guess[1] * (c[9 + i] - c[6 + i]);
+      const double dv =
+          (1 - guess[0]) * (c[6 + i] - c[i]) + guess[0] * (c[9 + i] - c[3 + i]);
+      EXPECT_NEAR(first[i], du, 1e-13);
+      EXPECT_NEAR(first[3 + i], dv, 1e-13);
+    }
+    EXPECT_TRUE(std::isfinite(conv));
   }
 }
 

@@ -104,6 +104,7 @@ TEST(ThreadPoolTest, RunsAllIdsAtOnceAndReusesWorkers) {
     // every id must run concurrently, or this never finishes
     ++arrived;
     while (arrived.load() < 4) {
+      std::this_thread::yield();
     }
     std::lock_guard<std::mutex> lock(mutex);
     first[id] = std::this_thread::get_id();
