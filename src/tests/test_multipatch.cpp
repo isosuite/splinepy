@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 
-#include <string>
 #include <vector>
 
 #include "splinepy/core/multipatch/multipatch.hpp"
@@ -10,7 +9,7 @@
 namespace splinepy::core {
 using namespace test;
 
-TEST(MultipatchTest, GoldenTwoPatchAdjoiningSquares) {
+TEST(MultipatchTest, TwoAdjoiningSquares) {
   // 2-patch multipatch (adjoining unit squares)
   int32_t degrees[2] = {1, 1};
   double kv[4] = {0.0, 0.0, 1.0, 1.0};
@@ -32,35 +31,40 @@ TEST(MultipatchTest, GoldenTwoPatchAdjoiningSquares) {
   SplineView patches_arr[2] = {p0, p1};
   SplineBatchView batch(patches_arr, 2);
 
-  // 1. Interfaces
-  auto exp_interfaces = LoadBin<int32_t>("multipatch_topology_interfaces.bin");
+  // the side u = 1 of patch 0 meets the side u = 0 of patch 1
+  const std::vector<int32_t> exp_interfaces{-1, 4, -1, -1, 1, -1, -1, -1};
   auto interfaces = DetermineInterfaces(batch, 1e-4);
+  EXPECT_EQ(std::vector<int32_t>(interfaces.begin(), interfaces.end()),
+            exp_interfaces);
 
-  ASSERT_EQ(interfaces.size(), 8u);
-  for (std::size_t i = 0; i < 8; ++i) {
-    EXPECT_EQ(interfaces[i], exp_interfaces[i]);
-  }
-
-  // 2. Orientations
-  auto exp_orientations =
-      LoadBin<int32_t>("multipatch_topology_orientations.bin");
+  // patch, face, patch, face, then axes in the same order and direction
+  const std::vector<int32_t> exp_orientations{0, 1, 1, 0, 0, 1, 1, 1};
   auto orientations = InterfaceOrientations(batch, interfaces.cspan(), 1e-4);
+  EXPECT_EQ(std::vector<int32_t>(orientations.begin(), orientations.end()),
+            exp_orientations);
 
-  ASSERT_EQ(orientations.size(), 8u);
-  for (std::size_t i = 0; i < 8; ++i) {
-    EXPECT_EQ(orientations[i], exp_orientations[i]);
-  }
+  // the two control points on the shared side, as (patch, point) pairs
+  const auto seam =
+      SeamControlPoints(batch, interfaces.cspan(), orientations.cspan(), 1e-4);
+  const std::vector<SeamPoint> exp_points{{0, 1}, {1, 0}, {0, 3}, {1, 2}};
+  EXPECT_EQ(std::vector<SeamPoint>(seam.points.begin(), seam.points.end()),
+            exp_points);
+  EXPECT_EQ(std::vector<std::size_t>(seam.offsets.begin(), seam.offsets.end()),
+            (std::vector<std::size_t>{0, 2, 4}));
 
-  // 3. Boundary Multipatch
   auto bnd_mp = BoundaryMultipatch(batch, interfaces.cspan(), -1);
-  EXPECT_EQ(bnd_mp.size(), 6u);
-
-  for (std::size_t i = 0; i < 6; ++i) {
-    auto exp_cps = LoadBin<double>("multipatch_topology_bnd_"
-                                   + std::to_string(i) + "_cps.bin");
-    EXPECT_LT(MaxAbsDiff(bnd_mp[i].control_points.cspan(),
-                         Span<const double>(exp_cps)),
-              1e-14);
+  const std::vector<std::vector<double>> exp_boundaries{
+      {0, 0, 0, 1},
+      {0, 0, 1, 0},
+      {0, 1, 1, 1},
+      {2, 0, 2, 1},
+      {1, 0, 2, 0},
+      {1, 1, 2, 1},
+  };
+  ASSERT_EQ(bnd_mp.size(), exp_boundaries.size());
+  for (std::size_t i = 0; i < exp_boundaries.size(); ++i) {
+    const auto& cps = bnd_mp[i].control_points;
+    EXPECT_EQ(std::vector<double>(cps.begin(), cps.end()), exp_boundaries[i]);
   }
 }
 

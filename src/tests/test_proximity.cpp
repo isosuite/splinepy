@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "splinepy/core/queries/evaluate.hpp"
+#include "splinepy/proximity/grid_guess.hpp"
 #include "splinepy/proximity/proximity.hpp"
 
 namespace splinepy::proximity {
@@ -106,6 +107,32 @@ TEST(Proximity, BvhFindsClosestPointNextToCollapsedEdge) {
       EXPECT_NEAR(first[3 + i], dv, 1e-13);
     }
     EXPECT_TRUE(std::isfinite(conv));
+  }
+}
+
+TEST(Proximity, GridGuessIsTheNearestSampleOfARationalSurface) {
+  Cone cone;
+  auto view = cone.View();
+  const double weights[4] = {1, 3, 1, 3};
+  view.weights_data = weights;
+  view.weight_stride = 1;
+  const int resolutions[2] = {5, 3};
+  const auto grid = MakeGridGuess(view, resolutions);
+  for (const double u : {0., 0.25, 0.5, 0.75, 1.}) {
+    for (const double v : {0., 0.5, 1.}) {
+      const double sample[2] = {u, v};
+      double x[3], guess[2];
+      splinepy::core::Evaluate(view,
+                               splinepy::core::Span<const double>(sample, 2),
+                               splinepy::core::Span<double>(x, 3));
+      if (u == 1.) {
+        continue; // the apex, which all v share
+      }
+      x[2] += 1e-3;
+      grid->Guess(x, guess);
+      EXPECT_DOUBLE_EQ(guess[0], u);
+      EXPECT_DOUBLE_EQ(guess[1], v);
+    }
   }
 }
 

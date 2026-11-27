@@ -6,6 +6,7 @@
 
 #include <gtest/gtest.h>
 
+#include "splinepy/core/hierarchy/coarsen.hpp"
 #include "splinepy/core/hierarchy/export.hpp"
 #include "splinepy/core/hierarchy/extraction.hpp"
 #include "splinepy/core/hierarchy/hierarchy.hpp"
@@ -519,7 +520,7 @@ TEST_F(HierarchyQueryTest, BernsteinExtractionAndBezierGeometry) {
   }
 }
 
-TEST(Hierarchy, RefinementPreservesRationalGeometryWithAndWithoutTruncation) {
+TEST(Hierarchy, RefinementAndCoarseningPreserveRationalGeometry) {
   const std::array<int32_t, 1> degree{1};
   const std::array<double, 7> knots{0, 0, 0.25, 0.5, 0.75, 1, 1};
   const std::array<Span<const double>, 1> axes{knots};
@@ -606,6 +607,33 @@ TEST(Hierarchy, RefinementPreservesRationalGeometryWithAndWithoutTruncation) {
                 options);
     for (std::size_t i = 0; i < queries.size(); ++i) {
       EXPECT_NEAR(before[i], after[i], 2e-14);
+    }
+
+    // coarsening needs truncation. One of two siblings is no group; both
+    // merge back to what was refined
+    const std::array<std::size_t, 2> children{1, 2};
+    const auto coarsen = [&](Span<const std::size_t> marks) {
+      return CoarsenThb(refined,
+                        result.extraction,
+                        marks,
+                        0,
+                        true,
+                        1e-12,
+                        -1,
+                        options);
+    };
+    if (!truncate) {
+      EXPECT_THROW(coarsen(children), SplinepyException);
+      continue;
+    }
+    EXPECT_FALSE(coarsen({children.data(), 1}));
+    const auto merged = coarsen(children);
+    ASSERT_TRUE(merged);
+    EXPECT_EQ(merged->hierarchy.leaves.size(), 4u);
+    ASSERT_EQ(merged->weights.size(), weights.size());
+    for (std::size_t i = 0; i < weights.size(); ++i) {
+      EXPECT_NEAR(merged->control_points[i], points[i], 1e-13);
+      EXPECT_NEAR(merged->weights[i], weights[i], 1e-13);
     }
   }
 }
