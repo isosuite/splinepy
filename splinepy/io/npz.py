@@ -96,8 +96,9 @@ def export(fname, list_of_splines):
                     spline.knot_vectors[j]
                 )
 
-    # Save the dictionary as `.npz`
-    _np.savez(
-        fname,
-        **property_dicts,
-    )
+    # numpy appends ".npz" to names that do not end with it in lower case
+    if str(fname).lower().endswith(".npz"):
+        with open(fname, "wb") as file:
+            _np.savez(file, **property_dicts)
+    else:
+        _np.savez(fname, **property_dicts)
