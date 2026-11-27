@@ -131,6 +131,9 @@ def revolved(
 ):
     """Revolve spline around an axis and extend its parametric dimension.
 
+    The revolution is exact, so the result is always rational: a Bezier
+    gives a RationalBezier and a BSpline gives a NURBS.
+
     Parameters
     ----------
     spline: Spline
@@ -148,13 +151,16 @@ def revolved(
 
     Returns
     -------
-    spline : Spline
+    spline : RationalBezier or NURBS
     """
     from splinepy.spline import Spline as _Spline
 
     # Check input type
     if not isinstance(spline, _Spline):
         raise NotImplementedError("Revolutions only works for splines")
+    # an arc needs weights
+    if not spline.is_rational:
+        spline = spline.nurbs if spline.has_knot_vectors else spline.rationalbezier
 
     # Check axis
     if axis is not None:
@@ -270,18 +276,9 @@ def revolved(
         kv = [0, 0, 0]
         [kv.extend([i + 1, i + 1]) for i in range(n_knot_spans - 1)]
         spline_dict["knot_vectors"] = spline.knot_vectors + [kv + [n_knot_spans] * 3]
-    if spline.is_rational:
-        mid_weights = spline.weights * weight
-        spline_dict["weights"] = spline.weights
-        for _i_segment in range(n_knot_spans):
-            spline_dict["weights"] = _np.concatenate(
-                (spline_dict["weights"], mid_weights, spline.weights)
-            )
-    else:
-        _log.debug(
-            "True revolutions are only possible for rational spline types. "
-            "Creating Approximation."
-        )
+    spline_dict["weights"] = _np.concatenate(
+        [spline.weights] + [spline.weights * weight, spline.weights] * n_knot_spans
+    )
 
     if center is not None:
         spline_dict["control_points"] += center

@@ -68,8 +68,14 @@ def test_create_revolution(splinetype, np_rng, request):
         )
 
 
-def test_revolved_rational_line_sweeps_arcs(np_rng):
-    line = splinepy.Bezier([1], [[1, 0], [2, 1]]).nurbs
+@pytest.mark.parametrize("rational", [False, True])
+def test_revolved_line_sweeps_arcs(rational, np_rng):
+    line = splinepy.Bezier([1], [[1, 0], [2, 1]]).bspline
+    line = line.nurbs if rational else line
+    assert type(line.create.revolved(angle=240)) is splinepy.NURBS
+    bezier = splinepy.Bezier([1], [[1, 0], [2, 1]]).create.revolved(angle=90)
+    assert type(bezier) is splinepy.RationalBezier
+    assert np.allclose(np.linalg.norm(bezier.evaluate([[0, 0.3]])), 1)
     queries = np_rng.random((20, 2))
     points = line.create.revolved(angle=240).evaluate(queries * [1, 2])
     start = line.evaluate(queries[:, :1])
