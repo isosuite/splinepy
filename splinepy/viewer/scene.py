@@ -120,7 +120,14 @@ def _eval_data(spline, source, queries, parent=None, patch_index=None):
                     f"Data '{source}' has no field for {spline}"
                 ) from None
             return _np.asarray(patch.evaluate(queries))
-        return _data_values(data, queries)
+        values = _data_values(data, queries)
+        # a callback on a multipatch answers for all patches, one after another
+        n_patches = len(getattr(parent, "patches", ()))
+        if n_patches > 1 and len(values) == n_patches * len(queries):
+            if patch_index is None:
+                patch_index = parent.patches.index(spline)
+            values = values.reshape(n_patches, len(queries), -1)[patch_index]
+        return values
     raise _DataLookupError(f"Data '{source}' not found on {spline}")
 
 
