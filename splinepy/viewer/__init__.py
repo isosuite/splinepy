@@ -28,7 +28,6 @@ def _is_showable(obj):
     return (
         _is_spline(obj)
         or isinstance(obj, (dict, _np.ndarray))
-        or hasattr(obj, "vertices")
         or _is_group(obj)
     )
 
@@ -108,7 +107,7 @@ def show(
     :func:`scene_from_mesh` (whichever accepts them), e.g. ``scalars``,
     ``arrows``, ``resolutions``, ``mode`` or ``camera={"position": ...,
     "target": ..., "up": ...}``. ``ncols``, ``titles`` and ``link_cameras``
-    control the panel layout. The gustaf / vedo names ``c``, ``alpha``,
+    control the panel layout. The short names ``c``, ``alpha``,
     ``cmap``, ``data``, ``arrow_data*`` etc. are accepted as aliases, see
     :mod:`splinepy.viewer.compat`. Integer colors index a fixed ten-color
     palette, wrapping by absolute value. A dict with ``"layers"`` is taken

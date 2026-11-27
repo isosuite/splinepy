@@ -1,4 +1,4 @@
-"""Translates gustaf / vedo style show options to viewer arguments."""
+"""Translates the short show options to viewer arguments."""
 
 import numpy as _np
 
@@ -35,17 +35,17 @@ ALIASES = {
     "cam": "camera",
 }
 
-# Gustaf and vedo options without a viewer equivalent.
+# Options without a viewer equivalent.
 IGNORED = {
     "vertex_ids", "element_ids", "scalarbar", "scalarbar3d", "cmap_alpha",
     "cmap_n_colors", "labels", "label_options", "parametric_space",
-    "return_gustaf", "return_showable", "backend", "open", "block", "new_window",
+    "open", "block", "new_window",
     "interactive", "title",
     "close", "N", "sz", "size", "camera_options",
 }  # fmt: skip
 
 
-# vedo / matplotlib one-letter color names
+# matplotlib one-letter color names
 _LETTERS = {
     "k": "black", "w": "white", "r": "red", "g": "green", "b": "blue",
     "c": "cyan", "m": "magenta", "y": "yellow",
@@ -129,7 +129,7 @@ def to_css(c):
 def follow_control_points(options):
     """Hides control mesh and ids with the control points, unless given.
 
-    Like the vedo backend. Changes and returns ``options``.
+    Changes and returns ``options``.
 
     Parameters
     ----------
@@ -148,7 +148,7 @@ def follow_control_points(options):
 
 
 def translate(kwargs):
-    """Returns viewer keyword arguments for vedo style ``kwargs``.
+    """Returns viewer keyword arguments for short style ``kwargs``.
 
     Old names are renamed (see :data:`ALIASES`), colors are converted to css,
     options without equivalent are dropped with a debug message. Everything
@@ -191,7 +191,7 @@ def translate(kwargs):
             )
             value = "plasma"
         elif key == "axes" and not isinstance(value, bool):
-            value = True  # vedo axes dict
+            value = True  # a dict of axes options
         elif key == "lighting" and value not in (None, *LIGHTING):
             _log.warning(f"Viewer: lighting '{value}' unknown, using default.")
             value = "default"

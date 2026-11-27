@@ -978,28 +978,8 @@ class Multipatch(_SplinepyBase):
         """
         return _get_helper(self, "_show_options", self.__show_option__)
 
-    def showable(self, **kwargs):
-        """Equivalent to
-
-        .. code-block:: python
-
-            splinepy.helpme.visualize.show(
-                spline, return_showable=True, **kwargs
-            )
-
-        Parameters
-        ----------
-        kwargs: kwargs
-          see splinepy.helpme.visualize.show
-
-        Returns
-        -------
-        spline_showable: dict
-        """
-        return _visualize.show(self, return_showable=True, **kwargs)
-
     def show(self, **kwargs):
-        """Show the multipatch with the selected backend.
+        """Show the multipatch.
 
         Parameters
         ----------
@@ -1008,8 +988,7 @@ class Multipatch(_SplinepyBase):
 
         Returns
         -------
-        viewer : Viewer, vedo.Plotter, dict or None
-            Visualization result for the selected backend.
+        viewer : Viewer
         """
         return _visualize.show(self, **kwargs)
 

@@ -229,7 +229,7 @@ class Viewer:
         it, which is fast and leaves no tabs behind. ``new_window=True`` opens
         a fresh tab. With ``block=True`` this returns when ``q`` / Esc is
         pressed in the page (it is then cleared, the tab stays), the tab is
-        closed or on Ctrl-C, like the vedo window.
+        closed or on Ctrl-C.
 
         Parameters
         ----------

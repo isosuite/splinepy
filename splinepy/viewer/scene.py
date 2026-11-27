@@ -574,7 +574,7 @@ def scene_from_mesh(
 
     Parameters
     ----------
-    mesh : dict, array-like or gustaf.Vertices
+    mesh : dict or array-like
         Mesh or point coordinates.
     mode : {"edges", "faces", "points"}, optional
         Geometry to draw.
@@ -616,9 +616,7 @@ def scene_from_mesh(
     """
     if lighting is not None and lighting not in LIGHTING:
         raise ValueError(f"lighting must be one of {LIGHTING}")
-    if hasattr(mesh, "vertices") and not isinstance(mesh, dict):
-        mesh = _mesh.from_gustaf(mesh)
-    elif not isinstance(mesh, dict):
+    if not isinstance(mesh, dict):
         mesh = _mesh.make_mesh("vertex", mesh)
     etype = mesh["element_type"]
     layers = _mesh_layers(

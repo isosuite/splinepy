@@ -508,7 +508,7 @@ class Microstructure(_SplinepyBase):
     def show(self, use_saved=False, **kwargs):
         """
         Shows microstructure. Consists of deformation_function, microtile, and
-        microstructure. Supported only by vedo.
+        microstructure.
 
         Parameters
         ----------
@@ -518,7 +518,7 @@ class Microstructure(_SplinepyBase):
 
         Returns
         -------
-        plt: vedo.Plotter
+        viewer: Viewer
         """
         if use_saved:
             if hasattr(self, "_microstructure"):
@@ -549,14 +549,6 @@ class Microstructure(_SplinepyBase):
         show_kwargs = {
             k: v for k, v in kwargs.items() if k not in creation_keys
         }
-
-        if kwargs.get("return_showable_list"):
-            tiles = (
-                list(microtile[0])
-                if isinstance(microtile[0], (list, tuple))
-                else [microtile[0]]
-            )
-            return None, [deformation_function, *tiles, microstructure]
 
         from splinepy.helpme import visualize as _visualize
 

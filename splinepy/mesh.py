@@ -2,8 +2,7 @@
 
 A mesh is ``{"element_type", "vertices", "connectivity", "vertex_data"}``.
 Extraction (``spline.extract``), FFD and the viewer all use this one format;
-the routines here are pure numpy on that dict. :func:`to_gustaf` and
-:func:`from_gustaf` are the only bridge to gustaf, which stays optional.
+the routines here are pure numpy on that dict.
 """
 
 import numpy as _np
@@ -337,67 +336,3 @@ def vertex_normals(mesh):
         _np.add.at(n, c[:, k], fn)
     norm = _np.linalg.norm(n, axis=1, keepdims=True)
     return n / _np.where(norm > 0, norm, 1)
-
-
-_GUSTAF_TYPES = {
-    "vertex": "Vertices",
-    "line": "Edges",
-    "triangle": "Faces",
-    "quad": "Faces",
-    "tet": "Volumes",
-    "hexa": "Volumes",
-}
-
-
-def to_gustaf(mesh):
-    """Converts a mesh dict to the matching gustaf object.
-
-    Parameters
-    ----------
-    mesh : dict
-        Mesh dictionary as returned by make_mesh.
-
-    Returns
-    -------
-    gus_mesh : gustaf.Vertices, gustaf.Edges, gustaf.Faces or gustaf.Volumes
-        Mesh with the same vertices, elements and vertex data.
-    """
-    import gustaf as _gus
-
-    cls = getattr(_gus, _GUSTAF_TYPES[mesh["element_type"]])
-    if mesh["element_type"] == "vertex":
-        result = cls(mesh["vertices"])
-    else:
-        result = cls(mesh["vertices"], mesh["connectivity"])
-    for key, values in mesh["vertex_data"].items():
-        result.vertex_data[key] = values
-    return result
-
-
-def from_gustaf(obj):
-    """Converts a gustaf mesh to a mesh dict.
-
-    Parameters
-    ----------
-    obj : gustaf.Vertices or subclass
-        Vertices, edges, faces or volumes.
-
-    Returns
-    -------
-    mesh : dict
-        Mesh dict with the same vertices, elements and vertex data.
-    """
-    elements = getattr(obj, "elements", None)
-    whatami = getattr(obj, "whatami", "")
-    empty = elements is None or len(elements) == 0 or whatami == "vertices"
-    nodes = 0 if empty else elements.shape[1]
-    etype = {2: "line", 3: "triangle", 8: "hexa"}.get(nodes, "vertex")
-    if nodes == 4:
-        etype = "tet" if whatami.startswith("tet") else "quad"
-    data = {}
-    if hasattr(obj, "vertex_data"):
-        # gustaf's VertexData has keys() but no iteration
-        for k in obj.vertex_data.keys():  # noqa: SIM118
-            data[k] = obj.vertex_data[k]
-    connectivity = None if etype == "vertex" else elements
-    return make_mesh(etype, obj.vertices, connectivity, data)

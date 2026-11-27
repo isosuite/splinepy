@@ -1,4 +1,4 @@
-"""Shows splines with splinepy.viewer, understanding the vedo show options."""
+"""Shows splines with splinepy.viewer, understanding the short option names."""
 
 import sys as _sys
 
@@ -27,12 +27,12 @@ def show_viewer(spline, **kwargs):
     """Shows spline / multipatch with the three.js viewer.
 
     Options are taken from ``spline.show_options`` and updated with
-    ``kwargs``. Accepts the vedo names (``c``, ``alpha``, ``cmap``, ``data``,
+    ``kwargs``. Accepts the short names (``c``, ``alpha``, ``cmap``, ``data``,
     ``arrow_data`` ...) as well as the ones of
     :func:`splinepy.viewer.show`. ``parametric_space=True`` adds a panel with
     the parametric view of the spline. Outside of notebooks the viewer is
     opened in the web browser and the call waits until the tab is closed or
-    ``q`` / Esc is pressed, like the vedo window; later calls reuse the same
+    ``q`` / Esc is pressed; later calls reuse the same
     tab unless ``new_window=True``. ``block=False`` returns right away.
     ``open=False`` only returns the ``Viewer`` (``.save(path)``,
     ``.screenshot(...)``). With ``widget=True``, the widget is returned for

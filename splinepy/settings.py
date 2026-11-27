@@ -44,10 +44,3 @@ CHECK_BOUNDS = True
 Bool to check bounds of queries if requested. Can be set to false to
 accelerate process
 """
-
-SHOW_BACKEND = "viewer"
-"""
-Backend of `show()` for splines and multipatches. One of "vedo" (gustaf and
-vedo) or "viewer" (splinepy.viewer, three.js). Can be overridden per call with
-`show(backend=...)`.
-"""

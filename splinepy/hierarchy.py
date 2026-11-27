@@ -252,7 +252,7 @@ class HBSpline(_core.HierarchyCore):
         return self.extract.multipatch()
 
     def show(self, **kwargs):
-        """Display the hierarchy through splinepy's visualization backends.
+        """Display the hierarchy.
 
         Parameters
         ----------
@@ -261,27 +261,11 @@ class HBSpline(_core.HierarchyCore):
 
         Returns
         -------
-        viewer : Viewer, vedo.Plotter, dict or None
-            Visualization result for the selected backend.
+        viewer : Viewer
         """
         from splinepy import show
 
         return show(self, **kwargs)
-
-    def showable(self, **kwargs):
-        """Return showable objects for the hierarchy.
-
-        Parameters
-        ----------
-        **kwargs
-            Options forwarded to splinepy.show.
-
-        Returns
-        -------
-        items : dict
-            Backend objects for the hierarchy.
-        """
-        return self.show(return_showable=True, **kwargs)
 
     @staticmethod
     def _cells(degrees, knot_levels, extraction):

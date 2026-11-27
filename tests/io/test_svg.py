@@ -197,20 +197,3 @@ def test_svg_export_draws_arrows(surface, tmp_path):
     with pytest.raises(ValueError, match="one component per spline dimension"):
         splinepy.io.svg.export(str(tmp_path / "scalar.svg"), surface)
     assert "arrow_data_scale" not in surface.show_options
-
-
-def test_svg_export_of_gustaf_vertices(surface, tmp_path):
-    gustaf = pytest.importorskip("gustaf")
-    vertices = gustaf.Vertices(surface.cps)
-    vertices.vertex_data["field"] = np.linspace(0, 1, len(surface.cps))
-
-    root = _export(tmp_path, vertices, box_margins=0.4, background="black")
-
-    assert _style(root) == {"background-color": "black"}
-    circles = _group(root, "gus_obj_0").findall(f".//{SVG}circle")
-    assert np.allclose(
-        _centers(circles), np.array([0.4, 5.4]) + surface.cps * [1, -1]
-    )
-    fills = [_style(circle)["fill"] for circle in circles]
-    assert (fills[0], fills[-1]) == ("#0d0887", "#f0f921")
-    assert len(set(fills)) == 9

@@ -22,9 +22,8 @@ class FFD(_SplinepyBase):
 
     Parameters
     ----------
-    mesh: array-like, dict or gustaf.Vertices
-      An (n, dim) vertex array, a mesh dict (see :mod:`splinepy.mesh`), or
-      a gustaf mesh.
+    mesh: array-like or dict
+      An (n, dim) vertex array or a mesh dict (see :mod:`splinepy.mesh`).
       Defaults to None.
     spline: splinepy.Spline
       Spline used in the FFD. Defaults to None.
@@ -47,7 +46,7 @@ class FFD(_SplinepyBase):
 
         Parameters
         ----------
-        mesh : array-like, dict or gustaf.Vertices, optional
+        mesh : array-like or dict, optional
             Geometry to deform.
         spline : splinepy.Spline, optional
             Deformation spline. When omitted, a mesh defines a default spline.
@@ -61,7 +60,6 @@ class FFD(_SplinepyBase):
         """
         # init variables
         self._mesh = None
-        self._gustaf_input = False
         self._spline = None
         self._q_vertices = None
 
@@ -82,9 +80,9 @@ class FFD(_SplinepyBase):
 
         Returns
         -------
-        mesh : numpy.ndarray, dict or gustaf.Vertices
-            Deformed vertices in the input format. Mesh dictionaries and
-            Gustaf meshes retain their connectivity.
+        mesh : numpy.ndarray or dict
+            Deformed vertices in the input format. Mesh dictionaries retain
+            their connectivity.
         """
         if self._mesh is None:
             raise ValueError("Please set mesh first.")
@@ -96,7 +94,7 @@ class FFD(_SplinepyBase):
             return vertices
         result = _deepcopy(self._mesh)
         result["vertices"] = vertices
-        return _mesh_module.to_gustaf(result) if self._gustaf_input else result
+        return result
 
     @mesh.setter
     def mesh(self, mesh):
@@ -104,7 +102,7 @@ class FFD(_SplinepyBase):
 
         Parameters
         ----------
-        mesh : array-like, dict, gustaf.Vertices or None
+        mesh : array-like, dict or None
             Geometry to deform. Use None to clear the mesh.
 
         Returns
@@ -116,9 +114,6 @@ class FFD(_SplinepyBase):
             self._q_vertices = None
             return
 
-        gustaf_input = hasattr(mesh, "vertices") and not isinstance(mesh, dict)
-        if gustaf_input:
-            mesh = _mesh_module.from_gustaf(mesh)
         vertices = _np.asarray(
             mesh["vertices"] if isinstance(mesh, dict) else mesh, dtype=float
         )
@@ -140,7 +135,6 @@ class FFD(_SplinepyBase):
             )
         else:
             mesh = vertices.copy()
-        self._gustaf_input = gustaf_input
 
         dim = vertices.shape[1]
         if self._spline is not None and self._spline.para_dim != dim:
@@ -255,139 +249,33 @@ class FFD(_SplinepyBase):
 
         # if there's q_vertices, reset mesh, so that new q_vertices are formed
         if self._q_vertices is not None:
-            gustaf_input = self._gustaf_input
             self.mesh = self._mesh
-            self._gustaf_input = gustaf_input
 
     def show(self, **kwargs):
         """Show the original mesh, spline, and deformed mesh.
 
-        Uses the configured visualization backend unless overridden with
-        ``backend``.
-
         Parameters
         ----------
-        backend : str, optional
-            Visualization backend. Defaults to settings.SHOW_BACKEND.
         title : str, optional
             Viewer title. Defaults to "FFD".
-        return_showable: bool
-            If true returns a dict of the showable items. Defaults to False.
-        return_gustaf: bool
-            Return dict of gustaf discrete objects, for example,
-            {Vertices, Edges, Faces}, instead of opening a window.
-            Defaults to False.
         kwargs: Any
-            Arbitrary keyword arguments. Passed to the selected visualization backend.
+            Passed to :func:`splinepy.show`.
 
         Returns
         -------
-        viewer : Viewer, vedo.Plotter, dict or None
-            Viewer for the default backend, plotter when vedo runs with
-            close=False, or a dict when return_gustaf or return_showable is set.
-            The vedo backend may otherwise return None.
+        viewer : Viewer
         """
         if self._spline is None or self._mesh is None:
             raise ValueError(
                 "Please set both a mesh and a spline before visualizing FFD."
             )
-        return_showable = kwargs.pop("return_showable", False)
-        return_gustaf = kwargs.pop("return_gustaf", False)
-        title = kwargs.pop("title", "FFD")
-
-        if return_gustaf and return_showable:
-            raise ValueError(
-                "Either one of following params can be True: "
-                "{return_gustaf, return_showable} "
-                "You've set both True."
-            )
-
-        if return_gustaf:
-            return self.showable(return_gustaf=True)
-        if return_showable:
-            kwargs.pop("backend", None)
-            return self.showable(**kwargs)
-
         from splinepy.helpme import visualize as _visualize
 
-        backend = kwargs.get("backend") or _settings.SHOW_BACKEND
-        if backend == "vedo":
-            items = self.showable(return_gustaf=True)
-            original, spline, deformed = (
-                items["original_mesh"], items["spline"], items["mesh"]
-            )
-        else:
-            original, spline, deformed = self._mesh, self._spline, self.mesh
-
+        deformed = self.mesh
         return _visualize.show(
-            ["Original Mesh", original],
-            [
-                "Spline and Mesh",
-                spline,
-                deformed,
-            ],
+            ["Original Mesh", self._mesh],
+            ["Spline and Mesh", self._spline, deformed],
             ["Deformed Mesh", deformed],
-            title=title,
+            title=kwargs.pop("title", "FFD"),
             **kwargs,
         )
-
-    def showable(self, **kwargs):
-        """Returns a dictionary of showable items to describe the FFD at the
-        current state.
-
-        Uses the optional Gustaf/vedo visualization path.
-
-        Parameters
-        ----------
-        return_gustaf : bool, optional
-            Return the geometry before conversion to backend objects.
-            Defaults to False.
-        **kwargs
-            Options forwarded to each item's showable method.
-
-        Returns
-        -------
-        items : dict
-            Original mesh, deformation spline, and deformed mesh under the
-            keys original_mesh, spline, and mesh.
-        """
-        if self._spline is None or self._mesh is None:
-            raise ValueError(
-                "Please set both a mesh and a spline before visualizing FFD."
-            )
-
-        return_gustaf = kwargs.pop("return_gustaf", False)
-
-        things_to_show = {}
-
-        def as_gustaf(mesh):
-            if isinstance(mesh, _np.ndarray):
-                mesh = _mesh_module.make_mesh("vertex", mesh)
-            elif not isinstance(mesh, dict):
-                return mesh
-            # let's show faces at most, since volumes can take awhile
-            if mesh["element_type"] in _mesh_module.ELEMENT_FACES:
-                mesh = _mesh_module.boundary_faces(mesh)
-            return _mesh_module.to_gustaf(mesh)
-
-        mesh = as_gustaf(self._mesh)
-
-        # original mesh
-        things_to_show["original_mesh"] = mesh
-
-        # current spline
-        self._spline.show_options["alpha"] = 0.3
-        things_to_show["spline"] = self._spline
-
-        # deformed mesh
-        deformed = as_gustaf(self.mesh)
-        things_to_show["mesh"] = deformed
-
-        if return_gustaf:
-            return things_to_show
-
-        # let's turn everything into showable and return
-        for k, v in things_to_show.items():
-            things_to_show[k] = v.showable(**kwargs)
-
-        return things_to_show

@@ -67,7 +67,7 @@ def show(args):
         loaded_object.show_options["control_mesh"] = args.no_control_mesh
         if args.resolution:
             loaded_object.show_options["resolutions"] = int(args.resolution)
-    viewer = _splinepy.show(loaded, backend="viewer", open=False)
+    viewer = _splinepy.show(loaded, open=False)
     if args.output_file:
         viewer.save(args.output_file)
     if args.interactive or not args.output_file:
@@ -200,8 +200,6 @@ def entry():
         dependent_versions = [
             "numpy",
             # "funi", # has currently no __version__ attribute
-            "gustaf",
-            "vedo",
             "scipy",
             "meshio",
         ]

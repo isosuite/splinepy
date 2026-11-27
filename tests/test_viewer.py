@@ -55,11 +55,9 @@ def _hex_grid(n):
     )
 
 
-def test_gustaf_tetrahedron():
-    gustaf = pytest.importorskip("gustaf")
-    volume = gustaf.Volumes(
-        vertices=[[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]],
-        volumes=[[0, 1, 2, 3]],
+def test_tetrahedron_mesh():
+    volume = splinepy.mesh.make_mesh(
+        "tet", [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], [[0, 1, 2, 3]]
     )
     faces = viewer.scene_from_mesh(volume, mode="faces")["layers"][0]
     edges = viewer.scene_from_mesh(volume, mode="edges")["layers"][0]
@@ -282,7 +280,7 @@ def test_scalar_errors_are_reported():
         viewer.show(spline, scalars=lambda _: [0])
 
 
-def test_vedo_names_are_aliases():
+def test_short_names_are_aliases():
     from splinepy.viewer import compat
 
     out = compat.translate(
@@ -321,7 +319,7 @@ def test_integer_colors():
     points = viewer.scene_from_mesh(spline.control_points, color=0)["layers"][0]
     assert points["color"] == colors[0]
     spline.show_options["c"] = 2
-    shown = spline.show(backend="viewer", open=False)
+    shown = spline.show(open=False)
     assert shown.scene["layers"][0]["color"] == colors[2]
 
 
@@ -335,7 +333,7 @@ def test_headless_frames_of_other_scenes_and_cameras(tmp_path):
         [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 1]],
     )
     thb.refine([0], admissible=None)
-    refined = thb.show(backend="viewer", open=False, resolutions=4, c=1)
+    refined = thb.show(open=False, resolutions=4, c=1)
     img = np.zeros((2, 2, 3))
     img[0, 0] = img[1, 1] = 1
     textured = viewer.show(_surface(), texture=img, lighting="glossy")
@@ -352,21 +350,14 @@ def test_headless_frames_of_other_scenes_and_cameras(tmp_path):
     assert len(set(images)) == 3
 
 
-def test_spline_show_backend_switch(monkeypatch):
-    s = _surface()
-    assert isinstance(s.show(backend="viewer"), viewer.Viewer)
-    monkeypatch.setattr(splinepy.settings, "SHOW_BACKEND", "viewer")
-    assert isinstance(s.show(control_points=False), viewer.Viewer)
-    # gustaf objects are only available from the vedo backend
-    assert "spline" in s.show(return_gustaf=True)
-    with pytest.raises(ValueError):
-        s.show(backend="nope")
+def test_spline_show_returns_a_viewer():
+    assert isinstance(_surface().show(control_points=False), viewer.Viewer)
 
 
 def test_widget_cannot_open_browser():
     pytest.importorskip("anywidget")
     with pytest.raises(ValueError, match="open=True is incompatible"):
-        _surface().show(backend="viewer", widget=True, open=True)
+        _surface().show(widget=True, open=True)
 
 
 def test_show_backend_reads_show_options_and_spline_data():
@@ -374,13 +365,13 @@ def test_show_backend_reads_show_options_and_spline_data():
     s.spline_data["f"] = s
     s.show_options["control_points"] = False
     s.show_options["data"] = "f"
-    names = [layer["name"] for layer in s.show(backend="viewer").scene["layers"]]
+    names = [layer["name"] for layer in s.show().scene["layers"]]
     assert "control_points" not in names
-    assert s.show(backend="viewer").scene["layers"][0]["scalars"] is not None
+    assert s.show().scene["layers"][0]["scalars"] is not None
 
 
 def test_parametric_space_makes_second_panel():
-    v = _surface().show(backend="viewer", parametric_space=True)
+    v = _surface().show(parametric_space=True)
     assert len(v.scene["panels"]) == 2
     assert v.scene["options"]["titles"][0] == "Parametric Space"
     # parametric panel has the unit square, physical one has height
@@ -415,7 +406,7 @@ def test_lighting_and_texture_in_scene():
     assert viewer.show(s).scene["layers"][0]["lighting"] == "glossy"
     with pytest.raises(ValueError):
         viewer.scene_from_splines(s, lighting="nope")
-    # show() is lenient with unknown (vedo) lighting names
+    # show() is lenient with unknown lighting names
     assert viewer.show(s, lighting="nope").scene["layers"][0]["lighting"] == "default"
 
 
@@ -452,32 +443,6 @@ def test_grid_columns_are_left_to_the_page_by_default():
     a = splinepy.Bezier(degrees=[1], control_points=[[0, 0], [1, 1]])
     assert viewer.show(a, a, a, a).scene["options"]["ncols"] is None
     assert viewer.show(a, a, a, a, ncols=2).scene["options"]["ncols"] == 2
-
-
-def test_default_viewer_without_gustaf(tmp_path):
-    import subprocess
-    import sys
-    from textwrap import dedent
-
-    script = dedent("""
-        import sys
-
-        class BlockGustaf:
-            def find_spec(self, name, *args):
-                if name == "gustaf" or name.startswith("gustaf."):
-                    raise ModuleNotFoundError(name)
-
-        sys.meta_path.insert(0, BlockGustaf())
-        import splinepy
-
-        spline = splinepy.Bezier(
-            degrees=[1], control_points=[[0, 0], [1, 0]]
-        )
-        assert spline.sample(3).shape == (3, 2)
-        assert spline.show(open=False) is not None
-    """)
-    # Import the installed package rather than the source tree in CI.
-    subprocess.run([sys.executable, "-c", script], cwd=tmp_path, check=True)
 
 
 def test_colormap_matches_viewer_stops():

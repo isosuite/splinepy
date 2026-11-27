@@ -80,27 +80,6 @@ def test_merge_vertices():
     assert np.allclose(merged["vertex_data"]["x"], merged["vertices"][:, 0])
 
 
-def test_gustaf_round_trip():
-    gustaf = pytest.importorskip("gustaf")
-    spline = splinepy.helpme.create.box(1, 2, 3)
-    for extracted, cls in (
-        (spline.extract.control_points(), gustaf.Vertices),
-        (spline.extract.edges(5), gustaf.Edges),
-        (spline.extract.faces(5), gustaf.Faces),
-        (spline.extract.volumes(5), gustaf.Volumes),
-    ):
-        extracted["vertex_data"]["z"] = extracted["vertices"][:, 2].copy()
-        gus = mesh.to_gustaf(extracted)
-        assert isinstance(gus, cls)
-        back = mesh.from_gustaf(gus)
-        assert back["element_type"] == extracted["element_type"]
-        assert np.array_equal(back["vertices"], extracted["vertices"])
-        assert np.array_equal(back["connectivity"], extracted["connectivity"])
-        # gustaf keeps scalar data as a column
-        z = back["vertex_data"]["z"]
-        assert np.array_equal(np.ravel(z), extracted["vertices"][:, 2])
-
-
 def test_tetrahedron_edges_faces_and_normals():
     corners = np.array([[0.0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]])
     tet = mesh.make_mesh("tet", corners, [[0, 1, 2, 3]])

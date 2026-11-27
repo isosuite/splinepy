@@ -1,4 +1,4 @@
-"""Show options shared by the viewer and the legacy Vedo backend."""
+"""Show options of splines and multipatches."""
 
 from copy import deepcopy as _deepcopy
 

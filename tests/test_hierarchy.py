@@ -543,17 +543,12 @@ def test_export_with_discontinuous_or_unclamped_knots(degree, knots, controls, q
 
 def test_hierarchy_show_uses_leaf_patches():
     hierarchy = _export_hierarchy(splinepy.THBSpline)
-    shown = hierarchy.show(backend="viewer", open=False, resolutions=3)
+    shown = hierarchy.show(open=False, resolutions=3)
     direct = splinepy.viewer.show(hierarchy, resolutions=3)
     shown_surface = shown.scene["layers"][0]["positions"]
     direct_surface = direct.scene["layers"][0]["positions"]
     assert len(shown_surface) == hierarchy.leaves.size * 9
     np.testing.assert_array_equal(shown_surface, direct_surface)
-
-    discrete = splinepy.show(
-        hierarchy, return_gustaf=True, resolutions=3, control_points=False
-    )
-    assert len(discrete["spline"].faces) == hierarchy.leaves.size * 4
 
 
 def test_volume_visualization_has_only_external_faces():
@@ -563,11 +558,11 @@ def test_volume_visualization_has_only_external_faces():
     hierarchy.refine([0], admissible=None)
     assert len(hierarchy.extract.multipatch().patches) == 15
 
-    shown = hierarchy.show(backend="viewer", open=False, resolutions=4)
+    shown = hierarchy.show(open=False, resolutions=4)
     vertices = np.asarray(shown.scene["layers"][0]["positions"])
     assert np.all(np.any(np.isclose(vertices, 0) | np.isclose(vertices, 1), axis=1))
     parametric = hierarchy.show(
-        backend="viewer", open=False, resolutions=4, parametric_space=True
+        open=False, resolutions=4, parametric_space=True
     )
     assert parametric.scene is not None
 

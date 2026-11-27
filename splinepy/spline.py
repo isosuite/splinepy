@@ -1353,29 +1353,9 @@ class Spline(_core.SplineCore, _SplinepyBase):
 
         Returns
         -------
-        showable_or_plotter: dict or vedo.Plotter
+        viewer: splinepy.viewer.Viewer
         """
         return _visualize.show(self, **kwargs)
-
-    def showable(self, **kwargs):
-        """Equivalent to
-
-        .. code-block:: python
-
-            splinepy.helpme.visualize.show(
-                spline, return_showable=True, **kwargs
-            )
-
-        Parameters
-        ----------
-        kwargs: kwargs
-          see splinepy.helpme.visualize.show
-
-        Returns
-        -------
-        spline_showable: dict
-        """
-        return _visualize.show(self, return_showable=True, **kwargs)
 
     # short cuts / alias
     ds = degrees
