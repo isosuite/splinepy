@@ -6,11 +6,11 @@ from splinepy import splinepy_core as _core
 from splinepy import utils as _utils
 
 
-class BezierBase(_spline.Spline):
+class BezierBase(_spline.TensorSpline):
     r"""Bezier Base. Contains extra operations that are only
     available for bezier families.
 
-    Passes all arguments to :code:`super.__init__()`, see :class:`.Spline`.
+    Passes all arguments to :code:`super.__init__()`, see :class:`.TensorSpline`.
 
     Beziers are a special type of spline where the basis functions have
     a global support. The basis functions are given by the so-called

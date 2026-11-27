@@ -180,7 +180,7 @@ def export(fname, splines):
     from splinepy.bezier import BezierBase as _BezierBase
     from splinepy.bspline import BSplineBase as _BSplineBase
     from splinepy.multipatch import Multipatch as _Multipatch
-    from splinepy.spline import Spline as _Spline
+    from splinepy.spline import TensorSpline as _Spline
 
     if isinstance(splines, _Multipatch):
         splines = splines.patches

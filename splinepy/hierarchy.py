@@ -7,6 +7,7 @@ import numpy as _np
 
 from splinepy import settings as _settings
 from splinepy import splinepy_core as _core
+from splinepy.spline import Spline as _Spline
 
 _INT32_MAX = _np.iinfo(_np.int32).max
 
@@ -30,10 +31,11 @@ def _from_hierarchy(cls, degrees, levels, leaf_cells, control_points, weights):
     )
 
 
-class HBSpline(_core.HierarchyCore):
-    """Polynomial hierarchical B-spline with axis-zero-fastest coefficients.
+class HierarchySpline(_core.HierarchyCore, _Spline):
+    """Hierarchical spline with axis-zero-fastest coefficients.
 
-    Construct a single-level spline from tensor data or use
+    The base of :class:`HBSpline`, :class:`THBSpline` and their rational
+    variants. Construct a single-level spline from tensor data or use
     :meth:`from_hierarchy` when the leaf partition and active coefficients
     are already known.
     """
@@ -103,7 +105,7 @@ class HBSpline(_core.HierarchyCore):
 
         Returns
         -------
-        spline : HBSpline
+        spline : HierarchySpline
             Constructed hierarchy.
         """
         result = cls.__new__(cls)
@@ -126,7 +128,7 @@ class HBSpline(_core.HierarchyCore):
 
         Returns
         -------
-        spline : HBSpline
+        spline : HierarchySpline
         """
         return _from_hierarchy(*self.__reduce__()[1])
 
@@ -167,7 +169,7 @@ class HBSpline(_core.HierarchyCore):
 
         Returns
         -------
-        spline : HBSpline
+        spline : HierarchySpline
             Single-level hierarchy with the same geometry.
         """
         if not spline.has_knot_vectors:
@@ -228,44 +230,20 @@ class HBSpline(_core.HierarchyCore):
 
         return HierarchyExtractor(self)
 
-    @property
-    def create(self):
-        """Access spline construction helpers.
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        creator : Creator
-        """
-        from splinepy.helpme.create import Creator
-
-        return Creator(self)
-
     def _visualization_spline(self, *, global_parameters=False):
         # A finest-level tensor volume exposes the outer boundary without
         # rendering unmatched hanging faces from the leaf multipatch.
-        if self.para_dim == 3 or global_parameters:
-            return self.create.converted()
-        return self.extract.multipatch()
-
-    def show(self, **kwargs):
-        """Display the hierarchy.
-
-        Parameters
-        ----------
-        **kwargs
-            Options forwarded to splinepy.show.
-
-        Returns
-        -------
-        viewer : Viewer
-        """
-        from splinepy import show
-
-        return show(self, **kwargs)
+        # Stored data is given in the parameters of the hierarchy.
+        data = getattr(self, "_spline_data", None)
+        if self.para_dim == 3 or global_parameters or data is not None:
+            spline = self.create.converted()
+            if data is not None:
+                spline.spline_data._saved = data._saved.copy()
+        else:
+            spline = self.extract.multipatch()
+        if getattr(self, "_show_options", None) is not None:
+            self.show_options.copy_valid_options(spline.show_options)
+        return spline
 
     @staticmethod
     def _cells(degrees, knot_levels, extraction):
@@ -447,7 +425,7 @@ class HBSpline(_core.HierarchyCore):
 
         Returns
         -------
-        spline : HBSpline
+        spline : HierarchySpline
             The updated hierarchy.
         """
         m = 0 if admissible is None else self._admissibility_class(admissible)
@@ -725,13 +703,17 @@ class HBSpline(_core.HierarchyCore):
         )[0]
 
 
+class HBSpline(HierarchySpline):
+    """Polynomial hierarchical B-spline."""
+
+
 class RationalHBSpline(HBSpline):
     """Rational hierarchical B-spline."""
 
     _rational = True
 
 
-class THBSpline(HBSpline):
+class THBSpline(HierarchySpline):
     """Polynomial truncated hierarchical B-spline."""
 
     _truncate = True

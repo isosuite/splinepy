@@ -894,3 +894,37 @@ def test_hierarchy_copies_and_pickles():
             np.testing.assert_array_equal(other.evaluate(queries), expected)
             other.refine([1])
         np.testing.assert_array_equal(hierarchy.evaluate(queries), expected)
+
+
+@pytest.mark.parametrize("to_hierarchy", ["thb", "rationalthb", "hb"])
+def test_hierarchies_share_the_spline_interface(to_hierarchy, np_rng):
+    bspline = splinepy.helpme.create.box(2, 1).bspline
+    bspline.elevate_degrees([0, 1])
+    bspline.cps[:] += 0.1 * np_rng.random(bspline.cps.shape)
+    hierarchy = (
+        splinepy.HBSpline.from_bspline(bspline)
+        if to_hierarchy == "hb"
+        else getattr(bspline, to_hierarchy)
+    )
+    hierarchy.refine(elements=[0])
+    assert isinstance(hierarchy, splinepy.HierarchySpline)
+    assert isinstance(hierarchy, splinepy.Spline)
+    assert isinstance(bspline, splinepy.Spline)
+    assert not isinstance(hierarchy, splinepy.TensorSpline)
+    assert hierarchy.name == type(hierarchy).__name__
+
+    queries = np_rng.random((5, 2))
+    assert hierarchy.check.valid_queries(queries)
+    np.testing.assert_allclose(hierarchy.sample([4, 5]), bspline.sample([4, 5]))
+    np.testing.assert_allclose(
+        hierarchy.mapper(reference=hierarchy).gradient(queries),
+        bspline.mapper(reference=bspline).gradient(queries),
+        atol=1e-12,
+    )
+    # options and data stored on the hierarchy reach the viewer
+    hierarchy.spline_data["position"] = hierarchy
+    hierarchy.show_options["c"] = "red"
+    hierarchy.show_options["data"] = "position"
+    surface = splinepy.viewer.show(hierarchy).scene["layers"][0]
+    assert surface["kind"] == "mesh"
+    assert "scalars" in surface

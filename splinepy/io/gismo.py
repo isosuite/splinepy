@@ -348,7 +348,7 @@ def _spline_to_ET(
     -------
     None
     """
-    from splinepy.spline import Spline as _Spline
+    from splinepy.spline import TensorSpline as _Spline
 
     if fields_only and (len(multipatch.fields) == 0):
         return
@@ -583,7 +583,7 @@ def export(
     None
     """
     from splinepy import Multipatch as _Multipatch
-    from splinepy.spline import Spline as _Spline
+    from splinepy.spline import TensorSpline as _Spline
 
     # First transform spline-data into a multipatch-data if required
     if issubclass(type(multipatch), _Spline):

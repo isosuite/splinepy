@@ -48,11 +48,11 @@ def _axis_maps(knot_vector, degree, knots=(), beziers=False):
         yield rows, columns, values, (n_new, n_old)
 
 
-class BSplineBase(_spline.Spline):
+class BSplineBase(_spline.TensorSpline):
     r"""BSpline base. Contains extra operations that are only available for
     bspline families, i.e., :class:`.BSpline` and :class:`.NURBS`.
 
-    Passes all arguments to :code:`super.__init__()`, see :class:`.Spline`.
+    Passes all arguments to :code:`super.__init__()`, see :class:`.TensorSpline`.
 
     All B-Spline-like splines feature knot vectors for each parametric
     dimension. A knot vector can be considered as a set of non-decreasing

@@ -122,7 +122,7 @@ def dict_to_spline(spline_dictionary):
       List of splines in called format (NAME_TO_TYPE)
     """
     from splinepy.settings import NAME_TO_TYPE as _NAME_TO_TYPE
-    from splinepy.spline import Spline as _Spline
+    from splinepy.spline import TensorSpline as _Spline
 
     spline_list = [_Spline(**spd) for spd in spline_dictionary]
     return [_NAME_TO_TYPE[spl.name]._retyped(spl) for spl in spline_list]

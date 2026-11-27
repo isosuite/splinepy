@@ -156,14 +156,14 @@ class Mapper(_SplinepyBase):
         ) = self._field_reference.basis_derivative_and_support(
             queries=queries,
             # Array size M with [0, ..., 0, 1, 0, ..., 0] with 1 at position k
-            orders=_np.eye(1, M=self._para_dim, k=0),
+            orders=_np.eye(1, M=self._para_dim, k=0, dtype=int),
             nthreads=nthreads,
         )
         results["support"] = support
         for i in range(1, self._para_dim):
             bf_gradients[:, :, i] = self._field_reference.basis_derivative(
                 queries=queries,
-                orders=_np.eye(1, M=self._para_dim, k=i),
+                orders=_np.eye(1, M=self._para_dim, k=i, dtype=int),
                 nthreads=nthreads,
             )
         if gradient:
@@ -188,8 +188,8 @@ class Mapper(_SplinepyBase):
                     bf_hessians[:, :, i, j] = (
                         self._field_reference.basis_derivative(
                             queries=queries,
-                            orders=_np.eye(1, M=self._para_dim, k=i)
-                            + _np.eye(1, M=self._para_dim, k=j),
+                            orders=_np.eye(1, M=self._para_dim, k=i, dtype=int)
+                            + _np.eye(1, M=self._para_dim, k=j, dtype=int),
                             nthreads=nthreads,
                         )
                     )
@@ -210,8 +210,8 @@ class Mapper(_SplinepyBase):
                     geo_hessians[:, :, i, j] = (
                         self._geometry_reference.derivative(
                             queries=queries,
-                            orders=_np.eye(1, M=self._para_dim, k=i)
-                            + _np.eye(1, M=self._para_dim, k=j),
+                            orders=_np.eye(1, M=self._para_dim, k=i, dtype=int)
+                            + _np.eye(1, M=self._para_dim, k=j, dtype=int),
                             nthreads=nthreads,
                         )
                     )

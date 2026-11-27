@@ -189,7 +189,7 @@ def export(fname, spline_list, indent=True, make_rational=True):
     None
     """
     from splinepy.multipatch import Multipatch as _Multipatch
-    from splinepy.spline import Spline as _Spline
+    from splinepy.spline import TensorSpline as _Spline
 
     # First transform spline-data into a multipatch-data if required
     if issubclass(type(spline_list), _Spline):

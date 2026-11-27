@@ -81,7 +81,7 @@ nurbs.show()
 ### 2. Modifications
 All the splines can be modified. For example, by
 1. directly accessing properties,
-2. [elevating degrees](https://isosuite.github.io/splinepy/_generated/splinepy.spline.Spline.elevate_degrees.html#splinepy.spline.Spline.elevate_degrees),
+2. [elevating degrees](https://isosuite.github.io/splinepy/_generated/splinepy.spline.TensorSpline.elevate_degrees.html#splinepy.spline.TensorSpline.elevate_degrees),
 3. [inserting knots](https://isosuite.github.io/splinepy/_generated/splinepy.bspline.BSplineBase.insert_knots.html#splinepy.bspline.BSplineBase.insert_knots),
 4. [reducing degrees](https://isosuite.github.io/splinepy/_generated/splinepy.bspline.BSplineBase.reduce_degrees.html) and [removing knots](https://isosuite.github.io/splinepy/_generated/splinepy.bspline.BSplineBase.remove_knots.html) with a specified tolerance
 
@@ -138,7 +138,7 @@ p_basis0 = nurbs.basis(queries, nthreads=2)
 splinepy.settings.NTHREADS = 3
 p_basis1 = nurbs.basis(queries)
 ```
-We also implemented [point inversion](https://isosuite.github.io/splinepy/_generated/splinepy.spline.Spline.proximities.html#splinepy-spline-spline-proximities) for splines.
+We also implemented [point inversion](https://isosuite.github.io/splinepy/_generated/splinepy.spline.TensorSpline.proximities.html#splinepy-spline-tensorspline-proximities) for splines.
 ```python
 # see docs for options
 para_coordinates = nurbs.proximities(physical_coordinates)

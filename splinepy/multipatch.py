@@ -15,7 +15,7 @@ from splinepy.helpme import visualize as _visualize
 from splinepy.helpme.extract import Extractor as _Extractor
 from splinepy.nurbs import NURBS as _NURBS
 from splinepy.rational_bezier import RationalBezier as _RationalBezier
-from splinepy.spline import Spline as _Spline
+from splinepy.spline import TensorSpline as _Spline
 from splinepy.spline import _default_if_none, _get_helper
 from splinepy.utils.data import MultipatchData as _MultipatchData
 

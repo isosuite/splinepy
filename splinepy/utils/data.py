@@ -424,7 +424,9 @@ class SplineData(_DataHolder):
 
     def __init__(self, helpee):
         """ """
-        if "Spline" not in str(type(helpee).__mro__):
+        from splinepy.spline import Spline as _Spline
+
+        if not isinstance(helpee, _Spline):
             raise AttributeError("Helpee is not a Spline")
 
         super().__init__(helpee)

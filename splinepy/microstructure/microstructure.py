@@ -5,7 +5,7 @@ from splinepy import splinepy_core as _core
 from splinepy._base import SplinepyBase as _SplinepyBase
 from splinepy.microstructure.tiles.tile_base import _affine_map, _bounds, _stack
 from splinepy.multipatch import Multipatch as _Multipatch
-from splinepy.spline import Spline as _Spline
+from splinepy.spline import TensorSpline as _Spline
 
 
 class Microstructure(_SplinepyBase):

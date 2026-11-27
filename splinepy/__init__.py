@@ -18,13 +18,19 @@ from splinepy.bezier import Bezier
 from splinepy.bspline import BSpline
 from splinepy.helpme.ffd import FFD
 from splinepy.helpme.visualize import show  # shortcut for visualization
-from splinepy.hierarchy import HBSpline, RationalHBSpline, RationalTHBSpline, THBSpline
+from splinepy.hierarchy import (
+    HBSpline,
+    HierarchySpline,
+    RationalHBSpline,
+    RationalTHBSpline,
+    THBSpline,
+)
 from splinepy.knot_vector import KnotVector
 from splinepy.microstructure.microstructure import Microstructure
 from splinepy.multipatch import Multipatch
 from splinepy.nurbs import NURBS
 from splinepy.rational_bezier import RationalBezier
-from splinepy.spline import Spline
+from splinepy.spline import Spline, TensorSpline
 from splinepy.splinepy_core import SplinepyError
 from splinepy.utils.data import (
     SplineDataAdaptor,
@@ -84,6 +90,8 @@ __all__ = [
     "RationalTHBSpline",
     "RationalBezier",
     "Spline",
+    "TensorSpline",
+    "HierarchySpline",
     "SplinepyError",
     "SplineDataAdaptor",
     "FFD",

@@ -149,7 +149,7 @@ def export(
     }
 
     # Append all splines to a dictionary
-    from splinepy.spline import Spline as _Spline
+    from splinepy.spline import TensorSpline as _Spline
 
     hierarchy_types = tuple(_hierarchy_types().values())
     spline_dictonary_list = []

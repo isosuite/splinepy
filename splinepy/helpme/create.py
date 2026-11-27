@@ -1395,7 +1395,7 @@ def converted(spline, target=None, *, nthreads=None):
 
     Parameters
     ----------
-    spline : Spline or HBSpline
+    spline : TensorSpline or HierarchySpline
         Geometry to convert.
     target : {"bspline", "nurbs", "bezier", "rationalbezier"}, optional
         Target representation.
@@ -1408,7 +1408,7 @@ def converted(spline, target=None, *, nthreads=None):
         Tensor spline or collection of Bezier elements.
     """
     from splinepy import NURBS, BSpline, Multipatch
-    from splinepy.hierarchy import HBSpline
+    from splinepy.hierarchy import HierarchySpline
 
     if target is None:
         target = "nurbs" if spline.is_rational else "bspline"
@@ -1417,7 +1417,7 @@ def converted(spline, target=None, *, nthreads=None):
     if spline.is_rational and target in ("bspline", "bezier"):
         raise ValueError("Cannot convert a rational spline to a polynomial family")
 
-    hierarchical = isinstance(spline, HBSpline)
+    hierarchical = isinstance(spline, HierarchySpline)
     if target in ("bezier", "rationalbezier"):
         patches = (
             spline.extract.beziers(nthreads=nthreads)

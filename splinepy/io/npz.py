@@ -62,7 +62,7 @@ def export(fname, list_of_splines):
 
     # Checking for proper type of input
     if not isinstance(list_of_splines, list):
-        from splinepy.spline import Spline as _Spline
+        from splinepy.spline import TensorSpline as _Spline
 
         if isinstance(list_of_splines, _Spline):
             list_of_splines = [list_of_splines]

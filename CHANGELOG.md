@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Standalone C++17 core library (`src/splinepy/core`) with allocation-free query kernels, manipulation, Bezier algebra and multipatch topology, plus a GoogleTest suite run in CI.
 - Hierarchical splines: `HBSpline`, `THBSpline`, `RationalHBSpline`, `RationalTHBSpline` with refinement, coarsening, leaf Bezier extraction and JSON IO ([examples/iga/hierarchical_refinement.py](examples/iga/hierarchical_refinement.py)).
+- `HierarchySpline`, the base of the four hierarchy types. It shares `sample`, `mapper`, `check`, `create`, `show`, `show_options` and `spline_data` with tensor splines through `Spline`.
 - three.js viewer (`splinepy.viewer`), which `splinepy.show()` and `spline.show()` now use.
 - `out=` argument on evaluation queries to write into existing arrays.
 - `Spline.validate()` for an explicit check of the complete layout and all values.
@@ -25,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `TileBase._affine`: a tile whose control points are affine in its parameters is built for all cells from one probe, and needs no derivative code.
 
 ### Changed
+- `Spline` is now the interface shared by tensor and hierarchical splines. The tensor product class is `TensorSpline`; construct a spline of undetermined type with `TensorSpline(**properties)`.
+- `THBSpline` no longer derives from `HBSpline`; both derive from `HierarchySpline`.
 - Degree inputs own immutable storage; coordinates and weights still share compatible writable inputs.
 - Knot uniqueness and multiplicities preserve every distinct knot, including narrow spans.
 - Proximity searches stop at a stationary point of working precision instead of running the trust region to collapse; distances are unchanged and the gradient norm at the result is smaller.

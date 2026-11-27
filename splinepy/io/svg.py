@@ -1061,7 +1061,7 @@ def export(
     -------
     None
     """
-    from splinepy.spline import Spline
+    from splinepy.spline import TensorSpline
 
     # Check arguments
     if not isinstance(fname, str):
@@ -1074,7 +1074,7 @@ def export(
         objects_to_plot = objects_to_plot[0]
 
     for object in objects_to_plot:
-        if not isinstance(object, Spline):
+        if not isinstance(object, TensorSpline):
             raise ValueError("Only splines can be exported")
         if not 1 <= object.para_dim <= 2:
             raise ValueError("Only lines and surfaces supported")

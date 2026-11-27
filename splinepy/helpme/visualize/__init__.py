@@ -38,9 +38,9 @@ def show(*objs, **kwargs):
     if not objs:
         raise TypeError("show() needs at least one object")
 
-    from splinepy.hierarchy import HBSpline
+    from splinepy.hierarchy import HierarchySpline
 
-    if len(objs) == 1 and isinstance(objs[0], HBSpline):
+    if len(objs) == 1 and isinstance(objs[0], HierarchySpline):
         global_parameters = (
             kwargs.get("parametric_space", False)
             or kwargs.get("texture") is not None

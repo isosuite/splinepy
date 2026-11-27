@@ -335,12 +335,12 @@ def scene_from_splines(
     if not isinstance(splines, (list, tuple)):
         splines = [splines]
 
-    from splinepy.hierarchy import HBSpline
+    from splinepy.hierarchy import HierarchySpline
 
     layers = []
     for source in splines:
         s = source
-        if isinstance(s, HBSpline):
+        if isinstance(s, HierarchySpline):
             s = s._visualization_spline(
                 global_parameters=texture is not None
                 or callable(scalars)

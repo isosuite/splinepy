@@ -1,5 +1,5 @@
 """
-Abstract Spline
+The common spline interface and the tensor product spline.
 """
 
 import contextlib as _contextlib
@@ -192,9 +192,9 @@ def _from_properties(cls, properties):
     return cls(**properties)
 
 
-class Spline(_core.SplineCore, _SplinepyBase):
+class Spline(_SplinepyBase):
     r"""
-    Spline base class.
+    Common interface of all splines.
 
     Generally, all types of splines can be seen as mappings from a
     :math:`N_{param}`-dimensional parametric domain
@@ -208,11 +208,183 @@ class Spline(_core.SplineCore, _SplinepyBase):
     :code:`splinepy` generally supports different combinations of embeddings,
     that is different combinations of dimensionalities :math:`N_{param}` and
     :math:`N_{phys}`, with up to 8 parametric dimensions.
-    The supported spline types differ in the way how the spline function
-    :math:`M` is defined. For an overview of the mathematical theories for the
-    different types of supported splines, we refer to the documentation of the
-    classes :class:`.BSplineBase` and :class:`.BezierBase` for a more in-depth
-    discussion of the theory on B-Spline/Bezier families, as well as to their
+    Tensor product splines derive from :class:`.TensorSpline`, hierarchical
+    splines from :class:`.HierarchySpline`. Both answer the same queries:
+    ``evaluate``, ``derivative``, ``jacobian``, ``basis``, ``support``,
+    ``proximities`` and ``sample`` on ``parametric_bounds``.
+    """
+
+    __slots__ = ()
+
+    __show_option__ = _visualize.SplineShowOption
+
+    @property
+    def name(self):
+        """
+        Name of the spline type.
+
+        Parameters
+        -----------
+        None
+
+        Returns
+        -------
+        name: str
+        """
+        return type(self).__name__
+
+    @property
+    def check(self):
+        """Returns spline checker. Can directly perform type and value checks
+        at `splinepy/helpme/check.py`.
+
+        Examples
+        ---------
+        >>> spline.check.valid_queries(queries)
+
+        Parameters
+        -----------
+        None
+
+        Returns
+        --------
+        checker: Checker
+        """
+        return _Checker(self)
+
+    @property
+    def create(self):
+        """Returns spline creator Can be used to create new splines using
+        geometric relations.
+
+        Examples
+        --------
+        >>> prism = spline.create.extrude(axis=[1, 4, 1])
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        creator: spline.Creator
+        """
+        return _Creator(self)
+
+    @property
+    def show_options(self):
+        """
+        Show option manager for splines.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        show_options: SplineShowOption
+        """
+        return _get_helper(self, "_show_options", self.__show_option__)
+
+    @property
+    def spline_data(self):
+        """
+        Spline data helper for splines.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        spline_data: SplineData
+        """
+        return _get_helper(self, "_spline_data", _SplineData)
+
+    @property
+    def control_point_bounds(self):
+        """
+        Returns bounds of control points.
+
+        Parameters
+        -----------
+        None
+
+        Returns
+        --------
+        control_point_bounds: (2, dim) np.ndarray
+        """
+        cps = self.control_points
+
+        return _np.vstack((cps.min(axis=0), cps.max(axis=0)))
+
+    def mapper(self, reference):
+        """Retrieve a mapper that can be used to get physical derivatives such
+        as a gradient or hessian in physical space
+
+        Parameters
+        ----------
+        reference : spline
+          Spline that represents the geometry of the field
+
+        Returns
+        -------
+        mapper : Mapper
+          Mapper to calculate physical gradients and hessians
+        """
+        return _helpme.mapper.Mapper(self, reference=reference)
+
+    def sample(self, resolutions, nthreads=None, out=None):
+        """
+        Uniformly sample along each parametric dimensions from spline.
+
+        Parameters
+        -----------
+        resolutions: (n,) array-like
+        nthreads: int
+        out: optional
+          Preallocated, C-contiguous result array (a float64 array of the shape of
+          the result), filled in place and returned, like numpy's ``out``.
+          A fresh array is created if it is not given.
+
+        Returns
+        --------
+        results: (math.product(resolutions), dim) np.ndarray
+        """
+        resolutions = _utils.data._enforce_len(resolutions, self.para_dim)
+        lows, highs = self.parametric_bounds
+        queries = _cartesian_product(
+            [
+                _np.linspace(low, high, n)
+                for low, high, n in zip(lows, highs, resolutions, strict=True)
+            ]
+        )
+        return self.evaluate(queries, nthreads=nthreads, out=out)
+
+    def show(self, **kwargs):
+        """Equivalent to
+
+        .. code-block:: python
+
+            splinepy.helpme.visualize.show(spline, **kwargs)
+
+        Parameters
+        ----------
+        kwargs: kwargs
+          see splinepy.helpme.visualize.show
+
+        Returns
+        -------
+        viewer: splinepy.viewer.Viewer
+        """
+        return _visualize.show(self, **kwargs)
+
+
+class TensorSpline(_core.SplineCore, Spline):
+    r"""
+    Tensor product spline, the base of the Bezier and B-Spline families.
+
+    For the theory, see :class:`.BSplineBase` and :class:`.BezierBase`, and their
     children :class:`.BSpline`, :class:`.NURBS`, :class:`.Bezier`, and
     :class:`.RationalBezier` for usage examples.
 
@@ -246,8 +418,6 @@ class Spline(_core.SplineCore, _SplinepyBase):
         "_spline_data",
         "__weakref__",
     )
-
-    __show_option__ = _visualize.SplineShowOption
 
     def __init__(self, **kwargs):
         super().__init__()
@@ -360,14 +530,14 @@ class Spline(_core.SplineCore, _SplinepyBase):
 
     @classmethod
     def _required_properties(cls):
-        """Properties the type needs; a plain `Spline` may hold all of them."""
+        """Properties the type needs; a plain `TensorSpline` may hold all of them."""
         return _REQUIRED_PROPERTIES[cls._type_name() or "NURBS"]
 
     @property
     def name(self):
         """
         Name of the spline type: "Bezier", "RationalBezier", "BSpline" or
-        "NURBS". A plain `Spline` is named after the properties it holds.
+        "NURBS". A plain `TensorSpline` is named after the properties it holds.
 
         Parameters
         -----------
@@ -404,25 +574,6 @@ class Spline(_core.SplineCore, _SplinepyBase):
         return _Extractor(self)
 
     @property
-    def check(self):
-        """Returns spline checker. Can directly perform type and value checks
-        at `splinepy/helpme/check.py`.
-
-        Examples
-        ---------
-        >>> spline.check.valid_queries(queries)
-
-        Parameters
-        -----------
-        None
-
-        Returns
-        --------
-        checker: Checker
-        """
-        return _Checker(self)
-
-    @property
     def integrate(self):
         """Returns spline integrator. Can directly perform integrations
         available at `splinepy/helpme/integrate.py`.
@@ -443,55 +594,6 @@ class Spline(_core.SplineCore, _SplinepyBase):
         integrator: Integrator
         """
         return _Integrator(self)
-
-    @property
-    def create(self):
-        """Returns spline creator Can be used to create new splines using
-        geometric relations.
-
-        Examples
-        --------
-        >>> prism = spline.create.extrude(axis=[1, 4, 1])
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        creator: spline.Creator
-        """
-        return _Creator(self)
-
-    @property
-    def show_options(self):
-        """
-        Show option manager for splines.
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        show_options: SplineShowOption
-        """
-        return _get_helper(self, "_show_options", self.__show_option__)
-
-    @property
-    def spline_data(self):
-        """
-        Spline data helper for splines.
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        spline_data: SplineData
-        """
-        return _get_helper(self, "_spline_data", _SplineData)
 
     def clear(self):
         """
@@ -676,23 +778,6 @@ class Spline(_core.SplineCore, _SplinepyBase):
         self._set_property("control_points", control_points)
 
     @property
-    def control_point_bounds(self):
-        """
-        Returns bounds of control points.
-
-        Parameters
-        -----------
-        None
-
-        Returns
-        --------
-        control_point_bounds: (2, dim) np.ndarray
-        """
-        cps = self.control_points
-
-        return _np.vstack((cps.min(axis=0), cps.max(axis=0)))
-
-    @property
     def control_mesh_resolutions(self):
         """
         Returns control mesh resolutions.
@@ -706,22 +791,6 @@ class Spline(_core.SplineCore, _SplinepyBase):
         control_mesh_resolutions: (para_dim) np.ndarray
         """
         return _core.control_mesh_resolutions(self)
-
-    def mapper(self, reference):
-        """Retrieve a mapper that can be used to get physical derivatives such
-        as a gradient or hessian in physical space
-
-        Parameters
-        ----------
-        reference : spline
-          Spline that represents the geometry of the field
-
-        Returns
-        -------
-        mapper : Mapper
-          Mapper to calculate physical gradients and hessians
-        """
-        return _helpme.mapper.Mapper(self, reference=reference)
 
     def greville_abscissae(self, duplicate_tolerance=None):
         """
@@ -1338,24 +1407,6 @@ class Spline(_core.SplineCore, _SplinepyBase):
                 new.spline_data._saved = self.spline_data._saved.copy()
 
         return new
-
-    def show(self, **kwargs):
-        """Equivalent to
-
-        .. code-block:: python
-
-            splinepy.helpme.visualize.show(spline, **kwargs)
-
-        Parameters
-        ----------
-        kwargs: kwargs
-          see splinepy.helpme.visualize.show
-
-        Returns
-        -------
-        viewer: splinepy.viewer.Viewer
-        """
-        return _visualize.show(self, **kwargs)
 
     # short cuts / alias
     ds = degrees
