@@ -349,35 +349,17 @@ inverse_microstructure = generator.create(
     closing_face="z", separator_distance=0.4, center_expansion=1.3
 )
 
-# Plot the results
-_, showables_inverse = generator.show(
-    closing_face="z",
-    separator_distance=0.4,
-    center_expansion=1.3,
-    title="Parametrized Inverse Microstructure",
-    control_points=False,
-    knots=True,
-    return_showable_list=True,
-    resolutions=5,
-    c="hotpink",
-)
+inverse_microstructure.show_options["c"] = "hotpink"
 
 # Corresponding Structure
 generator.microtile = splinepy.microstructure.tiles.get("Cross3D")
 microstructure = generator.create(
     closing_face="z", separator_distance=0.4, center_expansion=1.3
 )
-_, showables = generator.show(
-    closing_face="z",
-    center_expansion=1.3,
-    title="Parametrized Microstructure",
+splinepy.show(
+    ["Parametrized Inverse Microstructure", inverse_microstructure],
+    ["Parametrized Microstructure", microstructure],
     control_points=False,
     knots=True,
-    return_showable_list=True,
     resolutions=5,
-)
-
-splinepy.show(
-    [*showables_inverse, *showables],
-    title="Parametrized Microstructure and its inverse",
 )

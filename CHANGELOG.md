@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Standalone C++17 core library (`src/splinepy/core`) with allocation-free query kernels, manipulation, Bezier algebra and multipatch topology, plus a GoogleTest suite run in CI.
 - Hierarchical splines: `HBSpline`, `THBSpline`, `RationalHBSpline`, `RationalTHBSpline` with refinement, coarsening, leaf Bezier extraction and JSON IO ([examples/iga/hierarchical_refinement.py](examples/iga/hierarchical_refinement.py)).
-- three.js viewer (`splinepy.viewer`), the default backend of `splinepy.show()`; select with `settings.SHOW_BACKEND` or `show(backend=...)`.
+- three.js viewer (`splinepy.viewer`), which `splinepy.show()` and `spline.show()` now use.
 - `out=` argument on evaluation queries to write into existing arrays.
 - `Spline.validate()` for an explicit check of the complete layout and all values.
 - `Bezier.compose_batch()` and `Bezier.composition_derivative_batch()`.
@@ -38,7 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Degree elevation/reduction and Bezier extraction accept C^-1 knots.
 - IGES IO is implemented in Python.
 - FFD accepts native mesh inputs.
-- `gustaf` is optional (`splinepy[gustaf]`); viewer extras are `splinepy[viewer]` and `splinepy[viewer-export]`.
+- Viewer extras are `splinepy[viewer]` and `splinepy[viewer-export]`.
+- `helpme.create.revolved()` always returns the exact revolution: a `Bezier` gives a `RationalBezier`, a `BSpline` a `NURBS`.
+- `KnotVector.find_span()` clips queries at the ends to the first and last span that is not empty.
 - macOS wheels are built for arm64 only.
 - `Microstructure.create()` composes all cells in one native call and shares composed bases between identical tile patches; against 0.2.1, a parametrized structure builds 30x (2D) to 50x (3D) faster, and 300x with macro sensitivities. The parametrization functions are called once, on the evaluation points of all cells.
 - The derivatives of the affine built-in tiles come from their control point map instead of hand-written derivative code.
@@ -55,6 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `swept()`: misaligned cross sections for normals with a y-component, trajectories whose parametric bounds do not start at 0, closure along closed trajectories, and degenerate frames.
 
 ### Removed
+- The gustaf and vedo backend: `showable()`, `show(return_gustaf=...)`, `show(return_showable=...)`, `show(backend=...)`, `settings.SHOW_BACKEND`, `mesh.to_gustaf()`, `mesh.from_gustaf()`, gustaf meshes in `FFD`, `splinepy.viewer` and `io.svg.export`, and the `splinepy[gustaf]` extra. Meshes are plain dicts (`splinepy.mesh`).
+- `Spline.whatami`, `Multipatch.whatami` (use `name`), `Spline.required_properties` and `RequiredProperties`.
 - C++ spline class hierarchy (`SplinepyBase`, `Bezier`, `BSpline`, ...), `PySpline`, `PyMultipatch`, `PhysicalSpaceArray` and the coordinate pointer layer.
 - Bundled `pybind11`, `BSplineLib`, `bezman` and `napf`.
 - Build options `SPLINEPY_MORE`, `SPLINEPY_BUILD_EXPLICIT`, `SPLINEPY_COMPILE_BSPLINELIB`, `SPLINEPY_BUILD_SHARED`, `SPLINEPY_ENABLE_WARNINGS` and the `splinepy` C++ library target.

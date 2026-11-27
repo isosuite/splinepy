@@ -43,8 +43,6 @@ def bspline2p3d():
 
 if __name__ == "__main__":
     np_rng = np.random.default_rng()
-    # turn on debug logs
-    # gus.utils.log.configure(debug=True)
 
     # define spline_data
     # 1. see coordinates's norm

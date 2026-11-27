@@ -1,6 +1,4 @@
-import contextlib
 
-import gustaf as gus
 import numpy as np
 
 import splinepy
@@ -97,15 +95,9 @@ p_basis1 = nurbs.basis(queries)
 
 para_queries = []
 phys_queries = []
-colors = ["red", "yellow", "blue"]
-for q, pc, c in zip(queries, physical_coordinates, colors, strict=False):
-    para_q, phys_q = gus.Vertices([q]), gus.Vertices([pc])
-    para_q.show_options["c"] = c
-    para_q.show_options["r"] = 10
-    phys_q.show_options["c"] = c
-    phys_q.show_options["r"] = 10
-    para_queries.append(para_q)
-    phys_queries.append(phys_q)
+for q, pc in zip(queries, physical_coordinates, strict=False):
+    para_queries.append(np.array([q]))
+    phys_queries.append(np.array([pc]))
 
 splinepy.show(
     ["Parametric", *para_queries, nurbs.create.parametric_view()],
@@ -184,7 +176,7 @@ splinepy.show(
 )
 
 ### 4.3
-# sample a mesh, or bring one from gustaf (splinepy.mesh.from_gustaf)
+# sample a mesh
 mesh = splinepy.helpme.create.torus(2, 1).extract.faces([100, 100, 100])
 
 # initialize ffd and move control points
@@ -223,9 +215,7 @@ surface, residual_surface = splinepy.helpme.fit.surface(
     data, size=[3, 2], fitting_spline=nurbs
 )
 
-# set visuals for data
-d = gus.Vertices(data)
-d.show_options.update(c="blue", r=15)
+d = np.asarray(data)
 
 splinepy.show(
     ["curve fit", d, curve],
@@ -255,81 +245,10 @@ laplacian_matrix = splinepy.utils.data.make_matrix(
     as_array=True,
 )
 
-# for this one, we want zero to the mittle value to be zero to highlight
-# sparse matrix
-vmin = laplacian_matrix.min()
-vmax = laplacian_matrix.max()
-v_abs = max(vmin, vmax)
-vmin = v_abs * np.sign(vmin)
-vmax = v_abs * np.sign(vmax)
-
-try:
-    import vedo
-
-    vedo_mat = vedo.pyplot.matrix(
-        laplacian_matrix, cmap="seismic", vmin=vmin, vmax=vmax
-    )
-    splinepy.show(vedo_mat, background=bg)
-except ImportError:
-    pass
-
-
-### 5.
-
-splinepy.microstructure.tiles.show(alpha=0.7, background=bg)
-
-# get specific dimensions as dict
-para_2_dim_2 = splinepy.microstructure.tiles.by_dim(para_dim=2, dim=2)
-dim_2 = splinepy.microstructure.tiles.by_dim(dim=2)
-
-
-# create microstructure generator
-microstructure = splinepy.Microstructure()
-# set outer spline and a (micro) tile
-microstructure.deformation_function = nurbs
-microstructure.microtile = splinepy.microstructure.tiles.get("Cross2D")
-# tiling determines tile resolutions within each bezier patch
-microstructure.tiling = [5, 3]
-
-microstructure.show(background=bg)
-
-# extract only generated parts as multipatch
-generated = microstructure.create()
-
-
-### 6.
-# use previously generated microtiles
-interface_info_array = generated.interfaces
-
-
-# Mark boundaries to set boundary conditions
-# In case of micro structure, you can use outer spline's boundary
-def is_left_bdr(x):
-    left = nurbs.extract.boundaries()[3]
-    return (left.proximities(x, return_verbose=True)[3] < 1e-8).ravel()
-
-
-generated.boundary_from_function(is_left_bdr, boundary_id=5)
-
-splinepy.show(
-    ["All", generated],
-    ["Boundaries", generated.boundary_multipatch()],
-    ["Boundary 5", generated.boundary_multipatch(5)],
-    control_points=False,
-    background=bg,
-)
-
-# export for the solver
-splinepy.io.gismo.export("microstructure.xml", generated)
-
-
-### 7.
-# export
 splinepy.io.mfem.export("quarter_circle.mesh", nurbs)
 
 # load
 quarter_circle = splinepy.io.mfem.load("quarter_circle.mesh")
 
-# svg export (requires optional vedo)
-with contextlib.suppress(ImportError):
-    splinepy.io.svg.export("nurbs.svg", nurbs, background=bg)
+# svg export
+splinepy.io.svg.export("nurbs.svg", nurbs, background=bg)

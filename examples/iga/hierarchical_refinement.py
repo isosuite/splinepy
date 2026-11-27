@@ -43,7 +43,7 @@ def main():
             options.output / "hierarchy.json", hierarchy, extraction_basis="bernstein"
         )
     if options.show:
-        hierarchy.show(backend="viewer")
+        hierarchy.show()
 
 
 if __name__ == "__main__":

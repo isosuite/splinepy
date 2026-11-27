@@ -104,8 +104,3 @@ view.save("spline.html")
 
 For PNG screenshots, install `splinepy[viewer-export]`, run
 `playwright install chromium`, then call `view.screenshot("spline.png")`.
-
-## Legacy Vedo backend
-
-Install `splinepy[gustaf]` and call `nurbs.show(backend="vedo")` to use
-the Vedo renderer.

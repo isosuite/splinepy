@@ -6,14 +6,6 @@ import numpy as np
 
 import splinepy as spp
 
-try:
-    import vedo  # noqa: F401
-except ImportError:
-    print("Vedo is required for SVG export. Skipping.")
-    import sys
-
-    sys.exit(0)
-
 np_rng = np.random.default_rng()
 
 box = spp.helpme.create.box(10, 5).bspline

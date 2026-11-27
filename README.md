@@ -22,10 +22,9 @@ as needed:
 
 | Extra | Adds |
 | --- | --- |
-| `splinepy[gustaf]` | The legacy Vedo backend and gustaf mesh conversion |
 | `splinepy[viewer]` | AnyWidget for interactive notebook output |
 | `splinepy[viewer-export]` | Playwright for headless screenshots; run `playwright install chromium` after installation |
-| `splinepy[all]` | All three extras |
+| `splinepy[all]` | Both extras |
 
 You can install it directly from the source:
 ```bash
@@ -202,8 +201,7 @@ swept = splinepy.helpme.create.swept(
 
 #### 4.2 Extract
 Sample a spline into meshes. A mesh is a plain dict of vertices and
-connectivity (see `splinepy.mesh`); `splinepy.mesh.to_gustaf()` converts it
-for gustaf.
+connectivity (see `splinepy.mesh`).
 ```python
 # extract meshes
 control_mesh = nurbs.extract.control_mesh()
@@ -245,9 +243,9 @@ splinepy.show(
 ![extract_spline](docs/source/_static/readme_extract_spline.png)
 
 #### 4.3 Free-form deformation
-Deform vertex arrays, mesh dicts or [gustaf](https://isosuite.github.io/gustaf) meshes with [free-form deformation](https://isosuite.github.io/splinepy/_generated/splinepy.helpme.ffd.FFD.html). The deformed mesh comes back in the type it was given.
+Deform vertex arrays or mesh dicts with [free-form deformation](https://isosuite.github.io/splinepy/_generated/splinepy.helpme.ffd.FFD.html). The deformed mesh comes back in the type it was given.
 ```python
-# sample a mesh, or bring one from gustaf (splinepy.mesh.from_gustaf)
+# sample a mesh
 mesh = splinepy.helpme.create.torus(2, 1).extract.faces([100, 100, 100])
 
 # initialize ffd and move control points

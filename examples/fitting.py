@@ -1,4 +1,3 @@
-import gustaf as gus
 import numpy as np
 
 import splinepy
@@ -26,9 +25,7 @@ if __name__ == "__main__":
     n_resolution = 3 * n_sample
     x = np.linspace(-1, 1, n_sample)
     fitting_points = np.vstack([x, f(x)]).T.reshape(-1, 2)
-    pts = gus.create.vertices.Vertices(fitting_points)
-    pts.show_options["c"] = "blue"
-    pts.show_options["r"] = 10
+    pts = fitting_points
 
     # fit_curve creates Bspline where the n_control_points = n_fitting_points
     # if no further information is given
@@ -75,7 +72,7 @@ if __name__ == "__main__":
             [n_cps, approximated_curve, [max_error, mean_error]]
         )
 
-    gus_list = [
+    items = [
         [
             f"PY: Approximated curve with {cps} CPs \n Max. "
             f"distance {errs[0]:.2f}, mean distance {errs[1]:.2f}",
@@ -84,7 +81,7 @@ if __name__ == "__main__":
         ]
         for (cps, curve, errs) in approximated_curves
     ]
-    splinepy.show(*gus_list)
+    splinepy.show(*items)
 
     # 2. Surface fitting
     n_sample = [20, 20]
@@ -135,9 +132,7 @@ if __name__ == "__main__":
         approximated_surface, fitting_points
     )
 
-    pts = gus.create.vertices.Vertices(fitting_points)
-    pts.show_options["c"] = "blue"
-    pts.show_options["r"] = 10
+    pts = fitting_points
 
     splinepy.show(
         [
@@ -177,7 +172,7 @@ if __name__ == "__main__":
             [n_cps, approximated_surface, [max_error, mean_error]]
         )
 
-    gus_list = [
+    items = [
         [
             f"Approximated surface with {cps} CPs\n Max. distance "
             f"{errs[0]:.3f}, mean distance {errs[1]:.3f}",
@@ -186,7 +181,7 @@ if __name__ == "__main__":
         ]
         for (cps, surface, errs) in approximated_surfaces
     ]
-    splinepy.show(*gus_list)
+    splinepy.show(*items)
 
     # Unevenly spaced ctps
     uneven_queries = splinepy.cartesian_product(
@@ -200,7 +195,5 @@ if __name__ == "__main__":
         degrees=[3, 3],
         knot_vectors=[[0, 0, 0, 0, 1, 1, 1, 1], [0, 0, 0, 0, 1, 1, 1, 1]],
     )
-    pts = gus.create.vertices.Vertices(fitting_points)
-    pts.show_options["c"] = "blue"
-    pts.show_options["r"] = 10
+    pts = fitting_points
     splinepy.show(interpolated_surface, pts)

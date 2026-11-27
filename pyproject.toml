@@ -32,11 +32,10 @@ file = "README.md"
 content-type = "text/markdown"
 
 [project.optional-dependencies]
-all = ["gustaf[all]>=0.0.25", "anywidget", "playwright"]
-gustaf = ["gustaf[all]>=0.0.25"]
+all = ["anywidget", "playwright"]
 viewer = ["anywidget"]
 viewer-export = ["playwright"]
-test = ["pytest", "gustaf>=0.0.25", "scipy"]
+test = ["pytest", "scipy"]
 
 [project.scripts]
 splinepy = "splinepy.cli:entry"

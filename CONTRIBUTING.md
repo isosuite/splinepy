@@ -59,7 +59,7 @@ uv run --no-sync --with pre-commit pre-commit run -a
 Install Doxygen and Graphviz, then run these commands from the repository root.
 
 ```bash
-uv sync --extra gustaf --extra viewer
+uv sync --extra viewer
 (cd docs && mkdir -p build && doxygen Doxyfile)
 uv run --no-sync python docs/source/handle_markdown.py
 uv run --no-sync python docs/markdown/extra_docs.py

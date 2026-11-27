@@ -10,11 +10,6 @@ DARK_WITH_WHITE_OVAL_BACKGROUND = False
 WITH_ALPHA_BACKGROUND = False
 
 if __name__ == "__main__":
-    if WITH_ALPHA_BACKGROUND:
-        import vedo
-
-        vedo.settings.screenshot_transparent_background = 1
-
     l_eye = splinepy.helpme.create.disk(0.15)
     l_eye.cps += [0.6, 0.2]
     l_eye.show_options["c"] = "black"
