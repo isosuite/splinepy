@@ -25,7 +25,7 @@ def permute_parametric_axes(spline, permutation_list, inplace=True):
     Returns
     -------
     modified_spline : type(spline)
-        spline with reordered parametric dimensions. iff `inplace=True`.
+        spline with reordered parametric dimensions, iff `inplace=False`.
     """
     # Data collector for new spline object
     dict_spline = {}
@@ -103,13 +103,13 @@ def flip_axes(spline, axes, inplace=False):
     axes : list
         List of axes to be flipped
     inplace: bool
-        Default is True. If True, modifies spline inplace, else, returns
+        Default is False. If True, modifies spline inplace, else, returns
         a modified_spline.
 
     Returns
     -------
     modified_spline : type(spline)
-        spline with reordered parametric dimensions. iff `inplace=True`.
+        spline with reordered parametric dimensions, iff `inplace=False`.
     """
 
     # Sanity checks
