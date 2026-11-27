@@ -18,8 +18,12 @@ nurbs_and_bspline = (
 )
 
 
+def are_items_close(a, b):
+    return all(np.allclose(x, y) for x, y in zip(a, b, strict=True))
+
+
 @pytest.mark.parametrize("splinetype", all_2p2d_splines)
-def test_elevate_degree(splinetype, request, np_rng, are_items_close):
+def test_elevate_degree(splinetype, request, np_rng):
     """Test the order elevation function (.elevate_degrees())."""
 
     # reference solution
@@ -57,7 +61,7 @@ def test_elevate_degree(splinetype, request, np_rng, are_items_close):
 
 
 @pytest.mark.parametrize("splinetype", nurbs_and_bspline)
-def test_reduce_degree(splinetype, request, are_items_close, np_rng):
+def test_reduce_degree(splinetype, request, np_rng):
     """Test the function .reduce_degrees.
     This test also depends on the function .elevate_degrees!"""
 

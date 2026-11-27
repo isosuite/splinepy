@@ -5,7 +5,6 @@ import pytest
 
 import splinepy
 
-
 KINDS = ["Bezier", "RationalBezier", "BSpline", "NURBS"]
 
 
@@ -56,8 +55,8 @@ def test_constructors_reject_degrees_and_points(kind, degrees, n_points, dim, me
 @pytest.mark.parametrize("kind", ["RationalBezier", "NURBS"])
 @pytest.mark.parametrize("n_points, n_weights", [(4, 2), (4, 19)])
 def test_constructors_reject_a_wrong_number_of_weights(kind, n_points, n_weights):
-    message = rf"len\(weights\) \({n_weights}\) should match len\(control_points\) \(4\)"
-    with pytest.raises(ValueError, match=message):
+    message = rf"len\(weights\) \({n_weights}\) should match len\(control_points\)"
+    with pytest.raises(ValueError, match=message + r" \(4\)"):
         _make(kind, [1, 1], n_points, n_weights=n_weights)
 
 

@@ -21,46 +21,6 @@ def test_sparse_axis_maps_match_geometry_insertion(
     np.testing.assert_allclose(spline.control_points, expected, atol=1e-14)
 
 
-def test_insert_knot(np_rng, are_items_close, bspline_2p2d, nurbs_2p2d):
-    """Test the knot insertion function (.insert_knot())."""
-
-    # creating a reference copy of the splines
-    bspline_original = bspline_2p2d.copy()
-    nurbs_original = nurbs_2p2d.copy()
-
-    # reference solutions
-    bspline_ref_kv = [
-        [0, 0, 0, 0.2, 0.5, 0.7, 1, 1, 1],
-        [0, 0, 0, 0.2, 0.5, 0.7, 1, 1, 1],
-    ]
-    nurbs_ref_kv = [
-        [0, 0, 0, 0.2, 0.5, 0.7, 1, 1, 1],
-        [0, 0, 0.2, 0.5, 0.7, 1, 1],
-    ]
-
-    # insert knots
-    bspline_2p2d.insert_knots(0, [0.2, 0.7])
-    bspline_2p2d.insert_knots(1, [0.2, 0.5, 0.7])
-
-    nurbs_2p2d.insert_knots(0, [0.2, 0.5, 0.7])
-    nurbs_2p2d.insert_knots(1, [0.2, 0.5, 0.7])
-
-    # test knot_vectors
-    assert are_items_close(bspline_2p2d.knot_vectors, bspline_ref_kv)
-
-    assert are_items_close(nurbs_2p2d.knot_vectors, nurbs_ref_kv)
-
-    # use random query points
-    q2D = np_rng.random((10, 2))
-
-    # test evaluation
-    assert np.allclose(
-        bspline_2p2d.evaluate(q2D), bspline_original.evaluate(q2D)
-    )
-
-    assert np.allclose(nurbs_2p2d.evaluate(q2D), nurbs_original.evaluate(q2D))
-
-
 def test_insert_knot_status_return(np_rng):
     # create 3d box and loop for bspline families
     box = splinepy.helpme.create.box(1, 1, 1)
@@ -119,6 +79,13 @@ def test_insert_knot_with_matrix(np_rng, bspline_2p2d, nurbs_2p2d):
     )
     nurbs_2p2d.insert_knots(1, nurbs_knots_1)
 
+    # the new knots are merged into the old ones
+    for axis, added in enumerate((b_spline_knots_0, b_spline_knots_1)):
+        np.testing.assert_array_equal(
+            bspline_2p2d.knot_vectors[axis],
+            np.sort(np.append(bspline_original.knot_vectors[axis], added)),
+        )
+
     # use random query points
     q2D = np_rng.random((50, 2))
 
@@ -147,43 +114,22 @@ def test_insert_knot_with_matrix(np_rng, bspline_2p2d, nurbs_2p2d):
     )
 
 
-def test_remove_knot(np_rng, are_items_close, bspline_2p2d, nurbs_2p2d):
-    """Test the function .remove_knots.
-    This test also depends on the function .insert_knots!"""
+@pytest.mark.parametrize("splinetype", ["bspline_2p2d", "nurbs_2p2d"])
+def test_remove_knot_undoes_an_insertion(splinetype, request, np_rng):
+    spline = request.getfixturevalue(splinetype)
+    original = spline.copy()
 
-    # creating a reference copy of the splines
-    bspline_original = bspline_2p2d.copy()
-    nurbs_original = nurbs_2p2d.copy()
+    spline.insert_knots(0, [0.2, 0.7])
+    spline.insert_knots(1, [0.2, 0.5, 0.7])
+    spline.remove_knots(0, [0.2, 0.7])
+    spline.remove_knots(1, [0.2, 0.5, 0.7])
 
-    # insert and remove knots
-    bspline_2p2d.insert_knots(0, [0.2, 0.7])
-    bspline_2p2d.insert_knots(1, [0.2, 0.5, 0.7])
-    bspline_2p2d.remove_knots(0, [0.2, 0.7])
-    bspline_2p2d.remove_knots(1, [0.2, 0.5, 0.7])
-
-    nurbs_2p2d.insert_knots(0, [0.2, 0.5, 0.7])
-    nurbs_2p2d.insert_knots(1, [0.2, 0.5, 0.7])
-    nurbs_2p2d.remove_knots(0, [0.2, 0.5, 0.7])
-    nurbs_2p2d.remove_knots(1, [0.2, 0.5, 0.7])
-
-    # test knot_vectors
-    assert are_items_close(
-        bspline_2p2d.knot_vectors, bspline_original.knot_vectors
-    )
-
-    assert are_items_close(
-        nurbs_2p2d.knot_vectors, nurbs_original.knot_vectors
-    )
-
-    # use random query points
-    q2D = np_rng.random((10, 2))
-
-    # test evaluation
-    assert np.allclose(
-        bspline_2p2d.evaluate(q2D), bspline_original.evaluate(q2D)
-    )
-
-    assert np.allclose(nurbs_2p2d.evaluate(q2D), nurbs_original.evaluate(q2D))
+    for knots, expected in zip(
+        spline.knot_vectors, original.knot_vectors, strict=True
+    ):
+        np.testing.assert_allclose(knots, expected)
+    queries = np_rng.random((10, 2))
+    np.testing.assert_allclose(spline.evaluate(queries), original.evaluate(queries))
 
 
 def test_uniform_refine():
