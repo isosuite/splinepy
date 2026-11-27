@@ -867,6 +867,8 @@ class Multipatch(_SplinepyBase):
         if tolerance is None:
             tolerance = _settings.TOLERANCE
 
+        if recompute:
+            self._sub_patch_centers = None
         if recompute or self._interfaces is None:
             self.interfaces = self._compute_interfaces(tolerance)
         return self._interfaces

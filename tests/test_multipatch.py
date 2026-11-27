@@ -852,3 +852,13 @@ def test_queries_follow_patches_that_replace_their_arrays():
     patches[0].insert_knots(0, [0.5])
     patches[0].control_points[:] -= 10.0
     np.testing.assert_allclose(multipatch.evaluate([[0.5, 0.5]])[0], [0.5, 0.5])
+
+
+def test_recomputed_interfaces_follow_moved_patches():
+    left = splinepy.Bezier([1, 1], [[0, 0], [1, 0], [0, 1], [1, 1]])
+    right = left.copy()
+    right.control_points[:, 0] += 1
+    multipatch = splinepy.Multipatch([left, right])
+    assert (multipatch.interfaces >= 0).sum() == 2
+    right.control_points = right.control_points + [5.0, 0.0]
+    assert (multipatch.determine_interfaces(recompute=True) >= 0).sum() == 0
