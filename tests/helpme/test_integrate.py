@@ -13,124 +13,32 @@ def test_integration_preserves_short_parameter_domains(width):
     np.testing.assert_array_equal(spline.parametric_bounds, [[0], [1]])
 
 
-def test_volume_integration_1D(np_rng):
-    """
-    Test volume integration for splines using numerical integration of the
-    Jacobi-Determinant
-    """
-    bezier = splinepy.Bezier(degrees=[1], control_points=[[0], [2]])
+@pytest.mark.parametrize(
+    "degrees, control_points, expected",
+    [
+        ([1], [[0], [2]], 2.0),
+        # a curve embedded in the plane
+        ([1], [[0, 0], [2, 2]], 2.0**1.5),
+        ([1, 1], [[0, 0], [2, 0], [0, 1], [2, 1]], 2.0),
+        (
+            [1, 1, 1],
+            [[x, y, z] for z in (0, 3) for y in (0, 1) for x in (0, 1)],
+            3.0,
+        ),
+    ],
+)
+def test_volume_integration(degrees, control_points, expected, np_rng):
+    """the measure of a box, for every spline type and after refinement"""
+    bezier = splinepy.Bezier(degrees=degrees, control_points=control_points)
+    for spline in (bezier, bezier.bspline, bezier.rationalbezier, bezier.nurbs):
+        assert np.allclose(spline.integrate.volume(), expected)
 
-    assert np.allclose(bezier.integrate.volume(), 2.0)
+    bezier.elevate_degrees(list(range(len(degrees))) * 2)
+    assert np.allclose(bezier.integrate.volume(), expected)
 
-    # test for other types same spline
-    assert np.allclose(bezier.bspline.integrate.volume(), 2.0)
-    assert np.allclose(bezier.rationalbezier.integrate.volume(), 2.0)
-    assert np.allclose(bezier.nurbs.integrate.volume(), 2.0)
-
-    # Check if equal after refinement
-    bezier.elevate_degrees([0, 0, 0])
-
-    assert np.allclose(bezier.integrate.volume(), 2.0)
-
-    # Test knot insertion
     bspline = bezier.bspline
     bspline.insert_knots(0, np_rng.random(10))
-    assert np.allclose(bspline.integrate.volume(), 2.0)
-
-
-def test_volume_integration_embedded(np_rng):
-    """
-    Test volume integration for splines using numerical integration of the
-    Jacobi-Determinant
-    """
-    # Test 1D -> 2D volume integration for Bezier
-    expected_result = 2.0**1.5
-    bezier = splinepy.Bezier(degrees=[1], control_points=[[0, 0], [2, 2]])
-
-    assert np.allclose(bezier.integrate.volume(), expected_result)
-
-    # For same curve, test other spline types
-    assert np.allclose(bezier.bspline.integrate.volume(), expected_result)
-    assert np.allclose(
-        bezier.rationalbezier.integrate.volume(), expected_result
-    )
-    assert np.allclose(bezier.nurbs.integrate.volume(), expected_result)
-
-    # Check if volume is equal after degree elevation
-    bezier.elevate_degrees([0, 0, 0])
-
-    assert np.allclose(bezier.integrate.volume(), expected_result)
-
-    # Test knot insertion
-    bspline = bezier.bspline
-    bspline.insert_knots(0, np_rng.random(10))
-    assert np.allclose(bspline.integrate.volume(), expected_result)
-
-
-def test_volume_integration_2D(np_rng):
-    """
-    Test volume integration for splines using numerical integration of the
-    Jacobi-Determinant
-    """
-    # Test 2D
-    bezier = splinepy.Bezier(
-        degrees=[1, 1], control_points=[[0, 0], [2, 0], [0, 1], [2, 1]]
-    )
-
-    assert np.allclose(bezier.integrate.volume(), 2.0)
-
-    # test for other types same spline
-    assert np.allclose(bezier.bspline.integrate.volume(), 2.0)
-    assert np.allclose(bezier.rationalbezier.integrate.volume(), 2.0)
-    assert np.allclose(bezier.nurbs.integrate.volume(), 2.0)
-
-    # Check if equal after refinement
-    bezier.elevate_degrees([0, 0, 1])
-
-    assert np.allclose(bezier.integrate.volume(), 2.0)
-
-    # Test knot insertion
-    bspline = bezier.bspline
-    bspline.insert_knots(0, np_rng.random(10))
-    assert np.allclose(bspline.integrate.volume(), 2.0)
-
-
-def test_volume_integration_3D(np_rng):
-    """
-    Test volume integration for splines using numerical integration of the
-    Jacobi-Determinant
-    """
-    # Test 3D
-    bezier = splinepy.Bezier(
-        degrees=[1, 1, 1],
-        control_points=[
-            [0, 0, 0],
-            [1, 0, 0],
-            [0, 1, 0],
-            [1, 1, 0],
-            [0, 0, 3],
-            [1, 0, 3],
-            [0, 1, 3],
-            [1, 1, 3],
-        ],
-    )
-
-    assert np.allclose(bezier.integrate.volume(), 3.0)
-
-    # Check if equal after refinement
-    bezier.elevate_degrees([0, 0, 1, 1, 2, 2])
-
-    assert np.allclose(bezier.integrate.volume(), 3.0)
-
-    # Test knot insertion
-    bspline = bezier.bspline
-    bspline.insert_knots(0, np_rng.random(10))
-    assert np.allclose(bspline.integrate.volume(), 3.0)
-
-    # Move control points along axis does not change volume
-    mi = bspline.multi_index
-    bspline.cps[mi[3, :, :], 1] += 10
-    assert np.allclose(bspline.integrate.volume(), 3.0)
+    assert np.allclose(bspline.integrate.volume(), expected)
 
 
 def test_complex_geometry(np_rng):
@@ -388,3 +296,12 @@ def test_field_assembly_keeps_rows_and_follows_a_refined_field():
     np.testing.assert_allclose(
         integrator.L2_projection(lambda x: 2 * x[:, 0] + 1), [1, 2, 3], atol=1e-12
     )
+
+
+def test_volume_is_kept_by_a_shear(np_rng):
+    bspline = splinepy.helpme.create.box(1, 1, 3).bspline
+    bspline.elevate_degrees([0, 1, 2])
+    bspline.insert_knots(0, np_rng.random(10))
+    # moving a layer of control points along itself
+    bspline.cps[bspline.multi_index[3, :, :], 1] += 10
+    assert np.allclose(bspline.integrate.volume(), 3.0)
