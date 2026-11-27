@@ -13,8 +13,8 @@ from splinepy import settings as _settings
 from splinepy import splinepy_core as _core
 from splinepy import utils as _utils
 from splinepy._base import SplinepyBase as _SplinepyBase
+from splinepy.helpme import check as _check
 from splinepy.helpme import visualize as _visualize
-from splinepy.helpme.check import Checker as _Checker
 from splinepy.helpme.create import Creator as _Creator
 from splinepy.helpme.extract import Extractor as _Extractor
 from splinepy.helpme.integrate import Integrator as _Integrator
@@ -217,6 +217,7 @@ class Spline(_SplinepyBase):
     __slots__ = ()
 
     __show_option__ = _visualize.SplineShowOption
+    _checker = _check.Checker
 
     @property
     def name(self):
@@ -250,7 +251,7 @@ class Spline(_SplinepyBase):
         --------
         checker: Checker
         """
-        return _Checker(self)
+        return self._checker(self)
 
     @property
     def create(self):
@@ -425,6 +426,8 @@ class TensorSpline(_core.SplineCore, Spline):
         "_spline_data",
         "__weakref__",
     )
+
+    _checker = _check.TensorChecker
 
     def __init__(self, **kwargs):
         super().__init__()

@@ -932,3 +932,10 @@ def test_hierarchies_share_the_spline_interface(to_hierarchy, np_rng):
     surface = splinepy.viewer.show(copied).scene["layers"][0]
     assert surface["kind"] == "mesh"
     assert "scalars" in surface
+
+
+def test_hierarchy_check_offers_only_what_it_answers():
+    thb = splinepy.THBSpline([1], [[0, 0, 1, 1]], [[0], [1]])
+    assert thb.check.valid_queries([[0.5]])
+    assert not hasattr(thb.check, "clamped_knot_vectors")
+    assert splinepy.helpme.create.box(1, 1).bspline.check.clamped_knot_vectors()

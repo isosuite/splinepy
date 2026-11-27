@@ -110,8 +110,8 @@ def clamped_knot_vectors(spline, warning=True):
 
 
 class Checker:
-    """Helper class to allow direct extraction from spline obj (BSpline or
-    NURBS). Internal use only.
+    """Helper class to allow direct checks from any spline obj.
+    Internal use only.
 
     Examples
     ---------
@@ -134,6 +134,12 @@ class Checker:
     @_wraps(valid_queries)
     def valid_queries(self, queries):
         return valid_queries(self._helpee, queries)
+
+
+class TensorChecker(Checker):
+    """Checker of tensor product splines, which have knot vectors."""
+
+    __slots__ = ()
 
     @_wraps(clamped_knot_vectors)
     def clamped_knot_vectors(self, warning=True):
