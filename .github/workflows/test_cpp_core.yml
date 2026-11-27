@@ -6,19 +6,31 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   cpp_core_tests:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - build: Release
+            flags: ""
+          - build: Debug
+            flags: "-fsanitize=address,undefined -fno-sanitize-recover=undefined"
     steps:
       - uses: actions/checkout@v4
 
       - name: Configure C++ tests
         run: >
-          cmake -S . -B build-core -DCMAKE_BUILD_TYPE=Release
+          cmake -S . -B build-core -DCMAKE_BUILD_TYPE=${{ matrix.build }}
           -DSPLINEPY_COMPILE_PYTHON=OFF -DSPLINEPY_CORE_BUILD_TESTS=ON
+          "-DCMAKE_CXX_FLAGS=${{ matrix.flags }}"
 
       - name: Build C++ tests
         run: cmake --build build-core --parallel
 
       - name: Run C++ tests
-        run: ctest --test-dir build-core --output-on-failure --no-tests=error
+        run: ctest --test-dir build-core --output-on-failure --no-tests=error --parallel 4
