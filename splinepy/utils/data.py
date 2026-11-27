@@ -260,6 +260,8 @@ class SplineDataAdaptor(_SplinepyBase):
     function: callable
       Optional. A callable used to evaluate values using data at query points.
       function(data, queries) -> values
+      On a multipatch it is called once per patch, with the queries of
+      that patch.
     parametric_bounds: 2D array-like
       Optional. Parametric bounds of supporting spline. Required for stand-alone
       use. Otherwise, set by helping spline. Used to compute query points for
