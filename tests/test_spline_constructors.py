@@ -177,7 +177,8 @@ def test_subclass_keeps_the_properties_of_its_spline_type():
         pass
 
     mine = Mine([1], [[0, 0, 1, 1]], [[0.0], [1.0]])
-    assert mine.required_properties == splinepy.BSpline().required_properties
+    assert mine.name == "BSpline"
+    assert list(mine.todict()) == ["degrees", "knot_vectors", "control_points"]
     assert type(mine.nurbs) is splinepy.NURBS
     np.testing.assert_allclose(mine.evaluate([[0.25]]), [[0.25]])
 

@@ -52,9 +52,6 @@ def load(fname):
     --------
     spline_list: list
     """
-    # Make Required Properties locally accessible
-    from splinepy.spline import RequiredProperties as _RequiredProperties
-
     # Import data from file into dict format
     with open(fname) as f:
         jsonbz = _json.load(f)
@@ -91,12 +88,10 @@ def load(fname):
             )
             continue
 
-        # Declare Type and get required properties
-        req_props = _RequiredProperties.of(jbz["SplineType"])
-        data_dict = {}
-        for prop in req_props:
-            data_dict[prop] = jbz[prop]
-        spline_list.append(_settings.NAME_TO_TYPE[jbz["SplineType"]](**data_dict))
+        spline_type = _settings.NAME_TO_TYPE[jbz["SplineType"]]
+        spline_list.append(
+            spline_type(**{key: jbz[key] for key in spline_type._required_properties()})
+        )
 
         # Add show options if any
         show_options = jbz.get("show_options", None)

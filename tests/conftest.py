@@ -220,12 +220,12 @@ def are_splines_equal():
         """returns True if Splines are equivalent"""
         if a.name != b.name:
             return False
-        for req_prop in a.required_properties:
-            if req_prop == "knot_vectors":
-                for aa, bb in zip(a.knot_vectors, b.knot_vectors, strict=True):
-                    if not np.allclose(aa.numpy(), bb.numpy()):
+        for key, value in a.todict().items():
+            if key == "knot_vectors":
+                for aa, bb in zip(value, b.knot_vectors, strict=True):
+                    if not np.allclose(aa, bb.numpy()):
                         return False
-            elif not np.allclose(getattr(a, req_prop), getattr(b, req_prop)):
+            elif not np.allclose(value, getattr(b, key)):
                 return False
         return True
 

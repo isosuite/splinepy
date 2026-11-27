@@ -444,13 +444,13 @@ def _spline_to_ET(
                     for j in support
                 ]
             )
-            if "weights" in spline.required_properties:
+            if spline.is_rational:
                 weights = _np.hstack(
                     [multipatch.fields[j].patches[id].weights for j in support]
                 )
         else:
             coefs = spline.control_points
-            if "weights" in spline.required_properties:
+            if spline.is_rational:
                 weights = spline.weights
 
         if not issubclass(type(spline), _Spline):
@@ -480,7 +480,7 @@ def _spline_to_ET(
         )
 
         # Define Basis functions
-        if "weights" in spline.required_properties:
+        if spline.is_rational:
             spline_basis_base = _ET.SubElement(
                 spline_element,
                 "Basis",
@@ -518,7 +518,7 @@ def _spline_to_ET(
                 spline.knot_vectors[i_para], False, as_base64
             )
 
-        if "weights" in spline.required_properties:
+        if spline.is_rational:
             # Add weights
             weights_element = _ET.SubElement(
                 spline_basis_base,

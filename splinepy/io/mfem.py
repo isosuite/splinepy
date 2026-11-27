@@ -585,7 +585,7 @@ def export_cartesian(
             for i_para_dim in range(para_dim):
                 f.write(f"{spline.degrees[i_para_dim]} ")
                 f.write(f"{cmr[i_para_dim]} ")
-                if "knot_vectors" not in spline.required_properties:
+                if not spline.has_knot_vectors:
                     f.write("0.0 " * int(spline.degrees[i_para_dim] + 1))
                     f.write(
                         "1.0 " * int(spline.degrees[i_para_dim] + 1) + "\n"
@@ -597,7 +597,7 @@ def export_cartesian(
                     )
             f.write(f"dimension\n{dim}\n")
             f.write("controlpoints_cartesian\n")
-            if "weights" not in spline.required_properties:
+            if not spline.is_rational:
                 f.write(
                     "\n".join(
                         (" ".join(str(x_i) for x_i in row) + " 1.0")

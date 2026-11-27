@@ -23,151 +23,6 @@ from splinepy.utils.data import SplineData as _SplineData
 from splinepy.utils.data import cartesian_product as _cartesian_product
 
 
-class RequiredProperties(_SplinepyBase):
-    """
-    Helper class to hold required properties of each spline.
-    """
-
-    # name mangling to make direct access very annoying
-    __required_spline_properties = {
-        "Bezier": ("degrees", "control_points"),
-        "RationalBezier": ("degrees", "control_points", "weights"),
-        "BSpline": ("degrees", "knot_vectors", "control_points"),
-        "NURBS": ("degrees", "knot_vectors", "control_points", "weights"),
-    }
-
-    # union of all req props. nice for check support
-    __union_all = {rp for rps in __required_spline_properties.values() for rp in rps}
-
-    # intersection of all req props. nice for checking minimal support
-    __intersection_all = __union_all.intersection(
-        *[set(rps) for rps in __required_spline_properties.values()]
-    )
-
-    @classmethod
-    def __call__(cls, spline):
-        """
-        Given splinepy.Spline, returns required properties.
-        Wraps `__getitem__`.
-
-        Parameters
-        -----------
-        spline: Spline or type
-
-        Returns
-        --------
-        required_spline_properties: list
-        """
-        if isinstance(spline, str):
-            return cls.__getitem__(spline)
-
-        # extract pure `type`
-        s_type = spline if isinstance(spline, type) else type(spline)
-
-        # a subclass requires what its spline type does
-        for base in s_type.__mro__:
-            if base.__qualname__ in cls.__required_spline_properties:
-                return cls.__getitem__(base.__qualname__)
-
-        # __getitem__ raises, as it is not supported
-        return cls.__getitem__(s_type.__qualname__)
-
-    @classmethod
-    def __getitem__(cls, spline_type):
-        """
-        Given a name of spline type in str, returns required properties.
-        Checks if given spline type is supported.
-
-        Parameters
-        -----------
-        spline_type: str
-
-        Returns
-        --------
-        required_spline_properties: list
-        """
-        # do we support this spline type?
-        if spline_type not in cls.__required_spline_properties:
-            raise ValueError(
-                f"Sorry, we don't have support for ({spline_type})-types."
-                "Supported spline types are:"
-                f"{list(cls.__required_spline_properties.keys())}"
-            )
-
-        return cls.__required_spline_properties[spline_type]
-
-    @classmethod
-    def of(cls, spline):
-        """
-        Wrapper of __call__ and __getitem__ as classmethod.
-
-        Parameters
-        -----------
-        spline: Spline or str
-
-        Returns
-        --------
-        required_spline_properties: list
-
-        Examples
-        ---------
-        >>> myspline = NURBS(...)
-        >>> requirements = RequiredSplineProperties.of(myspline)
-        >>> requirements
-        ['degrees', 'knot_vectors', 'control_points', 'weights']
-        """
-        if isinstance(spline, str):
-            return cls.__getitem__(spline)
-        else:
-            return cls.__call__(spline)
-
-    @classmethod
-    def union(cls, *splines):
-        """
-        Checks union of required properties of given splines.
-        If nothing is given, returns union of all supported splines.
-
-        Parameters
-        ----------
-        *splines: Spline or str
-
-        Returns
-        -------
-        rp_union: list
-        """
-        if len(splines) == 0:
-            return cls.__union_all
-
-        rp_union = set()
-        for s in splines:
-            rp_union.update(cls.of(s))
-
-        return rp_union
-
-    @classmethod
-    def intersection(cls, *splines):
-        """
-        Checks intersection of required properties of given splines.
-        If nothing is given, returns intersection of all supported splines.
-
-        Parameters
-        ----------
-        *splines: Spline or str
-
-        Returns
-        -------
-        rp_intersection: list
-        """
-        if len(splines) == 0:
-            return cls.__intersection_all
-
-        rp_intersection = set(cls.of(splines[-1]))
-        for s in splines[:-1]:
-            rp_intersection.intersection_update(cls.of(s))
-
-        return rp_intersection
-
-
 def _default_if_none(arg, default):
     """
     Returns default if arg is None
@@ -212,6 +67,12 @@ def _get_helper(spl, attr_name, helper_class):
 
 
 _PROPERTY_KEYS = ("degrees", "knot_vectors", "control_points", "weights")
+_REQUIRED_PROPERTIES = {
+    "Bezier": ("degrees", "control_points"),
+    "RationalBezier": ("degrees", "control_points", "weights"),
+    "BSpline": ("degrees", "knot_vectors", "control_points"),
+    "NURBS": _PROPERTY_KEYS,
+}
 
 
 def _knot_vector_arrays(knot_vectors):
@@ -446,7 +307,7 @@ class Spline(_core.SplineCore, _SplinepyBase):
                     f"len({first}) ({len(properties[first])}) should "
                     f"match len({second_name}) ({len(properties[second])})."
                 )
-        return all(key in properties for key in self.required_properties)
+        return all(key in properties for key in self._required_properties())
 
     def _commit(self, properties):
         """Validate (once complete) and store properties in the native slots."""
@@ -489,28 +350,18 @@ class Spline(_core.SplineCore, _SplinepyBase):
         properties[key] = self._normalize_property(key, value)
         self._commit(properties)
 
-    @property
-    def required_properties(self):
-        """
-        Returns required property of current spline.
+    @classmethod
+    def _type_name(cls):
+        """Name of the spline type this class is or derives from, if any."""
+        for base in cls.__mro__:
+            if base.__name__ in _REQUIRED_PROPERTIES:
+                return base.__name__
+        return None
 
-        Parameters
-        -----------
-        None
-
-        Returns
-        --------
-        requied_properties: dict
-        """
-        try:
-            return RequiredProperties.of(self)
-        except ValueError:
-            # Spline
-            self._logd(
-                f"`required_properties` of {type(self)} is undefined."
-                "Returning maximal set of properties."
-            )
-            return RequiredProperties.union()
+    @classmethod
+    def _required_properties(cls):
+        """Properties the type needs; a plain `Spline` may hold all of them."""
+        return _REQUIRED_PROPERTIES[cls._type_name() or "NURBS"]
 
     @property
     def name(self):
@@ -526,9 +377,9 @@ class Spline(_core.SplineCore, _SplinepyBase):
         -------
         name: str
         """
-        for base in type(self).__mro__:
-            if base.__name__ in ("Bezier", "RationalBezier", "BSpline", "NURBS"):
-                return base.__name__
+        name = self._type_name()
+        if name is not None:
+            return name
         if self.has_knot_vectors:
             return "NURBS" if self.is_rational else "BSpline"
         return "RationalBezier" if self.is_rational else "Bezier"
@@ -1435,7 +1286,7 @@ class Spline(_core.SplineCore, _SplinepyBase):
         """
         dict_spline = {}
         properties = self._properties()
-        for p in self.required_properties:
+        for p in self._required_properties():
             value = properties.get(p, None)
             if value is not None:
                 if p == "knot_vectors":

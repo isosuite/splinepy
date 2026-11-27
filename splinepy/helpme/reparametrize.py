@@ -39,7 +39,7 @@ def permute_parametric_axes(spline, permutation_list, inplace=True):
     _utils.log.debug("Permuting parametric axes...")
 
     # Update knot_vectors where applicable
-    if "knot_vectors" in spline.required_properties:
+    if spline.has_knot_vectors:
         dict_spline["knot_vectors"] = [
             spline.knot_vectors[permutation_list[i]]
             for i in range(spline.para_dim)
@@ -74,7 +74,7 @@ def permute_parametric_axes(spline, permutation_list, inplace=True):
     )
     # Get inverse mapping
     global_indices = _np.argsort(global_indices)
-    if "weights" in spline.required_properties:
+    if spline.is_rational:
         dict_spline["weights"] = spline.weights[global_indices]
     dict_spline["control_points"] = spline.control_points[global_indices, :]
 
