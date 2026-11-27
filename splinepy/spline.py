@@ -209,9 +209,8 @@ class Spline(_SplinepyBase):
     that is different combinations of dimensionalities :math:`N_{param}` and
     :math:`N_{phys}`, with up to 8 parametric dimensions.
     Tensor product splines derive from :class:`.TensorSpline`, hierarchical
-    splines from :class:`.HierarchySpline`. Both answer the same queries:
-    ``evaluate``, ``derivative``, ``jacobian``, ``basis``, ``support``,
-    ``proximities`` and ``sample`` on ``parametric_bounds``.
+    splines from :class:`.HierarchySpline`. Both answer the queries declared
+    here with the same arguments.
     """
 
     __slots__ = ()
@@ -341,6 +340,224 @@ class Spline(_SplinepyBase):
             self.show_options.copy_valid_options(new.show_options)
         if getattr(self, "_spline_data", None) is not None:
             new.spline_data._saved = self.spline_data._saved.copy()
+
+    @property
+    def parametric_bounds(self):
+        """
+        Returns bounds of parametric space.
+
+        Parameters
+        -----------
+        None
+
+        Returns
+        --------
+        parametric_bounds: (2, para_dim) np.ndarray
+          Lower and upper bounds.
+        """
+        raise NotImplementedError
+
+    def evaluate(self, queries, nthreads=None, out=None):
+        """
+        Evaluates spline.
+
+        Parameters
+        -----------
+        queries: (n, para_dim) array-like
+        nthreads: int
+        out: optional
+          Preallocated, C-contiguous result array (a float64 array of the shape of
+          the result), filled in place and returned, like numpy's ``out``.
+          A fresh array is created if it is not given.
+
+        Returns
+        --------
+        results: (n, dim) np.ndarray
+        """
+        raise NotImplementedError
+
+    def derivative(self, queries, orders, nthreads=None, out=None):
+        """
+        Evaluates derivatives of spline.
+
+        Parameters
+        -----------
+        queries: (n, para_dim) array-like
+        orders: (para_dim,) or (m, para_dim) array-like
+        nthreads: int
+        out: optional
+          Preallocated result array, see :meth:`evaluate`.
+
+        Returns
+        --------
+        results: (n, m, dim) np.ndarray
+          Iff m == 1, it will have (n, dim) shape.
+        """
+        raise NotImplementedError
+
+    def jacobian(self, queries, nthreads=None, out=None):
+        """
+        Evaluates jacobians on spline.
+
+        Parameters
+        -----------
+        queries: (n, para_dim) array-like
+        nthreads: int
+        out: optional
+          Preallocated result array, see :meth:`evaluate`.
+
+        Returns
+        --------
+        results: (n, dim, para_dim) np.ndarray
+        """
+        raise NotImplementedError
+
+    def basis(self, queries, nthreads=None, out=None):
+        """
+        Returns basis function values on the supports of given queries.
+
+        A tensor product spline has ``prod(degrees + 1)`` supports at every
+        query. On a hierarchy the count varies, so rows are padded to the
+        largest support of the batch, with value zero and support id -1.
+
+        Parameters
+        -----------
+        queries: (n, para_dim) array-like
+        nthreads: int
+        out: optional
+          Preallocated result array, see :meth:`evaluate`.
+
+        Returns
+        --------
+        basis: (n, n_support) np.ndarray
+        """
+        raise NotImplementedError
+
+    def support(self, queries, nthreads=None, out=None):
+        """
+        Returns basis support ids of given queries. See :meth:`basis` for
+        the number of supports.
+
+        Parameters
+        -----------
+        queries: (n, para_dim) array-like
+        nthreads: int
+        out: optional
+          Preallocated int32 result array, see :meth:`evaluate`.
+
+        Returns
+        --------
+        support: (n, n_support) np.ndarray
+        """
+        raise NotImplementedError
+
+    def basis_and_support(self, queries, nthreads=None, out=None):
+        """
+        Returns basis function values and their support ids of given queries.
+        Same as calling `basis` and `support` at the same time.
+
+        Parameters
+        -----------
+        queries: (n, para_dim) array-like
+        nthreads: int
+        out: optional
+          Preallocated, C-contiguous tuple of two result arrays (float64 basis
+          and int32 support), filled in place and returned like numpy's ``out``.
+
+        Returns
+        --------
+        basis: (n, n_support) np.ndarray
+        support: (n, n_support) np.ndarray
+        """
+        raise NotImplementedError
+
+    def basis_derivative(self, queries, orders, nthreads=None, out=None):
+        """
+        Returns derivative of basis functions evaluated on the supports
+        of given queries. See :meth:`basis` for the number of supports.
+
+        Parameters
+        ----------
+        queries: (n, para_dim) array-like
+        orders: (para_dim,) or (m, para_dim) array-like
+        nthreads: int
+        out: optional
+          Preallocated result array, see :meth:`evaluate`.
+
+        Returns
+        --------
+        basis_derivatives: (n, m, n_support) np.ndarray
+          Iff m == 1, it will have (n, n_support) shape.
+        """
+        raise NotImplementedError
+
+    def basis_derivative_and_support(self, queries, orders, nthreads=None, out=None):
+        """
+        Returns derivative of basis functions and their support ids of given
+        queries. Same as calling `basis_derivative` and `support` at the same
+        time.
+
+        Parameters
+        ----------
+        queries: (n, para_dim) array-like
+        orders: (para_dim,) or (m, para_dim) array-like
+        nthreads: int
+        out: optional
+          Tuple of two preallocated result arrays, see
+          :meth:`basis_and_support`.
+
+        Returns
+        --------
+        basis_derivatives: (n, m, n_support) np.ndarray
+          Iff m == 1, it will have (n, n_support) shape.
+        supports: (n, n_support) np.ndarray
+        """
+        raise NotImplementedError
+
+    def proximities(
+        self,
+        queries,
+        initial_guess_sample_resolutions=None,
+        tolerance=None,
+        max_iterations=-1,
+        nthreads=None,
+        return_verbose=False,
+    ):
+        """
+        Given physical coordinate, finds a parametric coordinate that maps to
+        the nearest physical coordinate. Also known as "point inversion".
+
+        Parameters
+        -----------
+        queries: (n, dim) array-like
+        initial_guess_sample_resolutions: (para_dim) array-like
+          Samples per parametric axis the initial guesses are taken from.
+        tolerance: float
+          Convergence tolerance.
+        max_iterations: int
+          -1 takes the default of the search.
+        nthreads: int
+        return_verbose : bool
+          If False, returns only parametric coords.
+
+        Returns
+        --------
+        para_coord: (n, para_dim) np.ndarray
+          Parametric coordinates
+        phys_coord: (n, dim) np.ndarray
+          (only if return_verbose) respective physical coordinates
+        phys_diff: (n, dim) np.ndarray
+          (only if return_verbose) respective cartesian difference to query
+        distance: (n, 1) np.ndarray
+          (only if return_verbose) respective 2-norm of difference
+        convergence_norm: (n, 1) np.ndarrray
+          (only if return_verbose) Newton residual
+        first_derivatives: (n, para_dim, dim) np.ndarray
+          (only if return_verbose) Convergence information
+        second_derivatives: (n, para_dim, para_dim, dim) np.ndarray
+          (only if return_verbose) Convergence information
+        """
+        raise NotImplementedError
 
     def sample(self, resolutions, nthreads=None, out=None):
         """
@@ -744,17 +961,6 @@ class TensorSpline(_core.SplineCore, Spline):
 
     @property
     def parametric_bounds(self):
-        """
-        Returns bounds of parametric_space.
-
-        Parameters
-        -----------
-        None
-
-        Returns
-        --------
-        parametric_bounds: (2, para_dim) np.ndarray
-        """
         return _core.parametric_bounds(self)
 
     @property
@@ -893,22 +1099,6 @@ class TensorSpline(_core.SplineCore, Spline):
         return _core.validate(self)
 
     def evaluate(self, queries, nthreads=None, out=None):
-        """
-        Evaluates spline.
-
-        Parameters
-        -----------
-        queries: (n, para_dim) array-like
-        n_threads: int
-        out: optional
-          Preallocated, C-contiguous result array (a float64 array of the shape of
-          the result), filled in place and returned, like numpy's ``out``.
-          A fresh array is created if it is not given.
-
-        Returns
-        --------
-        results: (n, dim) np.ndarray
-        """
         return _core.evaluate(
             self,
             queries,
@@ -944,24 +1134,6 @@ class TensorSpline(_core.SplineCore, Spline):
         )
 
     def derivative(self, queries, orders, nthreads=None, out=None):
-        """
-        Evaluates derivatives of spline.
-
-        Parameters
-        -----------
-        queries: (n, para_dim) array-like
-        orders: (para_dim,) or (m, para_dim) array-like
-        nthreads: int
-        out: optional
-          Preallocated, C-contiguous result array (a float64 array of the shape of
-          the result), filled in place and returned, like numpy's ``out``.
-          A fresh array is created if it is not given.
-
-        Returns
-        --------
-        results: (n, m, dim) np.ndarray
-          Iff m == 1, it will have (n, dim) shape.
-        """
         return _core.derivative(
             self,
             queries=queries,
@@ -972,22 +1144,6 @@ class TensorSpline(_core.SplineCore, Spline):
         )
 
     def jacobian(self, queries, nthreads=None, out=None):
-        """
-        Evaluates jacobians on spline.
-
-        Parameters
-        -----------
-        queries: (n, para_dim) array-like
-        n_threads: int
-        out: optional
-          Preallocated, C-contiguous result array (a float64 array of the shape of
-          the result), filled in place and returned, like numpy's ``out``.
-          A fresh array is created if it is not given.
-
-        Returns
-        --------
-        results: (n, dim, para_dim) np.ndarray
-        """
         return _core.jacobian(
             self,
             queries,
@@ -997,22 +1153,6 @@ class TensorSpline(_core.SplineCore, Spline):
         )
 
     def support(self, queries, nthreads=None, out=None):
-        """
-        Returns basis support ids of given queries.
-
-        Parameters
-        -----------
-        queries: (n, para_dim) array-like
-        n_threads: int
-        out: optional
-          Preallocated, C-contiguous result array (a int32 array of the shape of
-          the result), filled in place and returned, like numpy's ``out``.
-          A fresh array is created if it is not given.
-
-        Returns
-        --------
-        support: (n, prod(degrees + 1)) np.ndarray
-        """
         return _core.support(
             self,
             queries=queries,
@@ -1022,22 +1162,6 @@ class TensorSpline(_core.SplineCore, Spline):
         )
 
     def basis(self, queries, nthreads=None, out=None):
-        """
-        Returns basis function values on the supports of given queries.
-
-        Parameters
-        -----------
-        queries: (n, para_dim) array-like
-        n_threads: int
-        out: optional
-          Preallocated, C-contiguous result array (a float64 array of the shape of
-          the result), filled in place and returned, like numpy's ``out``.
-          A fresh array is created if it is not given.
-
-        Returns
-        --------
-        basis: (n, prod(degrees + 1)) np.ndarray
-        """
         return _core.basis(
             self,
             queries=queries,
@@ -1047,24 +1171,6 @@ class TensorSpline(_core.SplineCore, Spline):
         )
 
     def basis_and_support(self, queries, nthreads=None, out=None):
-        """
-        Returns basis function values and their support ids of given queries.
-        Same as calling `basis` and `support` at the same time.
-
-        Parameters
-        -----------
-        queries: (n, para_dim) array-like
-        n_threads: int
-        out: optional
-          Preallocated, C-contiguous tuple of two result arrays (float64 basis
-          and int32 support), filled in place and returned like numpy's ``out``.
-          A fresh array is created if it is not given.
-
-        Returns
-        --------
-        basis: (n, prod(degrees + 1)) np.ndarray
-        support: (n, prod(degrees + 1)) np.ndarray
-        """
         return _core.basis_and_support(
             self,
             queries=queries,
@@ -1074,25 +1180,6 @@ class TensorSpline(_core.SplineCore, Spline):
         )
 
     def basis_derivative(self, queries, orders, nthreads=None, out=None):
-        """
-        Returns derivative of basis functions evaluated on the supports
-        of given queries.
-
-        Parameters
-        ----------
-        queries: (n, para_dim) array-like
-        orders: (para_dim,) or (m, para_dim) array-like
-        nthreads: int
-        out: optional
-          Preallocated, C-contiguous result array (a float64 array of the shape of
-          the result), filled in place and returned, like numpy's ``out``.
-          A fresh array is created if it is not given.
-
-        Returns
-        --------
-        basis_derivatives: (n, m, prod(degrees + 1)) np.ndarray
-          Iff m == 1, it will have (n, prod(degrees + 1)) shape.
-        """
         return _core.basis_derivative(
             self,
             queries=queries,
@@ -1103,27 +1190,6 @@ class TensorSpline(_core.SplineCore, Spline):
         )
 
     def basis_derivative_and_support(self, queries, orders, nthreads=None, out=None):
-        """
-        Returns derivative of basis functions and their support ids of given
-        queries. Same as calling `basis_derivative` and `support` at the same
-        time.
-
-        Parameters
-        ----------
-        queries: (n, para_dim) array-like
-        orders: (para_dim,) or (m, para_dim) array-like
-        nthreads: int
-        out: optional
-          Preallocated, C-contiguous tuple of two result arrays (float64 basis
-          and int32 support), filled in place and returned like numpy's ``out``.
-          A fresh array is created if it is not given.
-
-        Returns
-        --------
-        basis_derivatives: (n, m, prod(degrees + 1)) np.ndarray
-          Iff m == 1, it will have (n, prod(degrees + 1)) shape.
-        supports: (n, prod(degrees + 1)) np.ndarray
-        """
         return _core.basis_derivative_and_support(
             self,
             queries=queries,

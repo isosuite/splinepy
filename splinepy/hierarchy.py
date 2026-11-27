@@ -199,16 +199,6 @@ class HierarchySpline(_core.HierarchyCore, _Spline):
 
     @property
     def parametric_bounds(self):
-        """Return the lower and upper parameter bounds.
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        bounds : (2, para_dim) numpy.ndarray
-        """
         return _np.array(
             [
                 [
@@ -496,21 +486,6 @@ class HierarchySpline(_core.HierarchyCore, _Spline):
         )
 
     def evaluate(self, queries, nthreads=None, out=None):
-        """Evaluate the geometry at queries of shape (n, para_dim).
-
-        Parameters
-        ----------
-        queries : (n, para_dim) array-like
-            Parametric evaluation points.
-        nthreads : int, optional
-            Number of worker threads.
-        out : numpy.ndarray, optional
-            Buffer for the result.
-
-        Returns
-        -------
-        points : (n, dim) numpy.ndarray
-        """
         return self.derivative(queries, None, nthreads, out)
 
     def _derivative_orders(self, orders):
@@ -524,24 +499,6 @@ class HierarchySpline(_core.HierarchyCore, _Spline):
         return orders
 
     def derivative(self, queries, orders, nthreads=None, out=None):
-        """Evaluate one or several derivative multi-indices.
-
-        Parameters
-        ----------
-        queries : (n, para_dim) array-like
-            Parametric evaluation points.
-        orders : array-like
-            One derivative multi-index or a row of orders per multi-index.
-        nthreads : int, optional
-            Number of worker threads.
-        out : numpy.ndarray, optional
-            Buffer for the result.
-
-        Returns
-        -------
-        derivatives : numpy.ndarray
-            Physical derivatives for each query and requested order.
-        """
         return self._evaluate(
             _np.asarray(queries, dtype=_np.float64, order="C"),
             self._derivative_orders(orders),
@@ -550,21 +507,6 @@ class HierarchySpline(_core.HierarchyCore, _Spline):
         )
 
     def jacobian(self, queries, nthreads=None, out=None):
-        """Return the Jacobian with shape (n, dim, para_dim).
-
-        Parameters
-        ----------
-        queries : (n, para_dim) array-like
-            Parametric evaluation points.
-        nthreads : int, optional
-            Number of worker threads.
-        out : numpy.ndarray, optional
-            Buffer for the result.
-
-        Returns
-        -------
-        jacobians : (n, dim, para_dim) numpy.ndarray
-        """
         queries = _np.asarray(queries, dtype=_np.float64, order="C")
         return self._jacobian(queries, _thread_count(nthreads), out)
 
@@ -591,27 +533,6 @@ class HierarchySpline(_core.HierarchyCore, _Spline):
         )
 
     def basis_derivative_and_support(self, queries, orders, nthreads=None, out=None):
-        """Return basis derivatives and global support indices.
-
-        Rows are padded to the largest support in the query batch. Unused
-        entries have value zero and support index -1.
-
-        Parameters
-        ----------
-        queries : (n, para_dim) array-like
-            Parametric evaluation points.
-        orders : array-like
-            One derivative multi-index or a row of orders per multi-index.
-        nthreads : int, optional
-            Number of worker threads.
-        out : tuple of numpy.ndarray, optional
-            Buffers for basis values and support indices.
-
-        Returns
-        -------
-        derivatives, indices : tuple of numpy.ndarray
-            Basis derivatives and corresponding global indices.
-        """
         if out is None:
             out = (None, None)
         if len(out) != 2:
@@ -625,83 +546,17 @@ class HierarchySpline(_core.HierarchyCore, _Spline):
         )
 
     def basis_and_support(self, queries, nthreads=None, out=None):
-        """Return basis values and global support indices.
-
-        Parameters
-        ----------
-        queries : (n, para_dim) array-like
-            Parametric evaluation points.
-        nthreads : int, optional
-            Number of worker threads.
-        out : tuple of numpy.ndarray, optional
-            Buffers for basis values and support indices.
-
-        Returns
-        -------
-        values, indices : tuple of numpy.ndarray
-            Basis values and corresponding global indices.
-        """
         return self.basis_derivative_and_support(queries, None, nthreads, out)
 
     def basis(self, queries, nthreads=None, out=None):
-        """Return basis values with zero padding.
-
-        Parameters
-        ----------
-        queries : (n, para_dim) array-like
-            Parametric evaluation points.
-        nthreads : int, optional
-            Number of worker threads.
-        out : numpy.ndarray, optional
-            Buffer for the result.
-
-        Returns
-        -------
-        values : numpy.ndarray
-            Basis values padded with zero.
-        """
         return self.basis_derivative(queries, None, nthreads, out)
 
     def support(self, queries, nthreads=None, out=None):
-        """Return global basis indices with -1 padding.
-
-        Parameters
-        ----------
-        queries : (n, para_dim) array-like
-            Parametric evaluation points.
-        nthreads : int, optional
-            Number of worker threads.
-        out : numpy.ndarray, optional
-            Buffer for the result.
-
-        Returns
-        -------
-        indices : numpy.ndarray
-            Global basis indices padded with -1.
-        """
         return self._basis_query(
             queries, None, nthreads, None, out, return_support=True
         )[1]
 
     def basis_derivative(self, queries, orders, nthreads=None, out=None):
-        """Return basis derivatives with zero padding.
-
-        Parameters
-        ----------
-        queries : (n, para_dim) array-like
-            Parametric evaluation points.
-        orders : array-like
-            One derivative multi-index or a row of orders per multi-index.
-        nthreads : int, optional
-            Number of worker threads.
-        out : numpy.ndarray, optional
-            Buffer for the result.
-
-        Returns
-        -------
-        derivatives : numpy.ndarray
-            Basis derivatives padded with zero.
-        """
         return self._basis_query(
             queries,
             self._derivative_orders(orders),

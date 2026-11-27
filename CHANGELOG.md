@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - `Spline` is now the interface shared by tensor and hierarchical splines. The tensor product class is `TensorSpline`; construct a spline of undetermined type with `TensorSpline(**properties)`.
+- `Spline` declares the queries both families answer (`evaluate`, `derivative`, `jacobian`, the basis queries, `proximities`, `parametric_bounds`) with one signature and docstring.
+- `spline.check` of a hierarchy offers `valid_queries` only; `clamped_knot_vectors` belongs to tensor splines.
 - `THBSpline` no longer derives from `HBSpline`; both derive from `HierarchySpline`.
 - Degree inputs own immutable storage; coordinates and weights still share compatible writable inputs.
 - Knot uniqueness and multiplicities preserve every distinct knot, including narrow spans.

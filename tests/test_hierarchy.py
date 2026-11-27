@@ -934,6 +934,27 @@ def test_hierarchies_share_the_spline_interface(to_hierarchy, np_rng):
     assert "scalars" in surface
 
 
+def test_spline_declares_the_queries_both_families_answer():
+    from inspect import getdoc, signature
+
+    queries = [
+        name
+        for name, member in vars(splinepy.Spline).items()
+        if getattr(member, "__code__", None) is not None
+        and "NotImplementedError" in member.__code__.co_names
+    ]
+    assert {"evaluate", "derivative", "basis", "support", "proximities"} <= set(
+        queries
+    )
+    for family in (splinepy.TensorSpline, splinepy.HierarchySpline):
+        assert "parametric_bounds" in vars(family)
+        for name in queries:
+            declared = list(signature(getattr(splinepy.Spline, name)).parameters)
+            answered = list(signature(vars(family)[name]).parameters)
+            assert answered[: len(declared)] == declared, (family, name)
+            assert getdoc(getattr(family, name))
+
+
 def test_hierarchy_check_offers_only_what_it_answers():
     thb = splinepy.THBSpline([1], [[0, 0, 1, 1]], [[0], [1]])
     assert thb.check.valid_queries([[0.5]])
