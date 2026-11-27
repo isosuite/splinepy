@@ -6,248 +6,68 @@ import pytest
 import splinepy
 
 
-def test_BSplines(np_rng):
-    """
-    Perform checks on BSpline class
-    """
-    # No assertion query
-    splinepy.BSpline(
-        degrees=[1, 1],
-        knot_vectors=[[0, 0, 1, 1], [0, 0, 0.4, 0.5, 0.7, 1, 1]],
-        control_points=np_rng.random((10, 2)),
-    )
-    # No assertion query; unclamped, uniform knot-vector
-    splinepy.BSpline(
-        degrees=[2, 2],
-        knot_vectors=[
-            [-4, -3, -2, -1, 0, 1, 2, 3, 4],
-            [-15, -10, -5, 0, 5, 10, 15],
-        ],
-        control_points=np_rng.random((6 * 4, 2)),
-    )
-    # Check control points
-    with pytest.raises(
-        RuntimeError,
-        match=r"SPLINEPY ERROR - Invalid number of control points. "
-        r"2 expected, but 9 were given.",
-    ):
-        splinepy.BSpline(
-            degrees=[1],
-            knot_vectors=[[0, 0, 1, 1]],
-            control_points=np.ones((9, 3)),
-        )
-
-    with pytest.raises(
-        RuntimeError,
-        match=r"SPLINEPY ERROR - Zero dimensional data points "
-        r"can not constitute a spline.",
-    ):
-        splinepy.BSpline(
-            degrees=[1],
-            knot_vectors=[[0, 0, 1, 1]],
-            control_points=np.ones((2, 0)),
-        )
-
-    with pytest.raises(
-        ValueError,
-        match=r"len\(knot_vectors\) \(2\) should match len\(self.degrees\) \(1\).",
-    ):
-        splinepy.BSpline(
-            degrees=[1],
-            knot_vectors=[[0, 0, 0.6, 0.3, 1, 1], [0, 0, 1, 1]],
-            control_points=np.ones((8, 2)),
-        )
-
-    # Check degrees
-    with pytest.raises(
-        RuntimeError,
-        match=r"SPLINEPY ERROR - Invalid degree, degrees need to be positive. "
-        r"Detected degree -4 along parametric dimension: 0",
-    ):
-        splinepy.BSpline(
-            degrees=[-4],
-            knot_vectors=[[0, 0, 1, 1]],
-            control_points=np.ones((1, 1)),
-        )
+KINDS = ["Bezier", "RationalBezier", "BSpline", "NURBS"]
 
 
-def test_NURBS(np_rng):
-    """
-    Perform checks on Nurbs class
-    """
-    # No assertion querz
-    splinepy.NURBS(
-        degrees=[1, 1],
-        knot_vectors=[[0, 0, 1, 1], [0, 0, 0.4, 0.5, 0.7, 1, 1]],
-        control_points=np_rng.random((10, 2)),
-        weights=np.ones(10),
-    )
-    # Check control points
-    with pytest.raises(
-        ValueError,
-        match=r"len\(weights\) \(2\) should match len\(control_points\) \(9\).",
-    ):
-        splinepy.NURBS(
-            degrees=[1],
-            knot_vectors=[[0, 0, 1, 1]],
-            control_points=np.ones((9, 3)),
-            weights=np.ones(2),
-        )
-
-    with pytest.raises(
-        RuntimeError,
-        match=r"SPLINEPY ERROR - Zero dimensional data points "
-        r"can not constitute a spline.",
-    ):
-        splinepy.NURBS(
-            degrees=[1],
-            knot_vectors=[[0, 0, 1, 1]],
-            control_points=np.ones((2, 0)),
-            weights=np.ones(2),
-        )
-
-    with pytest.raises(
-        RuntimeError,
-        match=r"SPLINEPY ERROR - 0.6 0.3 Knots of parametric dimension \( 0 \) "
-        r"are not in increasing order.",
-    ):
-        splinepy.NURBS(
-            degrees=[1, 1],
-            knot_vectors=[[0, 0, 0.6, 0.3, 1, 1], [0, 0, 1, 1]],
-            control_points=np.ones((8, 2)),
-            weights=np.ones(8),
-        )
-
-    # Check degrees
-    with pytest.raises(
-        RuntimeError,
-        match=r"SPLINEPY ERROR - Invalid degree, degrees need to be positive. "
-        r"Detected degree -4 along parametric dimension: 0",
-    ):
-        splinepy.NURBS(
-            degrees=[-4],
-            knot_vectors=[[0, 0, 1, 1]],
-            control_points=np.ones((1, 1)),
-            weights=np.ones(1),
-        )
-
-    # Check weights
-    with pytest.raises(
-        ValueError,
-        match=r"len\(weights\) \(19\) should match "
-        r"len\(control_points\) \(2\).",
-    ):
-        splinepy.NURBS(
-            degrees=[1],
-            knot_vectors=[[0, 0, 1, 1]],
-            control_points=np.ones((2, 1)),
-            weights=np.ones(19),
-        )
+def _make(kind, degrees, n_points, dim=2, knot_vectors=None, n_weights=None):
+    """a spline of the kind from control points of ones"""
+    kwargs = {"degrees": degrees, "control_points": np.ones((n_points, dim))}
+    if kind in ("BSpline", "NURBS"):
+        kwargs["knot_vectors"] = knot_vectors or [
+            [0] * (max(d, 0) + 1) + [1] * (max(d, 0) + 1) for d in degrees
+        ]
+    if kind in ("RationalBezier", "NURBS"):
+        kwargs["weights"] = np.ones(n_points if n_weights is None else n_weights)
+    return getattr(splinepy, kind)(**kwargs)
 
 
-def test_Bezier():
-    """Feed Bezier constructor with random data and see if the errors are
-    meaningful"""
-    # First create a reasonable spline
-    splinepy.Bezier(degrees=[1, 1], control_points=np.ones((4, 1)))
-
-    # Check assertions
-    with pytest.raises(
-        RuntimeError,
-        match=r"SPLINEPY ERROR - Invalid degree, degrees need to be positive. "
-        r"Detected degree -4 along parametric dimension: 0",
-    ):
-        splinepy.Bezier(
-            degrees=[-4],
-            control_points=np.ones((1, 1)),
-        )
-
-    with pytest.raises(
-        RuntimeError,
-        match=r"SPLINEPY ERROR - Invalid number of control points. "
-        r"9 expected, but 4 were given.",
-    ):
-        splinepy.Bezier(
-            degrees=[2, 2],
-            control_points=np.ones((4, 2)),
-        )
-
-    with pytest.raises(
-        RuntimeError,
-        match=r"SPLINEPY ERROR - Invalid number of control points. "
-        r"24 expected, but 9 were given.",
-    ):
-        splinepy.Bezier(
-            degrees=[2, 3, 1],
-            control_points=np.ones((9, 3)),
-        )
+@pytest.mark.parametrize("kind", KINDS)
+def test_constructors_accept_valid_data(kind):
+    spline = _make(kind, [1, 2], 6)
+    assert type(spline).__name__ == kind
+    assert (spline.para_dim, spline.dim) == (2, 2)
+    np.testing.assert_array_equal(spline.evaluate([[0.3, 0.6]]), [[1, 1]])
 
 
-def test_RationalBezier(np_rng):
-    """Feed Bezier constructor with random data and see if the errors are
-    meaningful"""
-    # First create a reasonable spline
-    splinepy.RationalBezier(
-        degrees=[1, 1],
-        control_points=np.ones((4, 1)),
-        weights=np_rng.random(4),
-    )
+def test_bspline_accepts_inner_and_unclamped_knots(np_rng):
+    inner = [[0, 0, 1, 1], [0, 0, 0.4, 0.5, 0.7, 1, 1]]
+    assert len(_make("BSpline", [1, 1], 10, knot_vectors=inner).cps) == 10
+    uniform = [[-4, -3, -2, -1, 0, 1, 2, 3, 4], [-15, -10, -5, 0, 5, 10, 15]]
+    spline = splinepy.BSpline([2, 2], uniform, np_rng.random((6 * 4, 2)))
+    np.testing.assert_array_equal(spline.parametric_bounds, [[-2, -5], [2, 5]])
 
-    # Check assertions
-    with pytest.raises(
-        RuntimeError,
-        match=r"SPLINEPY ERROR - Invalid degree, degrees need to be positive. "
-        r"Detected degree -4 along parametric dimension: 0",
-    ):
-        splinepy.RationalBezier(
-            degrees=[-4],
-            control_points=np.ones((2, 4)),
-            weights=np_rng.random(2),
-        )
 
-    with pytest.raises(
-        RuntimeError,
-        match=r"SPLINEPY ERROR - Invalid number of control points. "
-        r"9 expected, but 4 were given.",
-    ):
-        splinepy.RationalBezier(
-            degrees=[2, 2],
-            control_points=np.ones((4, 1)),
-            weights=np_rng.random(4),
-        )
+@pytest.mark.parametrize("kind", KINDS)
+@pytest.mark.parametrize(
+    "degrees, n_points, dim, message",
+    [
+        ([-4], 1, 1, "Invalid degree, degrees need to be positive. Detected "
+         "degree -4 along parametric dimension: 0"),
+        ([2, 2], 4, 2, "Invalid number of control points. 9 expected, but 4"),
+        ([2, 3, 1], 9, 3, "Invalid number of control points. 24 expected, but 9"),
+        ([1], 2, 0, "Zero dimensional data points can not constitute a spline."),
+    ],
+)  # fmt: skip
+def test_constructors_reject_degrees_and_points(kind, degrees, n_points, dim, message):
+    with pytest.raises(RuntimeError, match="SPLINEPY ERROR - " + message):
+        _make(kind, degrees, n_points, dim)
 
-    with pytest.raises(
-        RuntimeError,
-        match=r"SPLINEPY ERROR - Invalid number of control points. "
-        r"24 expected, but 9 were given.",
-    ):
-        splinepy.RationalBezier(
-            degrees=[2, 3, 1],
-            control_points=np.ones((9, 2)),
-            weights=np_rng.random(9),
-        )
 
-    with pytest.raises(
-        RuntimeError,
-        match=r"SPLINEPY ERROR - Zero dimensional data "
-        r"points can not constitute a spline.",
-    ):
-        splinepy.RationalBezier(
-            degrees=[2, 3, 1],
-            control_points=np.ones((24, 0)),
-            weights=np_rng.random(24),
-        )
+@pytest.mark.parametrize("kind", ["RationalBezier", "NURBS"])
+@pytest.mark.parametrize("n_points, n_weights", [(4, 2), (4, 19)])
+def test_constructors_reject_a_wrong_number_of_weights(kind, n_points, n_weights):
+    message = rf"len\(weights\) \({n_weights}\) should match len\(control_points\) \(4\)"
+    with pytest.raises(ValueError, match=message):
+        _make(kind, [1, 1], n_points, n_weights=n_weights)
 
-    with pytest.raises(
-        ValueError,
-        match=r"len\(weights\) \(9\) should match "
-        r"len\(control_points\) \(24\).",
-    ):
-        splinepy.RationalBezier(
-            degrees=[2, 3, 1],
-            control_points=np.ones((24, 2)),
-            weights=np_rng.random(9),
-        )
+
+@pytest.mark.parametrize("kind", ["BSpline", "NURBS"])
+def test_constructors_reject_bad_knot_vectors(kind):
+    decreasing = [[0, 0, 0.6, 0.3, 1, 1], [0, 0, 1, 1]]
+    with pytest.raises(RuntimeError, match="not in increasing order"):
+        _make(kind, [1, 1], 8, knot_vectors=decreasing)
+    with pytest.raises(ValueError, match=r"len\(knot_vectors\) \(2\) should match"):
+        _make(kind, [1], 8, knot_vectors=decreasing)
 
 
 def test_multi_index_tracks_control_mesh_shape():
