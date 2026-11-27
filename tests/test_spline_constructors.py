@@ -393,3 +393,16 @@ def test_nan_queries_do_not_hide_queries_out_of_bounds(monkeypatch):
     monkeypatch.setattr(splinepy.settings, "CHECK_BOUNDS", True)
     with pytest.raises(ValueError, match="finite"):
         spline.evaluate([[np.nan], [999.0]])
+
+
+def test_clear_empties_a_spline_that_can_be_filled_again(nurbs_2p2d):
+    expected = nurbs_2p2d.evaluate([[0.3, 0.6]])
+    data = nurbs_2p2d.todict()
+    nurbs_2p2d.clear()
+    for name in ("degrees", "knot_vectors", "control_points", "weights"):
+        assert getattr(nurbs_2p2d, name) is None
+    with pytest.raises(ValueError):
+        nurbs_2p2d.evaluate([[0.3, 0.6]])
+    for name, value in data.items():
+        setattr(nurbs_2p2d, name, value)
+    np.testing.assert_array_equal(nurbs_2p2d.evaluate([[0.3, 0.6]]), expected)

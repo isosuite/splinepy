@@ -959,3 +959,69 @@ def test_determinant_spline_keeps_valid_multiplicities(knots):
         np.linalg.det(spline.jacobian(queries)),
         atol=1e-12,
     )
+
+
+def test_line_interpolates_its_points():
+    line = splinepy.helpme.create.line([[0, 0], [1, 2], [3, 1]])
+    assert line.degrees.tolist() == [1]
+    np.testing.assert_allclose(
+        line.evaluate([[0], [0.25], [0.5], [1]]),
+        [[0, 0], [0.5, 1], [1, 2], [3, 1]],
+    )
+
+
+def test_from_bounds_maps_parametric_onto_physical_bounds():
+    spline = splinepy.helpme.create.from_bounds(
+        [[1, -2], [3, 0]], [[0, 10], [4, 20]]
+    )
+    np.testing.assert_array_equal(spline.parametric_bounds, [[1, -2], [3, 0]])
+    np.testing.assert_allclose(
+        spline.evaluate([[1, -2], [3, 0], [2, -1.5]]),
+        [[0, 10], [4, 20], [2, 12.5]],
+    )
+
+
+def test_round_shapes_keep_their_radii(np_rng):
+    create = splinepy.helpme.create
+    queries = np_rng.random((20, 3))
+    u = queries[:, 0]
+
+    disk = create.disk(2.0, inner_radius=0.5, angle=90, n_knot_spans=2)
+    points = disk.evaluate(queries[:, :2])
+    np.testing.assert_allclose(np.linalg.norm(points, axis=1), 0.5 + 1.5 * u)
+    assert (points >= -1e-14).all()  # a quarter
+
+    sphere = create.sphere(2.0, inner_radius=1.0)
+    assert sphere.degrees.tolist() == [1, 2, 2]
+    np.testing.assert_allclose(
+        np.linalg.norm(sphere.evaluate(queries), axis=1), 1 + u
+    )
+
+    circle = create.surface_circle(3.0)
+    sides = np.vstack(
+        [np.column_stack([u, 0 * u]), np.column_stack([1 + 0 * u, u])]
+    )
+    np.testing.assert_allclose(
+        np.linalg.norm(circle.evaluate(sides), axis=1), 3.0
+    )
+    np.testing.assert_allclose(circle.evaluate([[0.5, 0.5]]), [[0, 0]], atol=1e-15)
+
+    # radius u at the base, shrinking linearly to the apex
+    solid = create.cone(2.0, 5.0).evaluate(queries)
+    height = solid[:, 2]
+    np.testing.assert_allclose(height, 5 * queries[:, 2])
+    np.testing.assert_allclose(
+        np.linalg.norm(solid[:, :2], axis=1), 2 * u * (1 - height / 5)
+    )
+    shell = create.cone(2.0, 5.0, volumetric=False).evaluate(queries[:, :2])
+    np.testing.assert_allclose(
+        np.linalg.norm(shell[:, :2], axis=1), 2 * (1 - shell[:, 2] / 5)
+    )
+
+
+def test_pyramid_collapses_the_top_of_a_box():
+    pyramid = splinepy.helpme.create.pyramid(2, 3, 4)
+    np.testing.assert_allclose(
+        pyramid.evaluate([[0, 0, 0], [1, 1, 0], [0.2, 0.9, 1], [1, 0, 0.5]]),
+        [[0, 0, 0], [2, 3, 0], [1, 1.5, 4], [1.5, 0.75, 2]],
+    )

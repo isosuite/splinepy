@@ -489,3 +489,35 @@ def test_bezier_operators_reject_other_types():
             bezier + other
         with pytest.raises(TypeError):
             bezier * other
+
+
+@pytest.mark.parametrize("rational", [False, True])
+def test_split_and_extract_dim(rational, np_rng):
+    spline = splinepy.Bezier([2, 1], np_rng.random((6, 3)))
+    if rational:
+        spline = spline.rationalbezier
+        spline.weights[:] = np_rng.random((6, 1)) + 0.5
+    queries = np_rng.random((10, 2))
+    expected = spline.evaluate(queries)
+
+    bounds = [0, 0.3, 0.8, 1]
+    pieces = spline.split(0, bounds[1:3])
+    assert len(pieces) == 3
+    for piece, low, high in zip(pieces, bounds[:-1], bounds[1:], strict=True):
+        assert type(piece) is type(spline)
+        np.testing.assert_allclose(
+            piece.evaluate(queries),
+            spline.evaluate(queries * [high - low, 1] + [low, 0]),
+            atol=1e-14,
+        )
+    with pytest.raises(ValueError, match="split location"):
+        spline.split(0, [1.2])
+
+    for dim in range(3):
+        np.testing.assert_allclose(
+            spline.extract_dim(dim).evaluate(queries),
+            expected[:, [dim]],
+            atol=1e-14,
+        )
+    with pytest.raises(ValueError, match="Can't extract"):
+        spline.extract_dim(3)

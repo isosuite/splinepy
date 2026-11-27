@@ -99,3 +99,22 @@ def test_gustaf_round_trip():
         # gustaf keeps scalar data as a column
         z = back["vertex_data"]["z"]
         assert np.array_equal(np.ravel(z), extracted["vertices"][:, 2])
+
+
+def test_tetrahedron_edges_faces_and_normals():
+    corners = np.array([[0.0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]])
+    tet = mesh.make_mesh("tet", corners, [[0, 1, 2, 3]])
+    assert len(mesh.unique_edges(tet)["connectivity"]) == 6
+    surface = mesh.boundary_faces(tet)
+    assert surface["element_type"] == "triangle"
+    triangles = surface["vertices"][surface["connectivity"]]
+    assert len(triangles) == 4
+    # every face is wound to point away from the opposite corner
+    normals = np.cross(
+        triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0]
+    )
+    assert ((normals * (triangles.mean(1) - corners.mean(0))).sum(1) > 0).all()
+    # so the normal of a corner points away from the middle too
+    vertex_normals = mesh.vertex_normals(surface)
+    np.testing.assert_allclose(np.linalg.norm(vertex_normals, axis=1), 1)
+    assert ((vertex_normals * (corners - corners.mean(0))).sum(1) > 0).all()

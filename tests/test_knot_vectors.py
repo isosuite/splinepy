@@ -1,6 +1,8 @@
 import numpy as np
 import pytest
 
+import splinepy
+
 # frequently used fixtures
 all_splinetypes = ("bspline_3p3d", "nurbs_3p3d", "bspline_2p2d", "nurbs_2p2d")
 
@@ -42,3 +44,19 @@ def test_knot_vector_does_not_alias_caller_array():
     kv = splinepy.KnotVector(raw)
     raw[0] = 5.0
     np.testing.assert_array_equal(kv, [0.0, 0.0, 0.5, 1.0, 1.0])
+
+
+def test_find_span_counts_knots_and_clips_to_the_ends():
+    spline = splinepy.BSpline(
+        [2], [[0, 0, 0, 0.5, 1, 1, 1]], np.arange(4.0).reshape(-1, 1)
+    )
+    knots = spline.knot_vectors[0]
+    assert [knots.find_span(u) for u in (-1, 0, 0.25, 0.5, 0.75, 1, 2)] == [
+        0,
+        2,
+        2,
+        3,
+        3,
+        5,
+        5,
+    ]

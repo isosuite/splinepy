@@ -536,3 +536,42 @@ def test_volume_faces_face_outwards_with_their_own_resolution(multipatch):
     )
     outwards = vertices[quads].mean(axis=1) - 0.5
     assert (np.einsum("ij,ij->i", normals, outwards) > 0).all()
+
+
+@pytest.mark.parametrize(
+    "lengths, name, element_type, n_elements",
+    [
+        ((1,), "control_edges", "line", 2),
+        ((1, 2), "control_faces", "quad", 2),
+        ((1, 2, 3), "control_volumes", "hexa", 2),
+    ],
+)
+def test_control_meshes_connect_neighboring_control_points(
+    lengths, name, element_type, n_elements
+):
+    spline = splinepy.helpme.create.box(*lengths).bspline
+    spline.elevate_degrees([0])
+    mesh = getattr(spline.extract, name)()
+
+    assert mesh["element_type"] == element_type
+    np.testing.assert_array_equal(mesh["vertices"], spline.cps)
+    assert len(mesh["connectivity"]) == n_elements
+    # the elements tile the box
+    corners = mesh["vertices"][mesh["connectivity"]]
+    sizes = np.prod(np.ptp(corners, axis=1), axis=1)
+    assert np.isclose(sizes.sum(), np.prod(lengths))
+    general = spline.extract.control_mesh()
+    np.testing.assert_array_equal(general["connectivity"], mesh["connectivity"])
+    for other in {"control_edges", "control_faces", "control_volumes"} - {name}:
+        with pytest.raises(ValueError):
+            getattr(spline.extract, other)()
+
+
+def test_edges_of_the_contour_only():
+    spline = splinepy.helpme.create.box(1, 1).bspline
+    spline.insert_knots(0, [0.5])
+    everything = spline.extract.edges(3)
+    contour = spline.extract.edges(3, all_knots=False)
+    # four sides against three lines along v and two along u
+    assert len(contour["connectivity"]) == 4 * 2
+    assert len(everything["connectivity"]) == 5 * 2
