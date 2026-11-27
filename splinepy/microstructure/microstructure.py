@@ -81,10 +81,11 @@ class Microstructure(_SplinepyBase):
             raise ValueError(
                 "Deformation function must be splinepy-Spline. e.g. splinepy.NURBS"
             )
+        if (deformation_function.parametric_bounds != [[0.0], [1.0]]).any():
+            # the spline of the caller keeps its parametrization
+            deformation_function = deformation_function.copy()
+            deformation_function.normalize_knot_vectors()
         self._deformation_function = deformation_function
-
-        if self._deformation_function.has_knot_vectors:
-            self._deformation_function.normalize_knot_vectors()
 
         self._sanity_check()
 

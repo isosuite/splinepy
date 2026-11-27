@@ -34,10 +34,6 @@ CLOSURE_FAILS = {
     + "geometry of the closure tile of the Cross3D-tile, hence it itself does not fill"
     + " the whole unit cube.",
 }
-# TODO: the following tiles fail the macro-sensitivity testing
-MACRO_FAILS = {
-    ms.tiles.Chi: "currently macro-sensitivity tests fail for the Chi-tile."
-}
 
 
 @mark.parametrize("tile_class", tile_classes_with_closure)
@@ -132,14 +128,6 @@ def test_macro_sensitivities(tile_class, np_rng, h_eps, n_test_points):
     n_test_points: int
         Number of testing points in the parametric domain. Defined in conftest.py
     """
-
-    # TODO: right now skip tiles which cause errors
-    if tile_class in MACRO_FAILS:
-        reason = MACRO_FAILS[tile_class]
-        skip(
-            f"Known issue: skip macro-senstivity test for {tile_class.__name__}, "
-            f"reason: {reason}"
-        )
 
     tile_creator = tile_class()
     deformation_function_orig = box(*BOX_DIMENSIONS[: tile_creator._dim])
@@ -590,3 +578,14 @@ def test_parameter_fields_match_finite_differences(tile_class):
             field.control_points,
             atol=1e-6,
         )
+
+
+def test_microstructure_leaves_the_domain_of_its_deformation_function():
+    deformation = box(1, 1).bspline
+    with deformation.edit_knot_vectors() as knot_vectors:
+        knot_vectors[0] = 3 * np.asarray(knot_vectors[0]) + 2
+    generator = ms.microstructure.Microstructure(
+        deformation_function=deformation, tiling=[1, 1], microtile=ms.tiles.Cross2D()
+    )
+    np.testing.assert_array_equal(deformation.parametric_bounds[:, 0], [2, 5])
+    assert generator.create().patches
