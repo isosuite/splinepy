@@ -103,6 +103,27 @@ class BSplineBase(_spline.Spline):
 
     __slots__ = ()
 
+    def _knots_to_edit(self, parametric_dimension, knots, action):
+        """Checks the axis and the knots of an insertion or removal and returns
+        the knots as a contiguous array."""
+        if _settings.CHECK_BOUNDS:
+            self.check.clamped_knot_vectors(warning=True)
+        if not 0 <= parametric_dimension < self.para_dim:
+            raise ValueError(f"Invalid parametric dimension to {action} knots.")
+        knots = _utils.data.enforce_contiguous(_np.atleast_1d(knots), "float64")
+        if len(knots) == 0:
+            return knots
+        knot_vector = self.knot_vectors[parametric_dimension]
+        if knots.max() > knot_vector[-1]:
+            raise ValueError(
+                "One of the query knots not in valid knot range. (Too big)"
+            )
+        if knots.min() < knot_vector[0]:
+            raise ValueError(
+                "One of the query knots not in valid knot range. (Too small)"
+            )
+        return knots
+
     def insert_knots(self, parametric_dimension, knots):
         """
         Inserts knots.
@@ -119,32 +140,12 @@ class BSplineBase(_spline.Spline):
         inserted: list
           List of bool. True if the knots are inserted. Otherwise, False
         """
-        if _settings.CHECK_BOUNDS:
-            self.check.clamped_knot_vectors(warning=True)
-
-        if not 0 <= parametric_dimension < self.para_dim:
-            raise ValueError("Invalid parametric dimension to insert knots.")
-
-        if isinstance(knots, float):
-            knots = [knots]
-
+        knots = self._knots_to_edit(parametric_dimension, knots, "insert")
         if len(knots) == 0:
             self._logd("Requesting knot insertion for 0 knots, no computation")
             return []
 
-        if max(knots) > max(self.knot_vectors[parametric_dimension]):
-            raise ValueError(
-                "One of the query knots not in valid knot range. (Too big)"
-            )
-
-        if min(knots) < min(self.knot_vectors[parametric_dimension]):
-            raise ValueError(
-                "One of the query knots not in valid knot range. (Too small)"
-            )
-
-        inserted = _core.insert_knots(
-            self, parametric_dimension, _utils.data.enforce_contiguous(knots)
-        )
+        inserted = _core.insert_knots(self, parametric_dimension, knots)
 
         self._logd(f"Inserted {len(knots)} knot(s).")
 
@@ -315,33 +316,15 @@ class BSplineBase(_spline.Spline):
         removed: list<bool>
           List of bool. True if the knots are Removed. Otherwise, False
         """
-        if _settings.CHECK_BOUNDS:
-            self.check.clamped_knot_vectors(warning=True)
-
-        if not 0 <= parametric_dimension < self.para_dim:
-            raise ValueError("Invalid parametric dimension to remove knots.")
-
-        if isinstance(knots, float):
-            knots = [knots]
-
+        knots = self._knots_to_edit(parametric_dimension, knots, "remove")
         if len(knots) == 0:
             self._logd("Requesting knot removal of 0 knots, no computation")
             return []
 
-        if max(knots) > max(self.knot_vectors[parametric_dimension]):
-            raise ValueError(
-                "One of the query knots not in valid knot range. (Too big)"
-            )
-
-        if min(knots) < min(self.knot_vectors[parametric_dimension]):
-            raise ValueError(
-                "One of the query knots not in valid knot range. (Too small)"
-            )
-
         removed = _core.remove_knots(
             self,
             parametric_dimension,
-            _utils.data.enforce_contiguous(knots),
+            knots,
             tolerance=_spline._default_if_none(tolerance, _settings.TOLERANCE),
         )
 
