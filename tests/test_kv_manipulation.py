@@ -247,3 +247,24 @@ def test_knot_edits_reject_axes_out_of_range(axis):
         splinepy.splinepy_core.insert_knots(spline, axis, np.array([0.6]))
     with pytest.raises(ValueError):
         spline.reduce_degrees([axis])
+
+
+def test_knot_insertions_from_two_threads_both_stay():
+    from threading import Barrier, Thread
+
+    for _ in range(20):
+        kv = [0, 0, 0, *np.linspace(0, 1, 200)[1:-1], 1, 1, 1]
+        n = len(kv) - 3
+        spline = splinepy.BSpline([2, 2], [kv, kv], np.ones((n * n, 3)))
+        barrier = Barrier(2)
+
+        def insert(axis, spline=spline, barrier=barrier):
+            barrier.wait()
+            spline.insert_knots(axis, [0.50001])
+
+        threads = [Thread(target=insert, args=(axis,)) for axis in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        assert [len(k) for k in spline.knot_vectors] == [len(kv) + 1] * 2

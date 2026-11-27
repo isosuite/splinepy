@@ -88,11 +88,10 @@ InsertKnots(nb::handle spline, int para_dim, nb::object knots, double tol) {
   }
 
   if (!valid_knots.empty()) {
-    SetSplineData(spline, Released([&] {
-                    return splinepy::core::InsertKnots(view,
-                                                       para_dim,
-                                                       valid_knots.cspan());
-                  }));
+    // the GIL stays held, so that edits of one spline happen one at a time
+    SetSplineData(
+        spline,
+        splinepy::core::InsertKnots(view, para_dim, valid_knots.cspan()));
   }
   return MakeNumPyArray1D<bool>(successful.cspan());
 }
@@ -107,12 +106,9 @@ nb::list RemoveKnots(nb::handle spline,
   ContiguousAdapter<double> knots_adapter(knots, "float64");
   splinepy::core::Span<const double> knots_span(knots_adapter.data(),
                                                 knots_adapter.size());
-  auto res = Released([&] {
-    return splinepy::core::RemoveKnots(holder.view,
-                                       para_dim,
-                                       knots_span,
-                                       options);
-  });
+  // the GIL stays held, so that edits of one spline happen one at a time
+  auto res =
+      splinepy::core::RemoveKnots(holder.view, para_dim, knots_span, options);
 
   SetSplineData(spline, std::move(res.spline));
 
