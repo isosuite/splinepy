@@ -39,7 +39,9 @@ NODES_PER_ELEMENT = {
 }
 
 
-def make_mesh(element_type, vertices, connectivity=None, vertex_data=None):
+def make_mesh(
+    element_type, vertices, connectivity=None, vertex_data=None, show_options=None
+):
     """Creates and validates a mesh dict.
 
     Parameters
@@ -52,6 +54,9 @@ def make_mesh(element_type, vertices, connectivity=None, vertex_data=None):
         Vertex indices per element. Optional for a vertex mesh.
     vertex_data : dict, optional
         Named data arrays indexed by vertex.
+    show_options : dict, optional
+        Options this mesh is shown with, for example ``c``, ``r``, ``alpha``
+        or ``data``. Kept under ``"show_options"``.
 
     Returns
     -------
@@ -71,12 +76,15 @@ def make_mesh(element_type, vertices, connectivity=None, vertex_data=None):
             f"{element_type} needs {NODES_PER_ELEMENT[element_type]} nodes per"
             f" element, got {connectivity.shape[1]}"
         )
-    return {
+    mesh = {
         "element_type": element_type,
         "vertices": vertices,
         "connectivity": connectivity,
         "vertex_data": dict(vertex_data or {}),
     }
+    if show_options:
+        mesh["show_options"] = dict(show_options)
+    return mesh
 
 
 def merge(meshes):

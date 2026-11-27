@@ -197,3 +197,36 @@ def test_svg_export_draws_arrows(surface, tmp_path):
     with pytest.raises(ValueError, match="one component per spline dimension"):
         splinepy.io.svg.export(str(tmp_path / "scalar.svg"), surface)
     assert "arrow_data_scale" not in surface.show_options
+
+
+def test_svg_export_draws_point_sets(surface, tmp_path):
+    vertices = np.array([[0.0, 0.0], [1.0, 2.0], [3.0, 1.0]])
+    styled = splinepy.mesh.make_mesh(
+        "vertex", vertices, show_options={"c": "blue", "r": 0.2, "alpha": 0.5}
+    )
+    valued = splinepy.mesh.make_mesh(
+        "vertex",
+        vertices,
+        vertex_data={"u": [0.0, 0.5, 1.0]},
+        show_options={"data": "u"},
+    )
+    root = _export(tmp_path, [styled, valued, vertices], box_margins=1)
+
+    circles = [list(group) for group in _group(root, "points_list")]
+    assert [len(group) for group in circles] == [3, 3, 3]
+    assert root.attrib["viewBox"] == "0 0 5.0 4.0"
+    # y points down, from the top of the box
+    centers = [(float(c.attrib["cx"]), float(c.attrib["cy"])) for c in circles[0]]
+    assert centers == [(1.0, 3.0), (2.0, 1.0), (4.0, 2.0)]
+    assert {c.attrib["r"] for c in circles[0]} == {"0.2"}
+    assert _style(circles[0][0]) == {"fill": "blue", "fill-opacity": "0.5"}
+    assert [_style(c)["fill"] for c in circles[1]][::2] == ["#0d0887", "#f0f921"]
+    assert _style(circles[2][0])["fill"] == "red"
+
+    # next to splines the box holds both
+    root = _export(tmp_path, surface, vertices + 10, box_margins=0)
+    assert len(list(_group(root, "points_list"))[0]) == 3
+    with pytest.raises(ValueError, match="Only vertex meshes"):
+        _export(tmp_path, splinepy.mesh.make_mesh("line", vertices, [[0, 1]]))
+    with pytest.raises(ValueError, match="Only 2D"):
+        _export(tmp_path, np.zeros((2, 3)))

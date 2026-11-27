@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Standalone C++17 core library (`src/splinepy/core`) with allocation-free query kernels, manipulation, Bezier algebra and multipatch topology, plus a GoogleTest suite run in CI.
 - Hierarchical splines: `HBSpline`, `THBSpline`, `RationalHBSpline`, `RationalTHBSpline` with refinement, coarsening, leaf Bezier extraction and JSON IO ([examples/iga/hierarchical_refinement.py](examples/iga/hierarchical_refinement.py)).
 - `HierarchySpline`, the base of the four hierarchy types. It shares `sample`, `mapper`, `check`, `create`, `show`, `show_options` and `spline_data` with tensor splines through `Spline`.
+- Point sets with their own style: `mesh.make_mesh("vertex", points, show_options={"c": ..., "r": ..., "data": ...})` in `show()` and in `io.svg.export()`, which also takes bare `(n, 2)` arrays.
 - three.js viewer (`splinepy.viewer`), which `splinepy.show()` and `spline.show()` now use.
 - `out=` argument on evaluation queries to write into existing arrays.
 - `Spline.validate()` for an explicit check of the complete layout and all values.

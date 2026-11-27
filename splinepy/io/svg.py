@@ -3,6 +3,7 @@ import xml.etree.ElementTree as _ET
 import numpy as _np
 
 from splinepy import settings as _settings
+from splinepy.mesh import make_mesh as _make_mesh
 from splinepy.utils.log import debug as _debug
 from splinepy.utils.log import warning as _warning
 from splinepy.viewer.compat import colormap as _colormap
@@ -312,6 +313,60 @@ def _export_control_mesh(
                 dy=str(dx),
             )
             text_element.text = str(i)
+
+
+def _export_points(mesh, svg_element, box_min_x, box_max_y, **kwargs):
+    """
+    Exports a vertex mesh as circles.
+
+    Parameters
+    ----------
+    mesh : dict
+      Vertex mesh, see :func:`splinepy.mesh.make_mesh`
+    svg_element : xml.etree.ElementTree.Element
+      Parent element of the circles
+    box_min_x : float
+      Minimum coordinate of the box
+    box_max_y : float
+      Maximum coordinate of the box
+    kwargs :
+      Options that override the ``show_options`` of the mesh: ``c``,
+      ``alpha``, ``r`` (in the units of the vertices), ``data`` (a key of
+      ``vertex_data``), ``cmap``, ``vmin`` and ``vmax``
+
+    Returns
+    -------
+    None
+    """
+    options = {**mesh.get("show_options", {}), **kwargs}
+    vertices = mesh["vertices"]
+    data = options.get("data")
+    if data is None:
+        colors = [_css(options.get("c", "red"))] * len(vertices)
+    else:
+        values = _np.asarray(mesh["vertex_data"][data]).reshape(len(vertices), -1)
+        if values.shape[1] > 1:
+            values = _np.linalg.norm(values, axis=1)
+        colors = [
+            _rgb_2_hex(*rgb)
+            for rgb in _colormap(
+                values,
+                options.get("cmap", "plasma"),
+                vmin=options.get("vmin"),
+                vmax=options.get("vmax"),
+            )
+        ]
+    alpha = options.get("alpha", 1.0)
+    radius = str(options.get("r", 0.1))
+    for vertex, color in zip(vertices, colors, strict=True):
+        _ET.SubElement(
+            svg_element,
+            "circle",
+            cx=str(vertex[0] - box_min_x),
+            cy=str(box_max_y - vertex[1]),
+            r=radius,
+            style=f"fill:{color};fill-opacity:{alpha}",
+        )
 
 
 def _quiver_plot(
@@ -1012,8 +1067,10 @@ def export(
     ----------
     fname : string
         name of the output file
-    splines : Spline-Type, list
-        Splines to be exported
+    splines : Spline-Type, vertex mesh, (n, 2) array or list of them
+        Splines and point sets to be exported. A point set is a vertex mesh
+        of :func:`splinepy.mesh.make_mesh`; its ``show_options`` set ``c``,
+        ``alpha``, ``r`` and ``data``.
     indent: bool
       Appends white spaces using xml.etree.ElementTree.indent, if possible.
       Makes it more human-readable
@@ -1073,9 +1130,20 @@ def export(
     if (len(objects_to_plot) == 1) and isinstance(objects_to_plot[0], list):
         objects_to_plot = objects_to_plot[0]
 
+    # Point sets are vertex meshes
+    objects_to_plot = [
+        _make_mesh("vertex", object) if isinstance(object, _np.ndarray) else object
+        for object in objects_to_plot
+    ]
     for object in objects_to_plot:
+        if isinstance(object, dict):
+            if object.get("element_type") != "vertex":
+                raise ValueError("Only vertex meshes can be exported")
+            if object["vertices"].shape[1] != 2:
+                raise ValueError("Only 2D geometries supported")
+            continue
         if not isinstance(object, TensorSpline):
-            raise ValueError("Only splines can be exported")
+            raise ValueError("Only splines and point sets can be exported")
         if not 1 <= object.para_dim <= 2:
             raise ValueError("Only lines and surfaces supported")
         if not object.dim == 2:
@@ -1084,7 +1152,11 @@ def export(
     # Determine bounding box of all elements
     ctps_bounds = _np.nan * _np.ones((2, 2))
     for object in objects_to_plot:
-        l_bounds = object.control_point_bounds
+        if isinstance(object, dict):
+            vertices = object["vertices"]
+            l_bounds = _np.vstack((vertices.min(axis=0), vertices.max(axis=0)))
+        else:
+            l_bounds = object.control_point_bounds
         ctps_bounds[0, :] = _np.fmin(l_bounds[0, :], ctps_bounds[0, :])
         ctps_bounds[1, :] = _np.fmax(l_bounds[1, :], ctps_bounds[1, :])
 
@@ -1142,9 +1214,19 @@ def export(
     # Quiver plots should always be grouped in the top layer
     splines_group = _ET.SubElement(svg_data, "g", id="spline_list")
     quiver_list = _ET.SubElement(svg_data, "g", id="quiver_list")
+    points_list = _ET.SubElement(svg_data, "g", id="points_list")
 
     # Write splines in svg file
     for i, object in enumerate(objects_to_plot):
+        if isinstance(object, dict):
+            _export_points(
+                object,
+                _ET.SubElement(points_list, "g", id="points" + str(i)),
+                box_min_x,
+                box_max_y,
+                **kwargs,
+            )
+            continue
         # Copy spline options from keyword arguments
         # (taken from visualize to ensure conformity)
         orig_show_options = None

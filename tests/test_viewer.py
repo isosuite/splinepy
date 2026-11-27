@@ -138,6 +138,26 @@ def test_show_bare_vertices_as_points():
     assert [layer["kind"] for layer in v.scene["layers"]] == ["points"]
 
 
+def test_point_sets_are_styled_by_their_own_options():
+    vertices = np.random.default_rng(42).random((10, 3))
+    blue = splinepy.mesh.make_mesh(
+        "vertex", vertices, show_options={"c": "blue", "r": 10, "alpha": 0.5}
+    )
+    height = splinepy.mesh.make_mesh(
+        "vertex",
+        vertices,
+        vertex_data={"z": vertices[:, 2]},
+        show_options={"data": "z"},
+    )
+    first, second, plain = viewer.show([blue, height, vertices]).scene["layers"]
+    assert (first["color"], first["size"], first["opacity"]) == ("blue", 10, 0.5)
+    assert "scalars" in second
+    assert second["size"] == plain["size"] == 6
+    assert "scalars" not in plain
+    # an argument of show wins over the options of the mesh
+    assert viewer.show(blue, c="red").scene["layers"][0]["color"] == "red"
+
+
 def test_show_mesh_defaults_to_edges_and_faces_on_request():
     m = _hex_grid(2)
     m["vertex_data"]["u"] = m["vertices"][:, 0]

@@ -50,11 +50,15 @@ def _flatten_group(obj):
 def _build(obj, kwargs):
     if isinstance(obj, dict) and "layers" in obj:
         return obj  # prebuilt scene
-    opts = {}
-    if hasattr(obj, "show_options"):
-        opts = _translate(dict(obj.show_options.items()))
+    opts = getattr(obj, "show_options", None)
+    if opts is None and isinstance(obj, dict):
+        opts = obj.get("show_options")
+    opts = _translate(dict(opts.items())) if opts else {}
     combined = _follow_control_points({**opts, **kwargs})
     builder = scene_from_splines if _is_spline(obj) else scene_from_mesh
+    if builder is scene_from_mesh and "control_point_size" in combined:
+        # `r` is the size of the points of a mesh
+        combined.setdefault("point_size", combined["control_point_size"])
     accepted = _inspect.signature(builder).parameters
     return builder(obj, **{k: v for k, v in combined.items() if k in accepted})
 
@@ -103,7 +107,10 @@ def show(
 
     An object is a Spline / Multipatch, a mesh dict ``{"element_type",
     "vertices", "connectivity", "vertex_data"}`` or an ``(n, dim)`` vertex
-    array. Keyword arguments are forwarded to :func:`scene_from_splines` /
+    array. A mesh dict may carry its own ``"show_options"``, so that overlaid
+    point sets differ in color (``c``), size (``r``) or data.
+
+    Keyword arguments are forwarded to :func:`scene_from_splines` /
     :func:`scene_from_mesh` (whichever accepts them), e.g. ``scalars``,
     ``arrows``, ``resolutions``, ``mode`` or ``camera={"position": ...,
     "target": ..., "up": ...}``. ``ncols``, ``titles`` and ``link_cameras``

@@ -565,6 +565,7 @@ def scene_from_mesh(
     uv=None,
     arrow_color=None,
     arrow_to_origin=False,
+    point_size=None,
 ):
     """Creates a scene from a mesh dict or a bare (n, dim) vertex array.
 
@@ -615,6 +616,8 @@ def scene_from_mesh(
         Arrow color.
     arrow_to_origin : bool, optional
         Place arrow tips at their associated vertices.
+    point_size : float, optional
+        Size of the points in pixels.
 
     Returns
     -------
@@ -629,6 +632,7 @@ def scene_from_mesh(
     layers = _mesh_layers(
         mesh, etype, mode, scalars, arrows, arrow_scale, colormap, vmin, vmax,
         color, opacity, name, lighting, texture, uv, arrow_color, arrow_to_origin,
+        point_size,
     )  # fmt: skip
     return _assemble(layers, axes, background, camera)
 
@@ -642,6 +646,7 @@ def _vertex_values(mesh, source):
 def _mesh_layers(
     mesh, etype, mode, scalars, arrows, arrow_scale, colormap, vmin, vmax,
     color, opacity, name, lighting, texture, uv, arrow_color, arrow_to_origin,
+    point_size=None,
 ):  # fmt: skip
     if mode not in ("edges", "faces", "points"):
         raise ValueError(f"Unknown mode: {mode}")
@@ -651,8 +656,8 @@ def _mesh_layers(
     if etype == "vertex" or mode == "points":
         layers.append(
             _layer("points", name, verts, scalars=sc, color=_color(color, "#1f77b4"),
-                   colormap=colormap if sc is not None else None, size=6,
-                   vmin=vmin, vmax=vmax)
+                   colormap=colormap if sc is not None else None,
+                   size=point_size or 6, opacity=opacity, vmin=vmin, vmax=vmax)
         )  # fmt: skip
     elif mode == "faces" and etype != "line":
         surf = mesh

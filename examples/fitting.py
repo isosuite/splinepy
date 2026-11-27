@@ -25,7 +25,9 @@ if __name__ == "__main__":
     n_resolution = 3 * n_sample
     x = np.linspace(-1, 1, n_sample)
     fitting_points = np.vstack([x, f(x)]).T.reshape(-1, 2)
-    pts = fitting_points
+    pts = splinepy.mesh.make_mesh(
+        "vertex", fitting_points, show_options={"c": "blue", "r": 10}
+    )
 
     # fit_curve creates Bspline where the n_control_points = n_fitting_points
     # if no further information is given
@@ -132,7 +134,9 @@ if __name__ == "__main__":
         approximated_surface, fitting_points
     )
 
-    pts = fitting_points
+    pts = splinepy.mesh.make_mesh(
+        "vertex", fitting_points, show_options={"c": "blue", "r": 10}
+    )
 
     splinepy.show(
         [
@@ -195,5 +199,7 @@ if __name__ == "__main__":
         degrees=[3, 3],
         knot_vectors=[[0, 0, 0, 0, 1, 1, 1, 1], [0, 0, 0, 0, 1, 1, 1, 1]],
     )
-    pts = fitting_points
+    pts = splinepy.mesh.make_mesh(
+        "vertex", fitting_points, show_options={"c": "blue", "r": 10}
+    )
     splinepy.show(interpolated_surface, pts)
