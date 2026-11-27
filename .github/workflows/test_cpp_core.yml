@@ -12,15 +12,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Generate fixtures with the release oracle
-        run: |
-          python -m pip install "numpy==2.2.6" "splinepy==0.2.1"
-          python -I tests/generate_golden_data.py
-
       - name: Configure C++ tests
         run: >
           cmake -S . -B build-core -DCMAKE_BUILD_TYPE=Release

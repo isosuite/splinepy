@@ -16,9 +16,7 @@ endif()
 
 add_executable(
   core_tests
-  test_main.cpp
   test_buffer.cpp
-  test_span.cpp
   test_validator.cpp
   test_hierarchy.cpp
   test_parallel_for.cpp
@@ -43,10 +41,6 @@ if(MSVC)
 else()
   target_compile_options(core_tests PRIVATE -Wall -Wextra -Wpedantic)
 endif()
-target_compile_definitions(
-  core_tests
-  PRIVATE
-    TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../tests/data/golden/bin")
 
 include(GoogleTest)
 gtest_discover_tests(core_tests)

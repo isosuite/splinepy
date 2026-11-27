@@ -1,426 +1,315 @@
+// The queries against splines whose values are known in closed form. A
+// polynomial is a spline with the control points its blossom gives, and a
+// rational spline is the quotient of two such polynomials.
 #include <gtest/gtest.h>
 
-#include <string>
+#include <array>
+#include <cmath>
+#include <random>
+#include <tuple>
 #include <vector>
 
 #include "splinepy/core/queries/queries.hpp"
 #include "test_utils.hpp"
 
 namespace splinepy::core {
+namespace {
 using namespace test;
 
-TEST(QueryKernelsTest, BSpline1D) {
-  auto degrees = LoadBin<int32_t>("eval_bspline_bs1_degrees.bin");
-  auto kv0 = LoadBin<double>("eval_bspline_bs1_kv_0.bin");
-  auto cps = LoadBin<double>("eval_bspline_bs1_cps.bin");
-  auto queries = LoadBin<double>("eval_bspline_bs1_queries.bin");
-  auto exp_eval = LoadBin<double>("eval_bspline_bs1_eval.bin");
-  auto exp_deriv1 = LoadBin<double>("eval_bspline_bs1_deriv_1.bin");
-  auto exp_deriv2 = LoadBin<double>("eval_bspline_bs1_deriv_2.bin");
-  auto exp_jac = LoadBin<double>("eval_bspline_bs1_jacobian.bin");
-  auto exp_basis = LoadBin<double>("eval_bspline_bs1_basis.bin");
-  auto exp_supp = LoadBin<int32_t>("eval_bspline_bs1_support.bin");
-
-  Span<const double> kv_spans[1] = {Span<const double>(kv0)};
-
-  SplineView v;
-  v.para_dim = 1;
-  v.dim = 2;
-  v.degrees = Span<const int32_t>(degrees);
-  v.knot_vectors = Span<const Span<const double>>(kv_spans, 1);
-  v.control_points_data = cps.data();
-  v.num_control_points = static_cast<int64_t>(cps.size()) / 2;
-  v.cp_stride = 2;
-  v.dim_stride = 1;
-
-  // 1. Evaluate
-  Buffer<double> actual_eval = Evaluate(v, Span<const double>(queries));
-  EXPECT_LT(MaxAbsDiff(actual_eval.cspan(), Span<const double>(exp_eval)),
-            1e-12);
-
-  // 2. Derivative order 1
-  int32_t order1[1] = {1};
-  Buffer<double> actual_deriv1 = Derivative(v,
-                                            Span<const double>(queries),
-                                            Span<const int32_t>(order1, 1));
-  EXPECT_LT(MaxAbsDiff(actual_deriv1.cspan(), Span<const double>(exp_deriv1)),
-            1e-12);
-
-  // 3. Derivative order 2
-  int32_t order2[1] = {2};
-  Buffer<double> actual_deriv2 = Derivative(v,
-                                            Span<const double>(queries),
-                                            Span<const int32_t>(order2, 1));
-  EXPECT_LT(MaxAbsDiff(actual_deriv2.cspan(), Span<const double>(exp_deriv2)),
-            1e-12);
-
-  // 4. Jacobian
-  Buffer<double> actual_jac = Jacobian(v, Span<const double>(queries));
-  EXPECT_LT(MaxAbsDiff(actual_jac.cspan(), Span<const double>(exp_jac)), 1e-12);
-
-  // 5. Basis
-  Buffer<double> actual_basis = Basis(v, Span<const double>(queries));
-  EXPECT_LT(MaxAbsDiff(actual_basis.cspan(), Span<const double>(exp_basis)),
-            1e-12);
-
-  // 6. Support
-  Buffer<int32_t> actual_supp = Support(v, Span<const double>(queries));
-  ASSERT_EQ(actual_supp.size(), exp_supp.size());
-  for (std::size_t i = 0; i < exp_supp.size(); ++i) {
-    EXPECT_EQ(actual_supp[i], exp_supp[i]);
+double Binomial(int n, int k) {
+  double value = 1;
+  for (int i = 0; i < k; ++i) {
+    value *= static_cast<double>(n - i) / (i + 1);
   }
+  return value;
 }
 
-TEST(QueryKernelsTest, BSpline2D) {
-  auto degrees = LoadBin<int32_t>("eval_bspline_bs2_degrees.bin");
-  auto kv0 = LoadBin<double>("eval_bspline_bs2_kv_0.bin");
-  auto kv1 = LoadBin<double>("eval_bspline_bs2_kv_1.bin");
-  auto cps = LoadBin<double>("eval_bspline_bs2_cps.bin");
-  auto queries = LoadBin<double>("eval_bspline_bs2_queries.bin");
-  auto exp_eval = LoadBin<double>("eval_bspline_bs2_eval.bin");
-  auto exp_deriv10 = LoadBin<double>("eval_bspline_bs2_deriv_10.bin");
-  auto exp_deriv01 = LoadBin<double>("eval_bspline_bs2_deriv_01.bin");
-  auto exp_deriv11 = LoadBin<double>("eval_bspline_bs2_deriv_11.bin");
-  auto exp_jac = LoadBin<double>("eval_bspline_bs2_jacobian.bin");
-  auto exp_basis = LoadBin<double>("eval_bspline_bs2_basis.bin");
-  auto exp_supp = LoadBin<int32_t>("eval_bspline_bs2_support.bin");
-
-  Span<const double> kv_spans[2] = {Span<const double>(kv0),
-                                    Span<const double>(kv1)};
-
-  SplineView v;
-  v.para_dim = 2;
-  v.dim = 3;
-  v.degrees = Span<const int32_t>(degrees);
-  v.knot_vectors = Span<const Span<const double>>(kv_spans, 2);
-  v.control_points_data = cps.data();
-  v.num_control_points = static_cast<int64_t>(cps.size()) / 3;
-  v.cp_stride = 3;
-  v.dim_stride = 1;
-
-  // 1. Evaluate
-  Buffer<double> actual_eval = Evaluate(v, Span<const double>(queries));
-  EXPECT_LT(MaxAbsDiff(actual_eval.cspan(), Span<const double>(exp_eval)),
-            1e-12);
-
-  // 2. Derivative order [1, 0]
-  int32_t order10[2] = {1, 0};
-  Buffer<double> actual_deriv10 = Derivative(v,
-                                             Span<const double>(queries),
-                                             Span<const int32_t>(order10, 2));
-  EXPECT_LT(MaxAbsDiff(actual_deriv10.cspan(), Span<const double>(exp_deriv10)),
-            1e-12);
-
-  // 3. Derivative order [0, 1]
-  int32_t order01[2] = {0, 1};
-  Buffer<double> actual_deriv01 = Derivative(v,
-                                             Span<const double>(queries),
-                                             Span<const int32_t>(order01, 2));
-  EXPECT_LT(MaxAbsDiff(actual_deriv01.cspan(), Span<const double>(exp_deriv01)),
-            1e-12);
-
-  // 4. Derivative order [1, 1]
-  int32_t order11[2] = {1, 1};
-  Buffer<double> actual_deriv11 = Derivative(v,
-                                             Span<const double>(queries),
-                                             Span<const int32_t>(order11, 2));
-  EXPECT_LT(MaxAbsDiff(actual_deriv11.cspan(), Span<const double>(exp_deriv11)),
-            1e-12);
-
-  // 5. Jacobian
-  Buffer<double> actual_jac = Jacobian(v, Span<const double>(queries));
-  EXPECT_LT(MaxAbsDiff(actual_jac.cspan(), Span<const double>(exp_jac)), 1e-12);
-
-  // 6. Basis and Support simultaneously
-  Buffer<double> actual_basis(queries.size() / 2 * v.NumSupports());
-  Buffer<int32_t> actual_supp(queries.size() / 2 * v.NumSupports());
-  BasisAndSupport(v,
-                  Span<const double>(queries),
-                  actual_basis.span(),
-                  actual_supp.span());
-  EXPECT_LT(MaxAbsDiff(actual_basis.cspan(), Span<const double>(exp_basis)),
-            1e-12);
-  ASSERT_EQ(actual_supp.size(), exp_supp.size());
-  for (std::size_t i = 0; i < exp_supp.size(); ++i) {
-    EXPECT_EQ(actual_supp[i], exp_supp[i]);
+/// d^r/du^r of u^a
+double MonomialDerivative(int a, int r, double u) {
+  if (r > a) {
+    return 0;
   }
+  double value = std::pow(u, a - r);
+  for (int i = 0; i < r; ++i) {
+    value *= a - i;
+  }
+  return value;
 }
 
-TEST(QueryKernelsTest, BSpline3D) {
-  auto degrees = LoadBin<int32_t>("eval_bspline_bs3_degrees.bin");
-  auto kv0 = LoadBin<double>("eval_bspline_bs3_kv_0.bin");
-  auto kv1 = LoadBin<double>("eval_bspline_bs3_kv_1.bin");
-  auto kv2 = LoadBin<double>("eval_bspline_bs3_kv_2.bin");
-  auto cps = LoadBin<double>("eval_bspline_bs3_cps.bin");
-  auto queries = LoadBin<double>("eval_bspline_bs3_queries.bin");
-  auto exp_eval = LoadBin<double>("eval_bspline_bs3_eval.bin");
-  auto exp_jac = LoadBin<double>("eval_bspline_bs3_jacobian.bin");
-  auto exp_basis = LoadBin<double>("eval_bspline_bs3_basis.bin");
-  auto exp_supp = LoadBin<int32_t>("eval_bspline_bs3_support.bin");
+/// Control points of u^a for a degree and knots: the elementary symmetric
+/// polynomial of order a of the p knots after each point, over binomial(p, a)
+std::vector<double> Blossom(int a, int p, const std::vector<double>& knots) {
+  std::vector<double> points(knots.size() - p - 1);
+  for (std::size_t i = 0; i < points.size(); ++i) {
+    std::vector<double> symmetric(p + 1, 0.0);
+    symmetric[0] = 1;
+    for (int m = 1; m <= p; ++m) {
+      for (int j = m; j >= 1; --j) {
+        symmetric[j] += symmetric[j - 1] * knots[i + m];
+      }
+    }
+    points[i] = symmetric[a] / Binomial(p, a);
+  }
+  return points;
+}
 
-  Span<const double> kv_spans[3] = {
-      Span<const double>(kv0),
-      Span<const double>(kv1),
-      Span<const double>(kv2),
+/// sum of c u^a v^b
+struct Term {
+  double c;
+  int a, b;
+};
+using Polynomial = std::vector<Term>;
+
+double Value(const Polynomial& polynomial, int r, int s, double u, double v) {
+  double value = 0;
+  for (const auto& term : polynomial) {
+    value += term.c * MonomialDerivative(term.a, r, u)
+             * MonomialDerivative(term.b, s, v);
+  }
+  return value;
+}
+
+/// d^(r+s) of numerator / denominator, by the Leibniz rule of their product
+double Quotient(const Polynomial& numerator,
+                const Polynomial& denominator,
+                int r,
+                int s,
+                double u,
+                double v) {
+  double value = Value(numerator, r, s, u, v);
+  for (int i = 0; i <= r; ++i) {
+    for (int j = 0; j <= s; ++j) {
+      if (i + j > 0) {
+        value -= Binomial(r, i) * Binomial(s, j)
+                 * Value(denominator, i, j, u, v)
+                 * Quotient(numerator, denominator, r - i, s - j, u, v);
+      }
+    }
+  }
+  return value / Value(denominator, 0, 0, u, v);
+}
+
+const std::array<Polynomial, 3> kComponents{
+    Polynomial{{1, 0, 0}, {2, 1, 0}, {-1, 3, 0}, {1, 0, 2}},
+    Polynomial{{1, 2, 2}, {-3, 1, 1}, {1, 0, 1}},
+    Polynomial{{1, 3, 2}},
+};
+// positive on both domains below, as are its control points
+const Polynomial kWeight{{2, 0, 0}, {1, 2, 0}, {1, 0, 1}};
+
+/// degrees (3, 2); with knots, on [0, 1] x [-1, 2] with a double knot
+struct ExactSpline {
+  std::array<int32_t, 2> degrees{3, 2};
+  std::array<std::vector<double>, 2> knots;
+  std::array<Span<const double>, 2> knot_spans;
+  std::vector<double> points, weights;
+  std::array<double, 2> lower, upper;
+  bool rational;
+  SplineView view;
+
+  ExactSpline(bool has_knots, bool rational_) : rational(rational_) {
+    if (has_knots) {
+      knots = {std::vector<double>{0, 0, 0, 0, 0.3, 0.3, 0.7, 1, 1, 1, 1},
+               std::vector<double>{-1, -1, -1, 0.5, 2, 2, 2}};
+    } else {
+      knots = {std::vector<double>{0, 0, 0, 0, 1, 1, 1, 1},
+               std::vector<double>{0, 0, 0, 1, 1, 1}};
+    }
+    lower = {knots[0].front(), knots[1].front()};
+    upper = {knots[0].back(), knots[1].back()};
+    const std::size_t n_u = knots[0].size() - 4, n_v = knots[1].size() - 3;
+    const auto coefficients = [&](const Polynomial& polynomial) {
+      std::vector<double> values(n_u * n_v, 0.0);
+      for (const auto& term : polynomial) {
+        const auto along_u = Blossom(term.a, 3, knots[0]);
+        const auto along_v = Blossom(term.b, 2, knots[1]);
+        for (std::size_t i = 0; i < values.size(); ++i) {
+          values[i] += term.c * along_u[i % n_u] * along_v[i / n_u];
+        }
+      }
+      return values;
+    };
+    if (rational) {
+      weights = coefficients(kWeight);
+    }
+    points.resize(3 * n_u * n_v);
+    for (int d = 0; d < 3; ++d) {
+      const auto values = coefficients(kComponents[d]);
+      for (std::size_t i = 0; i < values.size(); ++i) {
+        points[3 * i + d] = values[i] / (rational ? weights[i] : 1.0);
+      }
+    }
+    knot_spans = {Span<const double>(knots[0]), Span<const double>(knots[1])};
+    view = MakeView(degrees,
+                    has_knots ? Span<const Span<const double>>(knot_spans)
+                              : Span<const Span<const double>>(),
+                    points,
+                    3,
+                    weights);
+  }
+
+  double Exact(int d, int r, int s, double u, double v) const {
+    return rational ? Quotient(kComponents[d], kWeight, r, s, u, v)
+                    : Value(kComponents[d], r, s, u, v);
+  }
+
+  /// random points, the corners and a knot
+  std::vector<double> Queries() const {
+    std::mt19937_64 rng(3);
+    std::uniform_real_distribution<double> unit(0, 1);
+    std::vector<double> queries{lower[0], lower[1], upper[0], upper[1]};
+    queries.insert(queries.end(), {knots[0][4], knots[1][3]});
+    for (int i = 0; i < 40; ++i) {
+      for (int axis = 0; axis < 2; ++axis) {
+        queries.push_back(lower[axis]
+                          + unit(rng) * (upper[axis] - lower[axis]));
+      }
+    }
+    return queries;
+  }
+};
+
+class ExactQueries
+    : public ::testing::TestWithParam<std::tuple<bool, bool, int>> {};
+
+TEST_P(ExactQueries, MatchClosedForms) {
+  const auto [has_knots, rational, nthreads] = GetParam();
+  const ExactSpline spline(has_knots, rational);
+  const auto& view = spline.view;
+  const auto queries = spline.Queries();
+  const std::size_t n = queries.size() / 2;
+  const std::size_t supports = view.NumSupports();
+  ASSERT_EQ(supports, 12u);
+  Options options;
+  options.nthreads = nthreads;
+  const auto exact = [&](std::size_t q, int d, int r, int s) {
+    return spline.Exact(d, r, s, queries[2 * q], queries[2 * q + 1]);
   };
+  const double tolerance = 2e-11; // the fourth derivative is of order 1e3
 
-  SplineView v;
-  v.para_dim = 3;
-  v.dim = 3;
-  v.degrees = Span<const int32_t>(degrees);
-  v.knot_vectors = Span<const Span<const double>>(kv_spans, 3);
-  v.control_points_data = cps.data();
-  v.num_control_points = static_cast<int64_t>(cps.size()) / 3;
-  v.cp_stride = 3;
-  v.dim_stride = 1;
+  const auto values = Evaluate(view, queries, options);
+  ASSERT_EQ(values.size(), 3 * n);
+  const auto jacobian = Jacobian(view, queries, options);
+  ASSERT_EQ(jacobian.size(), 6 * n);
+  for (std::size_t q = 0; q < n; ++q) {
+    for (int d = 0; d < 3; ++d) {
+      EXPECT_NEAR(values[3 * q + d], exact(q, d, 0, 0), 1e-13);
+      EXPECT_NEAR(jacobian[6 * q + 2 * d], exact(q, d, 1, 0), 1e-12);
+      EXPECT_NEAR(jacobian[6 * q + 2 * d + 1], exact(q, d, 0, 1), 1e-12);
+    }
+  }
 
-  Buffer<double> actual_eval = Evaluate(v, Span<const double>(queries));
-  EXPECT_LT(MaxAbsDiff(actual_eval.cspan(), Span<const double>(exp_eval)),
-            1e-12);
+  // the last order is beyond the degree along v
+  const std::vector<int32_t> orders{1, 0, 0, 1, 1, 1, 2, 0, 3, 2, 0, 3};
+  const std::size_t n_orders = orders.size() / 2;
+  for (std::size_t o = 0; o < n_orders; ++o) {
+    const Span<const int32_t> order(orders.data() + 2 * o, 2);
+    const auto derivative = Derivative(view, queries, order, options);
+    ASSERT_EQ(derivative.size(), 3 * n);
+    for (std::size_t i = 0; i < derivative.size(); ++i) {
+      EXPECT_NEAR(derivative[i],
+                  exact(i / 3, i % 3, order[0], order[1]),
+                  tolerance);
+    }
+  }
+  // all orders at once: (query, order, component)
+  const DerivativeOrders schedule(orders, 2, rational);
+  std::vector<double> all(n * n_orders * 3);
+  Derivative(view, queries, schedule, all, options);
+  for (std::size_t i = 0; i < all.size(); ++i) {
+    const std::size_t o = i / 3 % n_orders;
+    EXPECT_NEAR(
+        all[i],
+        exact(i / (3 * n_orders), i % 3, orders[2 * o], orders[2 * o + 1]),
+        tolerance);
+  }
 
-  Buffer<double> actual_jac = Jacobian(v, Span<const double>(queries));
-  EXPECT_LT(MaxAbsDiff(actual_jac.cspan(), Span<const double>(exp_jac)), 1e-12);
-
-  Buffer<double> actual_basis = Basis(v, Span<const double>(queries));
-  EXPECT_LT(MaxAbsDiff(actual_basis.cspan(), Span<const double>(exp_basis)),
-            1e-12);
-
-  Buffer<int32_t> actual_supp = Support(v, Span<const double>(queries));
-  ASSERT_EQ(actual_supp.size(), exp_supp.size());
-  for (std::size_t i = 0; i < exp_supp.size(); ++i) {
-    EXPECT_EQ(actual_supp[i], exp_supp[i]);
+  // basis functions: their sum, and the spline they reproduce
+  std::vector<double> basis(n * supports);
+  std::vector<int32_t> support(n * supports);
+  BasisAndSupport(view, queries, basis, support, options);
+  const auto separate = Support(view, queries, options);
+  EXPECT_EQ(std::vector<int32_t>(separate.begin(), separate.end()), support);
+  std::vector<double> many(n * n_orders * supports);
+  BasisDerivatives(view, queries, orders, many, options);
+  for (std::size_t q = 0; q < n; ++q) {
+    double sum = 0;
+    for (std::size_t k = 0; k < supports; ++k) {
+      sum += basis[q * supports + k];
+    }
+    EXPECT_NEAR(sum, 1.0, 1e-14);
+    for (int d = 0; d < 3; ++d) {
+      double value = 0;
+      for (std::size_t k = 0; k < supports; ++k) {
+        value += basis[q * supports + k]
+                 * spline.points[3 * support[q * supports + k] + d];
+      }
+      EXPECT_NEAR(value, exact(q, d, 0, 0), 1e-13);
+    }
+  }
+  for (std::size_t o = 0; o < n_orders; ++o) {
+    const Span<const int32_t> order(orders.data() + 2 * o, 2);
+    const auto single = BasisDerivative(view, queries, order, options);
+    for (std::size_t q = 0; q < n; ++q) {
+      for (int d = 0; d < 3; ++d) {
+        double value = 0;
+        for (std::size_t k = 0; k < supports; ++k) {
+          const double derivative = many[(q * n_orders + o) * supports + k];
+          EXPECT_EQ(derivative, single[q * supports + k]);
+          value +=
+              derivative * spline.points[3 * support[q * supports + k] + d];
+        }
+        EXPECT_NEAR(value, exact(q, d, order[0], order[1]), tolerance);
+      }
+    }
   }
 }
 
-TEST(QueryKernelsTest, NURBS2DCircle) {
-  auto degrees = LoadBin<int32_t>("eval_nurbs_degrees.bin");
-  auto kv0 = LoadBin<double>("eval_nurbs_kv_0.bin");
-  auto kv1 = LoadBin<double>("eval_nurbs_kv_1.bin");
-  auto cps = LoadBin<double>("eval_nurbs_cps.bin");
-  auto weights = LoadBin<double>("eval_nurbs_weights.bin");
-  auto queries = LoadBin<double>("eval_nurbs_queries.bin");
-  auto exp_eval = LoadBin<double>("eval_nurbs_eval.bin");
-  auto exp_deriv10 = LoadBin<double>("eval_nurbs_deriv_10.bin");
-  auto exp_deriv01 = LoadBin<double>("eval_nurbs_deriv_01.bin");
-  auto exp_jac = LoadBin<double>("eval_nurbs_jacobian.bin");
-  auto exp_basis = LoadBin<double>("eval_nurbs_basis.bin");
-  auto exp_supp = LoadBin<int32_t>("eval_nurbs_support.bin");
+INSTANTIATE_TEST_SUITE_P(Splines,
+                         ExactQueries,
+                         ::testing::Combine(::testing::Bool(),
+                                            ::testing::Bool(),
+                                            ::testing::Values(1, 3)));
 
-  Span<const double> kv_spans[2] = {Span<const double>(kv0),
-                                    Span<const double>(kv1)};
-
-  SplineView v;
-  v.para_dim = 2;
-  v.dim = 2;
-  v.degrees = Span<const int32_t>(degrees);
-  v.knot_vectors = Span<const Span<const double>>(kv_spans, 2);
-  v.control_points_data = cps.data();
-  v.num_control_points = static_cast<int64_t>(cps.size()) / 2;
-  v.cp_stride = 2;
-  v.dim_stride = 1;
-  v.weights_data = weights.data();
-  v.weight_stride = 1;
-
-  // 1. Evaluate
-  Buffer<double> actual_eval = Evaluate(v, Span<const double>(queries));
-  EXPECT_LT(MaxAbsDiff(actual_eval.cspan(), Span<const double>(exp_eval)),
-            1e-12);
-
-  // 2. Derivatives [1, 0] and [0, 1]
-  int32_t order10[2] = {1, 0};
-  Buffer<double> actual_deriv10 = Derivative(v,
-                                             Span<const double>(queries),
-                                             Span<const int32_t>(order10, 2));
-  EXPECT_LT(MaxAbsDiff(actual_deriv10.cspan(), Span<const double>(exp_deriv10)),
-            1e-12);
-
-  int32_t order01[2] = {0, 1};
-  Buffer<double> actual_deriv01 = Derivative(v,
-                                             Span<const double>(queries),
-                                             Span<const int32_t>(order01, 2));
-  EXPECT_LT(MaxAbsDiff(actual_deriv01.cspan(), Span<const double>(exp_deriv01)),
-            1e-12);
-
-  // 3. Jacobian
-  Buffer<double> actual_jac = Jacobian(v, Span<const double>(queries));
-  EXPECT_LT(MaxAbsDiff(actual_jac.cspan(), Span<const double>(exp_jac)), 1e-12);
-
-  // 4. Rational basis and support
-  Buffer<double> actual_basis = Basis(v, Span<const double>(queries));
-  EXPECT_LT(MaxAbsDiff(actual_basis.cspan(), Span<const double>(exp_basis)),
-            1e-12);
-
-  Buffer<int32_t> actual_supp = Support(v, Span<const double>(queries));
-  ASSERT_EQ(actual_supp.size(), exp_supp.size());
-  for (std::size_t i = 0; i < exp_supp.size(); ++i) {
-    EXPECT_EQ(actual_supp[i], exp_supp[i]);
+TEST(ExactQueries, BatchedDerivativeOfAllFourKinds) {
+  std::vector<ExactSpline> splines;
+  splines.reserve(4);
+  std::vector<SplineView> views;
+  std::vector<std::vector<double>> queries, out;
+  std::vector<Span<const double>> query_spans;
+  std::vector<Span<double>> out_spans;
+  for (int i = 0; i < 4; ++i) {
+    splines.emplace_back(i % 2 == 0, i / 2 == 0);
+    views.push_back(splines[i].view);
+    queries.push_back(splines[i].Queries());
+    queries[i].resize(queries[i].size() - 8 * i); // uneven batches
+    out.emplace_back(queries[i].size() / 2 * 3);
+  }
+  for (int i = 0; i < 4; ++i) {
+    query_spans.emplace_back(queries[i]);
+    out_spans.emplace_back(out[i]);
+  }
+  const std::array<int32_t, 2> order{1, 1};
+  Options options;
+  options.nthreads = 3;
+  Derivative(SplineBatchView(views.data(), 4),
+             query_spans,
+             order,
+             out_spans,
+             options);
+  for (int i = 0; i < 4; ++i) {
+    for (std::size_t j = 0; j < out[i].size(); ++j) {
+      const std::size_t q = j / 3;
+      EXPECT_NEAR(out[i][j],
+                  splines[i].Exact(j % 3,
+                                   1,
+                                   1,
+                                   queries[i][2 * q],
+                                   queries[i][2 * q + 1]),
+                  1e-12);
+    }
   }
 }
 
-TEST(QueryKernelsTest, Bezier2D) {
-  auto degrees = LoadBin<int32_t>("eval_bezier_degrees.bin");
-  auto cps = LoadBin<double>("eval_bezier_cps.bin");
-  auto queries = LoadBin<double>("eval_bezier_queries.bin");
-  auto exp_eval = LoadBin<double>("eval_bezier_eval.bin");
-  auto exp_deriv10 = LoadBin<double>("eval_bezier_deriv_10.bin");
-  auto exp_deriv01 = LoadBin<double>("eval_bezier_deriv_01.bin");
-  auto exp_deriv20 = LoadBin<double>("eval_bezier_deriv_20.bin");
-  auto exp_jac = LoadBin<double>("eval_bezier_jacobian.bin");
-  auto exp_basis = LoadBin<double>("eval_bezier_basis.bin");
-  auto exp_supp = LoadBin<int32_t>("eval_bezier_support.bin");
-
-  SplineView v;
-  v.para_dim = 2;
-  v.dim = 2;
-  v.degrees = Span<const int32_t>(degrees);
-  v.knot_vectors = Span<const Span<const double>>{};
-  v.control_points_data = cps.data();
-  v.num_control_points = static_cast<int64_t>(cps.size()) / 2;
-  v.cp_stride = 2;
-  v.dim_stride = 1;
-
-  Buffer<double> actual_eval = Evaluate(v, Span<const double>(queries));
-  EXPECT_LT(MaxAbsDiff(actual_eval.cspan(), Span<const double>(exp_eval)),
-            1e-12);
-
-  int32_t order10[2] = {1, 0};
-  Buffer<double> actual_deriv10 = Derivative(v,
-                                             Span<const double>(queries),
-                                             Span<const int32_t>(order10, 2));
-  EXPECT_LT(MaxAbsDiff(actual_deriv10.cspan(), Span<const double>(exp_deriv10)),
-            1e-12);
-
-  int32_t order01[2] = {0, 1};
-  Buffer<double> actual_deriv01 = Derivative(v,
-                                             Span<const double>(queries),
-                                             Span<const int32_t>(order01, 2));
-  EXPECT_LT(MaxAbsDiff(actual_deriv01.cspan(), Span<const double>(exp_deriv01)),
-            1e-12);
-
-  int32_t order20[2] = {2, 0};
-  Buffer<double> actual_deriv20 = Derivative(v,
-                                             Span<const double>(queries),
-                                             Span<const int32_t>(order20, 2));
-  EXPECT_LT(MaxAbsDiff(actual_deriv20.cspan(), Span<const double>(exp_deriv20)),
-            1e-12);
-
-  Buffer<double> actual_jac = Jacobian(v, Span<const double>(queries));
-  EXPECT_LT(MaxAbsDiff(actual_jac.cspan(), Span<const double>(exp_jac)), 1e-12);
-
-  Buffer<double> actual_basis = Basis(v, Span<const double>(queries));
-  EXPECT_LT(MaxAbsDiff(actual_basis.cspan(), Span<const double>(exp_basis)),
-            1e-12);
-
-  Buffer<int32_t> actual_supp = Support(v, Span<const double>(queries));
-  ASSERT_EQ(actual_supp.size(), exp_supp.size());
-  for (std::size_t i = 0; i < exp_supp.size(); ++i) {
-    EXPECT_EQ(actual_supp[i], exp_supp[i]);
-  }
-}
-
-TEST(QueryKernelsTest, RationalBezier2D) {
-  auto degrees = LoadBin<int32_t>("eval_bezier_r_degrees.bin");
-  auto cps = LoadBin<double>("eval_bezier_r_cps.bin");
-  auto weights = LoadBin<double>("eval_bezier_r_weights.bin");
-  auto queries = LoadBin<double>("eval_bezier_r_queries.bin");
-  auto exp_eval = LoadBin<double>("eval_bezier_r_eval.bin");
-  auto exp_deriv10 = LoadBin<double>("eval_bezier_r_deriv_10.bin");
-  auto exp_jac = LoadBin<double>("eval_bezier_r_jacobian.bin");
-
-  SplineView v;
-  v.para_dim = 2;
-  v.dim = 3;
-  v.degrees = Span<const int32_t>(degrees);
-  v.knot_vectors = Span<const Span<const double>>{};
-  v.control_points_data = cps.data();
-  v.num_control_points = static_cast<int64_t>(cps.size()) / 3;
-  v.cp_stride = 3;
-  v.dim_stride = 1;
-  v.weights_data = weights.data();
-  v.weight_stride = 1;
-
-  Buffer<double> actual_eval = Evaluate(v, Span<const double>(queries));
-  EXPECT_LT(MaxAbsDiff(actual_eval.cspan(), Span<const double>(exp_eval)),
-            1e-12);
-
-  int32_t order10[2] = {1, 0};
-  Buffer<double> actual_deriv10 = Derivative(v,
-                                             Span<const double>(queries),
-                                             Span<const int32_t>(order10, 2));
-  EXPECT_LT(MaxAbsDiff(actual_deriv10.cspan(), Span<const double>(exp_deriv10)),
-            1e-12);
-
-  Buffer<double> actual_jac = Jacobian(v, Span<const double>(queries));
-  EXPECT_LT(MaxAbsDiff(actual_jac.cspan(), Span<const double>(exp_jac)), 1e-12);
-}
-
-TEST(QueryKernelsTest, MultiThreadingEquivalence) {
-  auto degrees = LoadBin<int32_t>("eval_bspline_bs2_degrees.bin");
-  auto kv0 = LoadBin<double>("eval_bspline_bs2_kv_0.bin");
-  auto kv1 = LoadBin<double>("eval_bspline_bs2_kv_1.bin");
-  auto cps = LoadBin<double>("eval_bspline_bs2_cps.bin");
-  auto queries = LoadBin<double>("eval_bspline_bs2_queries.bin");
-
-  Span<const double> kv_spans[2] = {Span<const double>(kv0),
-                                    Span<const double>(kv1)};
-
-  SplineView v;
-  v.para_dim = 2;
-  v.dim = 3;
-  v.degrees = Span<const int32_t>(degrees);
-  v.knot_vectors = Span<const Span<const double>>(kv_spans, 2);
-  v.control_points_data = cps.data();
-  v.num_control_points = static_cast<int64_t>(cps.size()) / 3;
-  v.cp_stride = 3;
-  v.dim_stride = 1;
-
-  Options seq_opts;
-  seq_opts.nthreads = 1;
-  Options par_opts;
-  par_opts.nthreads = 4;
-
-  Buffer<double> seq_eval = Evaluate(v, Span<const double>(queries), seq_opts);
-  Buffer<double> par_eval = Evaluate(v, Span<const double>(queries), par_opts);
-  EXPECT_EQ(MaxAbsDiff(seq_eval.cspan(), par_eval.cspan()), 0.0);
-
-  Buffer<double> seq_jac = Jacobian(v, Span<const double>(queries), seq_opts);
-  Buffer<double> par_jac = Jacobian(v, Span<const double>(queries), par_opts);
-  EXPECT_EQ(MaxAbsDiff(seq_jac.cspan(), par_jac.cspan()), 0.0);
-}
-
-TEST(QueryKernelsTest, BatchEvaluation) {
-  auto deg1 = LoadBin<int32_t>("eval_bspline_bs1_degrees.bin");
-  auto kv0_1 = LoadBin<double>("eval_bspline_bs1_kv_0.bin");
-  auto cps1 = LoadBin<double>("eval_bspline_bs1_cps.bin");
-  auto q1 = LoadBin<double>("eval_bspline_bs1_queries.bin");
-  auto exp1 = LoadBin<double>("eval_bspline_bs1_eval.bin");
-
-  Span<const double> kv_spans1[1] = {Span<const double>(kv0_1)};
-  SplineView v1;
-  v1.para_dim = 1;
-  v1.dim = 2;
-  v1.degrees = Span<const int32_t>(deg1);
-  v1.knot_vectors = Span<const Span<const double>>(kv_spans1, 1);
-  v1.control_points_data = cps1.data();
-  v1.num_control_points = static_cast<int64_t>(cps1.size()) / 2;
-  v1.cp_stride = 2;
-  v1.dim_stride = 1;
-
-  SplineView views[2] = {v1, v1};
-  SplineBatchView batch(views, 2);
-
-  Span<const double> q_spans[2] = {Span<const double>(q1),
-                                   Span<const double>(q1)};
-  Buffer<double> out1(exp1.size());
-  Buffer<double> out2(exp1.size());
-  Span<double> out_spans[2] = {out1.span(), out2.span()};
-
-  Evaluate(batch,
-           Span<const Span<const double>>(q_spans, 2),
-           Span<Span<double>>(out_spans, 2));
-
-  EXPECT_LT(MaxAbsDiff(out1.cspan(), Span<const double>(exp1)), 1e-12);
-  EXPECT_LT(MaxAbsDiff(out2.cspan(), Span<const double>(exp1)), 1e-12);
-}
-
+} // namespace
 } // namespace splinepy::core

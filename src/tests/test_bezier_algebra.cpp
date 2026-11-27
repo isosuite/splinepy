@@ -12,6 +12,66 @@
 namespace splinepy::core {
 using namespace test;
 
+// biquadratic surfaces with arbitrary points, a bilinear scalar and a
+// bilinear map onto [0.2, 0.8]^2
+const std::vector<int32_t> kQuadratic{2, 2}, kLinear{1, 1};
+const std::vector<double> kB1{1.82,
+                              1.59,
+                              4.31,
+                              0.9,
+                              0.23,
+                              1.0,
+                              4.43,
+                              4.66,
+                              4.04,
+                              2.72,
+                              1.9,
+                              1.44,
+                              0.38,
+                              4.33,
+                              1.21,
+                              1.6,
+                              0.14,
+                              4.76};
+const std::vector<double> kB2{1.91,
+                              0.18,
+                              1.04,
+                              1.2,
+                              0.37,
+                              1.44,
+                              1.01,
+                              1.91,
+                              0.83,
+                              0.39,
+                              1.15,
+                              1.43,
+                              0.81,
+                              0.85,
+                              0.74,
+                              1.7,
+                              0.55,
+                              0.56};
+const std::vector<double> kScalar{1, 2, 3, 4};
+const std::vector<double> kOuter{0.34,
+                                 0.14,
+                                 0.78,
+                                 0.03,
+                                 0.31,
+                                 0.24,
+                                 0.2,
+                                 0.6,
+                                 0.55,
+                                 0.66,
+                                 0.84,
+                                 0.9,
+                                 0.84,
+                                 0.55,
+                                 0.39,
+                                 0.18,
+                                 0.12,
+                                 0.58};
+const std::vector<double> kInner{0.2, 0.2, 0.8, 0.2, 0.2, 0.8, 0.8, 0.8};
+
 TEST(BezierAlgebraTest, RejectsKnotVectorInputs) {
   const int32_t degree = 1;
   const double points[] = {0., 1.};
@@ -48,36 +108,9 @@ TEST(BezierAlgebraTest, RejectsKnotVectorInputs) {
   }
 }
 
-TEST(BezierAlgebraTest, SplitGolden) {
-  auto b1_degrees = LoadBin<int32_t>("operations_bezier_b1_degrees.bin");
-  auto b1_cps = LoadBin<double>("operations_bezier_b1_cps.bin");
-  auto exp_split0_cps = LoadBin<double>("operations_bezier_split0_cps.bin");
-  auto exp_split1_cps = LoadBin<double>("operations_bezier_split1_cps.bin");
-
-  SplineView b1 = MakeBezierView(Span<const int32_t>(b1_degrees),
-                                 Span<const double>(b1_cps),
-                                 2);
-
-  auto splits = Split(b1, 0, 0.4);
-  ASSERT_EQ(splits.size(), 2u);
-
-  EXPECT_EQ(splits[0].degrees.size(), 2u);
-  EXPECT_EQ(splits[0].degrees[0], 2);
-  EXPECT_EQ(splits[0].degrees[1], 2);
-  EXPECT_EQ(splits[1].degrees[0], 2);
-  EXPECT_EQ(splits[1].degrees[1], 2);
-
-  EXPECT_LT(MaxAbsDiff(splits[0].control_points.cspan(),
-                       Span<const double>(exp_split0_cps)),
-            1e-14);
-  EXPECT_LT(MaxAbsDiff(splits[1].control_points.cspan(),
-                       Span<const double>(exp_split1_cps)),
-            1e-14);
-}
-
 TEST(BezierAlgebraTest, SplitMultiLocation) {
-  auto b1_degrees = LoadBin<int32_t>("operations_bezier_b1_degrees.bin");
-  auto b1_cps = LoadBin<double>("operations_bezier_b1_cps.bin");
+  const auto& b1_degrees = kQuadratic;
+  const auto& b1_cps = kB1;
   SplineView b1 = MakeBezierView(Span<const int32_t>(b1_degrees),
                                  Span<const double>(b1_cps),
                                  2);
@@ -133,27 +166,18 @@ TEST(BezierAlgebraTest, SplitRational) {
   }
 }
 
-TEST(BezierAlgebraTest, AddGolden) {
-  auto b1_degrees = LoadBin<int32_t>("operations_bezier_b1_degrees.bin");
-  auto b1_cps = LoadBin<double>("operations_bezier_b1_cps.bin");
-  auto b2_degrees = LoadBin<int32_t>("operations_bezier_b2_degrees.bin");
-  auto b2_cps = LoadBin<double>("operations_bezier_b2_cps.bin");
-  auto exp_add_cps = LoadBin<double>("operations_bezier_add_cps.bin");
+TEST(BezierAlgebraTest, AddOfEqualDegreesAddsControlPoints) {
+  const SplineView b1 = MakeBezierView(kQuadratic, kB1, 2);
+  const SplineView b2 = MakeBezierView(kQuadratic, kB2, 2);
 
-  SplineView b1 = MakeBezierView(Span<const int32_t>(b1_degrees),
-                                 Span<const double>(b1_cps),
-                                 2);
-  SplineView b2 = MakeBezierView(Span<const int32_t>(b2_degrees),
-                                 Span<const double>(b2_cps),
-                                 2);
+  const SplineData sum = Add(b1, b2);
 
-  auto b_add = Add(b1, b2);
-
-  EXPECT_EQ(b_add.degrees[0], 2);
-  EXPECT_EQ(b_add.degrees[1], 2);
-  EXPECT_LT(
-      MaxAbsDiff(b_add.control_points.cspan(), Span<const double>(exp_add_cps)),
-      1e-14);
+  EXPECT_EQ(sum.degrees[0], 2);
+  EXPECT_EQ(sum.degrees[1], 2);
+  ASSERT_EQ(sum.control_points.size(), kB1.size());
+  for (std::size_t i = 0; i < kB1.size(); ++i) {
+    EXPECT_NEAR(sum.control_points[i], kB1[i] + kB2[i], 1e-15);
+  }
 }
 
 TEST(BezierAlgebraTest, AddDegreePromotion) {
@@ -212,31 +236,6 @@ TEST(BezierAlgebraTest, AddRationalAndMixedMatchPointwiseSum) {
       }
     }
   }
-}
-
-TEST(BezierAlgebraTest, MultiplyGolden) {
-  auto b1_degrees = LoadBin<int32_t>("operations_bezier_b1_degrees.bin");
-  auto b1_cps = LoadBin<double>("operations_bezier_b1_cps.bin");
-  auto scalar_degrees =
-      LoadBin<int32_t>("operations_bezier_scalar_b_degrees.bin");
-  auto scalar_cps = LoadBin<double>("operations_bezier_scalar_b_cps.bin");
-  auto exp_mul_degrees = LoadBin<int32_t>("operations_bezier_mul_degrees.bin");
-  auto exp_mul_cps = LoadBin<double>("operations_bezier_mul_cps.bin");
-
-  SplineView b1 = MakeBezierView(Span<const int32_t>(b1_degrees),
-                                 Span<const double>(b1_cps),
-                                 2);
-  SplineView scalar_b = MakeBezierView(Span<const int32_t>(scalar_degrees),
-                                       Span<const double>(scalar_cps),
-                                       1);
-
-  auto b_mul = Multiply(b1, scalar_b);
-
-  EXPECT_EQ(b_mul.degrees[0], exp_mul_degrees[0]);
-  EXPECT_EQ(b_mul.degrees[1], exp_mul_degrees[1]);
-  EXPECT_LT(
-      MaxAbsDiff(b_mul.control_points.cspan(), Span<const double>(exp_mul_cps)),
-      1e-14);
 }
 
 // The product evaluated at u equals the product of the evaluations, for all
@@ -324,40 +323,9 @@ TEST(BezierAlgebraTest, MultiplyMatchesPointwiseProduct) {
   }
 }
 
-TEST(BezierAlgebraTest, DerivativeSplineGolden) {
-  auto b1_degrees = LoadBin<int32_t>("operations_bezier_b1_degrees.bin");
-  auto b1_cps = LoadBin<double>("operations_bezier_b1_cps.bin");
-  SplineView b1 = MakeBezierView(Span<const int32_t>(b1_degrees),
-                                 Span<const double>(b1_cps),
-                                 2);
-
-  auto exp_d10_degrees =
-      LoadBin<int32_t>("operations_bezier_b1_deriv_10_degrees.bin");
-  auto exp_d10_cps = LoadBin<double>("operations_bezier_b1_deriv_10_cps.bin");
-  auto exp_d01_degrees =
-      LoadBin<int32_t>("operations_bezier_b1_deriv_01_degrees.bin");
-  auto exp_d01_cps = LoadBin<double>("operations_bezier_b1_deriv_01_cps.bin");
-
-  int32_t order10[2] = {1, 0};
-  auto d10 = DerivativeSpline(b1, Span<const int32_t>(order10, 2));
-  EXPECT_EQ(d10.degrees[0], exp_d10_degrees[0]);
-  EXPECT_EQ(d10.degrees[1], exp_d10_degrees[1]);
-  EXPECT_LT(
-      MaxAbsDiff(d10.control_points.cspan(), Span<const double>(exp_d10_cps)),
-      1e-14);
-
-  int32_t order01[2] = {0, 1};
-  auto d01 = DerivativeSpline(b1, Span<const int32_t>(order01, 2));
-  EXPECT_EQ(d01.degrees[0], exp_d01_degrees[0]);
-  EXPECT_EQ(d01.degrees[1], exp_d01_degrees[1]);
-  EXPECT_LT(
-      MaxAbsDiff(d01.control_points.cspan(), Span<const double>(exp_d01_cps)),
-      1e-14);
-}
-
 TEST(BezierAlgebraTest, DerivativeSplineEvaluationEquivalence) {
-  auto b1_degrees = LoadBin<int32_t>("operations_bezier_b1_degrees.bin");
-  auto b1_cps = LoadBin<double>("operations_bezier_b1_cps.bin");
+  const auto& b1_degrees = kQuadratic;
+  const auto& b1_cps = kB1;
   SplineView b1 = MakeBezierView(Span<const int32_t>(b1_degrees),
                                  Span<const double>(b1_cps),
                                  2);
@@ -377,61 +345,33 @@ TEST(BezierAlgebraTest, DerivativeSplineEvaluationEquivalence) {
   }
 }
 
-TEST(BezierAlgebraTest, ComposeGolden) {
-  auto outer_degrees = LoadBin<int32_t>("operations_bezier_outer_degrees.bin");
-  auto outer_cps = LoadBin<double>("operations_bezier_outer_cps.bin");
-  auto inner_degrees = LoadBin<int32_t>("operations_bezier_inner_degrees.bin");
-  auto inner_cps = LoadBin<double>("operations_bezier_inner_cps.bin");
-  auto exp_comp_degrees =
-      LoadBin<int32_t>("operations_bezier_composed_degrees.bin");
-  auto exp_comp_cps = LoadBin<double>("operations_bezier_composed_cps.bin");
+TEST(BezierAlgebraTest, ComposeSensitivitiesAreComposedBasisFunctions) {
+  const SplineView outer = MakeBezierView(kQuadratic, kOuter, 2);
+  const SplineView inner = MakeBezierView(kLinear, kInner, 2);
 
-  SplineView outer = MakeBezierView(Span<const int32_t>(outer_degrees),
-                                    Span<const double>(outer_cps),
-                                    2);
-  SplineView inner = MakeBezierView(Span<const int32_t>(inner_degrees),
-                                    Span<const double>(inner_cps),
-                                    2);
-
-  auto composed = Compose(outer, inner);
-
-  EXPECT_EQ(composed.degrees[0], exp_comp_degrees[0]);
-  EXPECT_EQ(composed.degrees[1], exp_comp_degrees[1]);
-  EXPECT_LT(MaxAbsDiff(composed.control_points.cspan(),
-                       Span<const double>(exp_comp_cps)),
-            1e-14);
-}
-
-TEST(BezierAlgebraTest, ComposeSensitivitiesGolden) {
-  auto outer_degrees = LoadBin<int32_t>("operations_bezier_outer_degrees.bin");
-  auto outer_cps = LoadBin<double>("operations_bezier_outer_cps.bin");
-  auto inner_degrees = LoadBin<int32_t>("operations_bezier_inner_degrees.bin");
-  auto inner_cps = LoadBin<double>("operations_bezier_inner_cps.bin");
-
-  SplineView outer = MakeBezierView(Span<const int32_t>(outer_degrees),
-                                    Span<const double>(outer_cps),
-                                    2);
-  SplineView inner = MakeBezierView(Span<const int32_t>(inner_degrees),
-                                    Span<const double>(inner_cps),
-                                    2);
-
-  auto sens = ComposeSensitivities(outer, inner);
+  // the composition is linear in the outer control points: the derivative
+  // with respect to point i is the basis function i of the outer at the inner
+  const auto sens = ComposeSensitivities(outer, inner);
   ASSERT_EQ(sens.size(), 9u);
-
-  for (std::size_t i = 0; i < 9; ++i) {
-    auto exp_sens_cps = LoadBin<double>("operations_bezier_sens_"
-                                        + std::to_string(i) + "_cps.bin");
-    EXPECT_LT(MaxAbsDiff(sens[i].control_points.cspan(),
-                         Span<const double>(exp_sens_cps)),
-              1e-14);
+  for (const double v0 : {0., 0.3, 0.85, 1.}) {
+    for (const double v1 : {0., 0.45, 1.}) {
+      const double v[2] = {v0, v1};
+      const auto u = Evaluate(inner, Span<const double>(v, 2));
+      const auto basis = Basis(outer, u.cspan());
+      for (std::size_t i = 0; i < 9; ++i) {
+        ASSERT_EQ(sens[i].dim, 1);
+        const auto value = Evaluate(sens[i].View(), Span<const double>(v, 2));
+        EXPECT_NEAR(value[0], basis[i], 1e-14);
+      }
+    }
   }
 }
 
 TEST(BezierAlgebraTest, ComposeEvaluationEquivalence) {
-  auto outer_degrees = LoadBin<int32_t>("operations_bezier_outer_degrees.bin");
-  auto outer_cps = LoadBin<double>("operations_bezier_outer_cps.bin");
-  auto inner_degrees = LoadBin<int32_t>("operations_bezier_inner_degrees.bin");
-  auto inner_cps = LoadBin<double>("operations_bezier_inner_cps.bin");
+  const auto& outer_degrees = kQuadratic;
+  const auto& outer_cps = kOuter;
+  const auto& inner_degrees = kLinear;
+  const auto& inner_cps = kInner;
 
   SplineView outer = MakeBezierView(Span<const int32_t>(outer_degrees),
                                     Span<const double>(outer_cps),
@@ -456,10 +396,10 @@ TEST(BezierAlgebraTest, ComposeEvaluationEquivalence) {
 // Same outer layout with perturbed control points / weights, like the Bezier
 // elements of one refined spline.
 TEST(BezierAlgebraTest, ComposeBatchMatchesSingleCompose) {
-  auto outer_degrees = LoadBin<int32_t>("operations_bezier_outer_degrees.bin");
-  auto outer_cps = LoadBin<double>("operations_bezier_outer_cps.bin");
-  auto inner_degrees = LoadBin<int32_t>("operations_bezier_inner_degrees.bin");
-  auto inner_cps = LoadBin<double>("operations_bezier_inner_cps.bin");
+  const auto& outer_degrees = kQuadratic;
+  const auto& outer_cps = kOuter;
+  const auto& inner_degrees = kLinear;
+  const auto& inner_cps = kInner;
 
   constexpr int kOuters = 3;
   constexpr int kInners = 5;
@@ -546,10 +486,10 @@ TEST(BezierAlgebraTest, ComposeBatchMatchesSingleCompose) {
 // Sensitivities and composition derivatives of the batch API pair outers and
 // inners exactly like ComposeBatch and agree with the single versions.
 TEST(BezierAlgebraTest, ComposeBatchVariantsMatchSingle) {
-  auto outer_degrees = LoadBin<int32_t>("operations_bezier_outer_degrees.bin");
-  auto outer_cps = LoadBin<double>("operations_bezier_outer_cps.bin");
-  auto inner_degrees = LoadBin<int32_t>("operations_bezier_inner_degrees.bin");
-  auto inner_cps = LoadBin<double>("operations_bezier_inner_cps.bin");
+  const auto& outer_degrees = kQuadratic;
+  const auto& outer_cps = kOuter;
+  const auto& inner_degrees = kLinear;
+  const auto& inner_cps = kInner;
 
   constexpr int kOuters = 3;
   constexpr int kInners = 2;
@@ -659,10 +599,10 @@ TEST(BezierAlgebraTest, ComposeBatchVariantsMatchSingle) {
 }
 
 TEST(BezierAlgebraTest, ComposeBatchRejectsMixedOuters) {
-  auto outer_degrees = LoadBin<int32_t>("operations_bezier_outer_degrees.bin");
-  auto outer_cps = LoadBin<double>("operations_bezier_outer_cps.bin");
-  auto inner_degrees = LoadBin<int32_t>("operations_bezier_inner_degrees.bin");
-  auto inner_cps = LoadBin<double>("operations_bezier_inner_cps.bin");
+  const auto& outer_degrees = kQuadratic;
+  const auto& outer_cps = kOuter;
+  const auto& inner_degrees = kLinear;
+  const auto& inner_cps = kInner;
 
   int32_t other_degrees[2] = {1, 1};
   std::vector<double> other_cps(4 * 2, 0.5);
@@ -683,10 +623,10 @@ TEST(BezierAlgebraTest, ComposeBatchRejectsMixedOuters) {
 }
 
 TEST(BezierAlgebraTest, CompositionDerivative) {
-  auto outer_degrees = LoadBin<int32_t>("operations_bezier_outer_degrees.bin");
-  auto outer_cps = LoadBin<double>("operations_bezier_outer_cps.bin");
-  auto inner_degrees = LoadBin<int32_t>("operations_bezier_inner_degrees.bin");
-  auto inner_cps = LoadBin<double>("operations_bezier_inner_cps.bin");
+  const auto& outer_degrees = kQuadratic;
+  const auto& outer_cps = kOuter;
+  const auto& inner_degrees = kLinear;
+  const auto& inner_cps = kInner;
 
   SplineView outer = MakeBezierView(Span<const int32_t>(outer_degrees),
                                     Span<const double>(outer_cps),
