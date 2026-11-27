@@ -131,71 +131,20 @@ def solve_for_control_points(
     residual:float
         residual (coefficient_matrix @ control_points - fitting_points)
     """
-    # build matrix
     coefficient_matrix = _make_matrix(
         *fitting_spline.basis_and_support(queries),
         fitting_spline.control_points.shape[0],
     )
-
-    if (
-        interpolate_endpoints
-        and fitting_spline.control_points.shape != fitting_points.shape
-    ):
-        # reduction of matrix necessary for interpolation of endpoints
-        # copy fitting_points to keep original fitting_points unchanged
-        rhs = fitting_points.copy()
-
-        fitting_spline.control_points[0] = rhs[0]
-        fitting_spline.control_points[-1] = rhs[-1]
-
-        if fitting_spline.control_points.shape[0] == 2:
-            # control points equal to endpoints (straight line)
-            residual = _np.linalg.norm(
-                coefficient_matrix @ fitting_spline.control_points
-                - fitting_points
-            )
-        elif _has_scipy:
-            # move known values to RHS
-            rhs[1:-1, :] -= (
-                coefficient_matrix[1:-1, [0]] * fitting_points[0, :]
-                + coefficient_matrix[1:-1, [-1]] * fitting_points[-1, :]
-            ).todense()
-
-            # solve system A^TAx = A^Tb
-            # (tried using scipy.sparse.linalg.lsqr but had worse performance)
-            at = coefficient_matrix[1:-1, 1:-1].transpose(copy=True)
-            fitting_spline.control_points[1:-1] = _spsolve(
-                at @ coefficient_matrix[1:-1, 1:-1], at @ rhs[1:-1]
-            ).reshape(fitting_spline.control_points[1:-1].shape)
-        else:
-            # move known values to RHS
-            rhs[1:-1, :] += (
-                -coefficient_matrix[1:-1, [0]] * fitting_points[0, :]
-                - coefficient_matrix[1:-1, [-1]] * fitting_points[-1, :]
-            )
-
-            # solve system using lstsq
-
-            fitting_spline.control_points[1:-1] = _np.linalg.lstsq(
-                coefficient_matrix[1:-1, 1:-1], rhs[1:-1], rcond=None
-            )[0]
-
-    # interpolation or approximation with original system
-    elif _has_scipy:
-        at = coefficient_matrix.transpose(copy=True)
-        fitting_spline.control_points = _spsolve(
-            at @ coefficient_matrix, at @ fitting_points
-        ).reshape(fitting_spline.control_points.shape)
-
-    else:
-        fitting_spline.control_points = _np.linalg.lstsq(
-            coefficient_matrix, fitting_points, rcond=None
-        )[0]
-
-    residual = _np.linalg.norm(
+    fitting_spline.control_points = _fit_coefficients(
+        coefficient_matrix,
+        fitting_points,
+        interpolate_endpoints,
+        [0, len(fitting_points) - 1],
+        [0, len(fitting_spline.control_points) - 1],
+    )
+    return _np.linalg.norm(
         coefficient_matrix @ fitting_spline.control_points - fitting_points
     )
-    return residual
 
 
 def _validate_specifications(n_query, degree, n_control_points, knot_vector):
@@ -570,7 +519,6 @@ def tensor(
         matrix = _make_matrix(
             *fitted.basis_and_support(grid_queries),
             len(fitted.control_points),
-            as_array=True,
         )
         corners = _np.ravel_multi_index(
             _np.ix_(*[(0, count - 1) for count in size]), size, order="F"
@@ -613,18 +561,32 @@ def tensor(
 
 
 def _fit_coefficients(matrix, points, interpolate_endpoints, rows, columns):
-    """Solve for all coordinate columns, eliminating interpolated endpoints."""
+    """Least squares coefficients of a dense or sparse basis matrix.
+
+    Endpoints are eliminated where the basis interpolates them, that is,
+    where the rows of the end samples are unit rows.
+    """
+    sparse = not isinstance(matrix, _np.ndarray)
+    n_columns = matrix.shape[1]
+    result = _np.empty((n_columns, points.shape[1]))
+    free = _np.ones(n_columns, dtype=bool)
     if interpolate_endpoints:
-        n_columns = matrix.shape[1]
         endpoint_basis = _np.zeros((len(rows), n_columns))
         endpoint_basis[_np.arange(len(rows)), columns] = 1
-        if _np.allclose(matrix[rows], endpoint_basis, rtol=0, atol=1e-12):
-            result = _np.empty((n_columns, points.shape[1]))
-            result[columns] = points[rows]
-            free = _np.ones(n_columns, dtype=bool)
+        at_ends = matrix[rows].toarray() if sparse else matrix[rows]
+        if _np.allclose(at_ends, endpoint_basis, rtol=0, atol=1e-12):
             free[columns] = False
-            if free.any():
-                rhs = points - matrix[:, ~free] @ result[~free]
-                result[free] = _np.linalg.lstsq(matrix[:, free], rhs, rcond=None)[0]
-            return result
-    return _np.linalg.lstsq(matrix, points, rcond=None)[0]
+            result[columns] = points[rows]
+            points = points - matrix[:, ~free] @ result[~free]
+    if not free.any():
+        return result
+    system = matrix[:, free]
+    if sparse:
+        # normal equations; lsqr was slower
+        transposed = system.T.tocsr()
+        result[free] = _spsolve(
+            (transposed @ system).tocsc(), transposed @ points
+        ).reshape(-1, points.shape[1])
+    else:
+        result[free] = _np.linalg.lstsq(system, points, rcond=None)[0]
+    return result

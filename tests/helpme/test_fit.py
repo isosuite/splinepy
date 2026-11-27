@@ -142,3 +142,13 @@ def test_parameterize_ignores_constant_grid_lines():
     points = np.array([[0, 0], [0, 0], [0, 1], [2, 1]])
     queries = splinepy.helpme.fit.parameterize(points, (2, 2), True)
     np.testing.assert_array_equal(queries, [[[0], [1]], [[0], [1]]])
+
+
+def test_curve_fit_only_pins_ends_the_basis_interpolates():
+    queries = np.linspace(0.2, 0.8, 5).reshape(-1, 1)
+    line = splinepy.Bezier([1], [[0.0], [1.0]])
+    fitted, residual = splinepy.helpme.fit.curve(
+        2 * queries + 1, fitting_spline=line, associated_queries=queries
+    )
+    assert residual < 1e-12
+    np.testing.assert_allclose(fitted.cps, [[1], [3]], atol=1e-12)
