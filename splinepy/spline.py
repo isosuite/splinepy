@@ -513,28 +513,10 @@ class Spline(_core.SplineCore, _SplinepyBase):
             return RequiredProperties.union()
 
     @property
-    def whatami(self):
-        """
-        Answers a deep philosophical question of "what am i?"
-
-        Parameters
-        -----------
-        None
-
-        Returns
-        --------
-        whatami: str
-        """
-        if self.has_knot_vectors:
-            return "NURBS" if self.is_rational else "BSpline"
-        return "RationalBezier" if self.is_rational else "Bezier"
-
-    @property
     def name(self):
         """
-        Name of the spline provided by cpp side as a str.
-        Should be same as type(spline).__qualname__ if you are using
-        a specified spline, i.e., not `Spline`.
+        Name of the spline type: "Bezier", "RationalBezier", "BSpline" or
+        "NURBS". A plain `Spline` is named after the properties it holds.
 
         Parameters
         -----------
@@ -544,7 +526,12 @@ class Spline(_core.SplineCore, _SplinepyBase):
         -------
         name: str
         """
-        return self.whatami
+        for base in type(self).__mro__:
+            if base.__name__ in ("Bezier", "RationalBezier", "BSpline", "NURBS"):
+                return base.__name__
+        if self.has_knot_vectors:
+            return "NURBS" if self.is_rational else "BSpline"
+        return "RationalBezier" if self.is_rational else "Bezier"
 
     @property
     def extract(self):
@@ -750,7 +737,7 @@ class Spline(_core.SplineCore, _SplinepyBase):
         knot_vectors: list of numpy.ndarray
         """
         if not self.has_knot_vectors:
-            raise ValueError(f"{self.whatami} has no knot vectors.")
+            raise ValueError(f"{self.name} has no knot vectors.")
         knot_vectors = [_np.array(kv) for kv in self._knot_vectors]
         yield knot_vectors
         self.knot_vectors = knot_vectors

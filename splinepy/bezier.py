@@ -317,7 +317,7 @@ class BezierBase(_spline.Spline):
         extracted: type(self)
         """
         if dim >= self.dim:
-            raise ValueError(f"Can't extract ({dim}) dim from {self.whatami}.")
+            raise ValueError(f"Can't extract ({dim}) dim from {self.name}.")
 
         return _core.extract_dim(self, dim)
 

@@ -113,7 +113,7 @@ def test_inplace_change_control_points(nd_box):
         # check if we are good to start
         assert np.allclose(
             orig.sample(res), s.sample(res)
-        ), f"{s.whatami} failed"
+        ), f"{s.name} failed"
 
         # hold reference to control points
         s_cps = s.control_points
@@ -121,15 +121,15 @@ def test_inplace_change_control_points(nd_box):
         s.control_points /= 2
         assert np.allclose(
             orig.sample(res) / 2, s.sample(res)
-        ), f"{s.whatami} failed"
+        ), f"{s.name} failed"
         # check if they are still the same array
-        assert s_cps is s.control_points, f"{s.whatami} failed"
+        assert s_cps is s.control_points, f"{s.name} failed"
 
         # modify ws
         if s.is_rational:
             s_ws = s.weights
             s.weights *= 0.5
-            assert s_ws is s.weights, f"{s.whatami} failed"
+            assert s_ws is s.weights, f"{s.name} failed"
 
 
 def test_inplace_change_weights(nurbs_2p2d):

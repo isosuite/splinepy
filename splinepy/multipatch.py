@@ -40,7 +40,7 @@ class _ImplicitZeroPatch:
         if patch is not None:
             return getattr(patch, name)
         if name in {
-            "name", "whatami", "dim", "para_dim", "is_rational", "has_knot_vectors",
+            "name", "dim", "para_dim", "is_rational", "has_knot_vectors",
             "degrees", "knot_vectors", "weights", "control_mesh_resolutions",
             "parametric_bounds",
         }:
@@ -276,20 +276,6 @@ class Multipatch(_SplinepyBase):
         name : str
         """
         return "Multipatch"
-
-    @property
-    def whatami(self):
-        """Short description of the object
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        description : str
-        """
-        return f"Multipatch with {len(self._patch_entries)} patches."
 
     @property
     def patches(self):

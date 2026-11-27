@@ -39,7 +39,7 @@ def test_queries_inside_spline_initial_guess_with_kdt(
 
     assert np.allclose(
         para_q, prox_r[0]
-    ), f"WRONG proximity query for {spline.whatami}"
+    ), f"WRONG proximity query for {spline.name}"
 
 
 def test_queries_off_a_curve_reach_a_stationary_point(np_rng):

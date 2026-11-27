@@ -5,7 +5,6 @@ keys in raw files are:
   - control_points : (ncpts, dim) np.ndarray, float64
   - degrees : (para_dim,) np.ndarray, int32
   - knot_vectors : (1,) np.ndarray, str
-  - whatami : (1,) np.ndarray, str
 """
 
 import numpy as _np

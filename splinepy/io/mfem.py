@@ -658,7 +658,7 @@ def export(fname, nurbs, precision=None):
     --------
     None
     """
-    if not nurbs.whatami.startswith("NURBS"):
+    if nurbs.name != "NURBS":
         nurbs = nurbs.nurbs
 
     def text(x):

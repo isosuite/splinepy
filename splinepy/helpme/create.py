@@ -752,7 +752,7 @@ def determinant_spline(spline):
     if spline.dim != spline.para_dim:
         raise ValueError(
             "Dimension of parameter space and physical space"
-            f"are not the same ({spline.whatami})!"
+            f"are not the same ({spline.name})!"
         )
 
     # checks if spline is rational and if weights differ
@@ -762,7 +762,7 @@ def determinant_spline(spline):
         spline.weights, spline.weights.ravel()[0]
     ):
         _log.warning(
-            f"Spline is rational ({spline.whatami}) with unequal weights!"
+            f"Spline is rational ({spline.name}) with unequal weights!"
             "Result is only an approximation."
         )
 

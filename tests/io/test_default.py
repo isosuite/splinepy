@@ -20,7 +20,7 @@ def test_extension_selects_the_format(extension, tmp_path):
         loaded = loaded.patches
     if isinstance(loaded, list):
         (loaded,) = loaded
-    assert loaded.whatami == nurbs.whatami
+    assert type(loaded) is type(nurbs)
     # iges embeds in three dimensions
     np.testing.assert_array_equal(loaded.cps[:, :2], nurbs.cps)
     np.testing.assert_array_equal(loaded.weights, nurbs.weights)

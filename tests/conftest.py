@@ -218,7 +218,7 @@ def to_tmpf():
 def are_splines_equal():
     def _are_splines_equal(a, b):
         """returns True if Splines are equivalent"""
-        if a.whatami != b.whatami:
+        if a.name != b.name:
             return False
         for req_prop in a.required_properties:
             if req_prop == "knot_vectors":
