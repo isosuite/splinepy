@@ -892,6 +892,7 @@ def load(fname, load_options=True):
 
     # Init return value
     list_of_splines = []
+    geometry_ids = []
     list_of_options = []
     interface_array = None
     invalid_integer = -99919412
@@ -968,6 +969,7 @@ def load(fname, load_options=True):
         elif child.tag.startswith("Geometry"):
             spline_dict = {}
             _debug(f"Found new spline in xml with id {child.attrib.get('id')}")
+            geometry_ids.append(int(child.attrib.get("id", len(geometry_ids))))
             for info in child:
                 if "basis" in info.tag.lower():
                     retrieve_from_basis_(info, spline_dict)
@@ -993,6 +995,11 @@ def load(fname, load_options=True):
             continue
 
     _debug(f"Found a total of {len(list_of_splines)} BSplines and NURBS")
+    if interface_array is not None:
+        # the topology refers to patches by id, not by their place in the file
+        list_of_splines = [
+            list_of_splines[i] for i in _np.argsort(geometry_ids, kind="stable")
+        ]
     multipatch = _Multipatch(list_of_splines)
     if interface_array is not None:
         unmatched = _np.unique(

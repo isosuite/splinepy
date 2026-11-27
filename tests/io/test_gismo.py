@@ -490,3 +490,27 @@ def test_gismo_import_ignores_incomplete_interfaces(tmp_path):
     assert (loaded.interfaces >= 0).sum() == 2
     assert (loaded.interfaces < 0).sum() == 6
     assert loaded.interfaces.min() == -1
+
+
+def test_gismo_import_orders_patches_by_id(tmp_path):
+    import xml.etree.ElementTree as ET
+
+    boxes = [splinepy.helpme.create.box(1, 1).bspline for _ in range(3)]
+    for i, box in enumerate(boxes):
+        box.control_points[:, 0] += i
+    fname = str(tmp_path / "three.xml")
+    splinepy.io.gismo.export(fname, splinepy.Multipatch(boxes))
+    expected = splinepy.io.gismo.load(fname, load_options=False)
+
+    tree = ET.parse(fname)
+    root = tree.getroot()
+    geometries = [child for child in root if child.tag == "Geometry"]
+    for geometry in geometries:
+        root.remove(geometry)
+    root.extend(geometries[::-1])
+    tree.write(fname)
+    loaded = splinepy.io.gismo.load(fname, load_options=False)
+
+    np.testing.assert_array_equal(loaded.interfaces, expected.interfaces)
+    for patch, reference in zip(loaded.patches, expected.patches, strict=True):
+        np.testing.assert_array_equal(patch.cps, reference.cps)
