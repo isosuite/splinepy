@@ -12,7 +12,7 @@ def _no_browser(monkeypatch):
     monkeypatch.setattr(viewer.Viewer, "open", lambda _self, **_kw: None)
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def chromium():
     playwright = pytest.importorskip("playwright.sync_api")
     with playwright.sync_playwright() as pw:
@@ -326,16 +326,30 @@ def test_integer_colors():
 
 
 @pytest.mark.usefixtures("chromium")
-def test_refined_thb_renders_headlessly(tmp_path):
-    spline = splinepy.THBSpline(
+def test_headless_frames_of_other_scenes_and_cameras(tmp_path):
+    """one browser renders a refined THB surface, a textured surface and a
+    second camera"""
+    thb = splinepy.THBSpline(
         [1, 1],
         [[0, 0, 1, 1]] * 2,
         [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 1]],
     )
-    spline.refine([0], admissible=None)
-    shown = spline.show(backend="viewer", open=False, resolutions=4, c=1)
-    path = shown.screenshot(tmp_path / "thb.png", 320, 240)
-    _assert_drawn(path, 320, 240)
+    thb.refine([0], admissible=None)
+    refined = thb.show(backend="viewer", open=False, resolutions=4, c=1)
+    img = np.zeros((2, 2, 3))
+    img[0, 0] = img[1, 1] = 1
+    textured = viewer.show(_surface(), texture=img, lighting="glossy")
+    camera = viewer.turntable(textured.scene, 4)[1]
+
+    paths = refined.render_frames(
+        tmp_path, [refined.scene, textured.scene, camera], 320, 240
+    )
+
+    assert [path.name for path in paths] == ["00000.png", "00001.png", "00002.png"]
+    for path in paths:
+        _assert_drawn(path, 320, 240)
+    images = [path.read_bytes() for path in paths]
+    assert len(set(images)) == 3
 
 
 def test_spline_show_backend_switch(monkeypatch):
@@ -424,15 +438,6 @@ def test_png_encoder_roundtrip():
 
     arr = (np.random.default_rng(42).random((5, 7, 3)) * 255).astype(np.uint8)
     assert np.array_equal(np.asarray(Image.open(io.BytesIO(_png(arr)))), arr)
-
-
-@pytest.mark.usefixtures("chromium")
-def test_headless_render_with_texture_and_lighting(tmp_path):
-    img = np.zeros((2, 2, 3))
-    img[0, 0] = img[1, 1] = 1
-    v = viewer.show(_surface(), texture=img, lighting="glossy")
-    v.screenshot(tmp_path / "t.png", 200, 150)
-    _assert_drawn(tmp_path / "t.png", 200, 150)
 
 
 def test_show_opens_browser_outside_notebooks(monkeypatch):
