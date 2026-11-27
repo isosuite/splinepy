@@ -6,6 +6,16 @@ import splinepy as _splinepy
 from splinepy._version import __version__
 
 
+def _load(fname):
+    """Loads a file as a list of splines, whatever its reader returns."""
+    loaded = _splinepy.io.load(fname)
+    if isinstance(loaded, tuple):  # gismo: (multipatch, options)
+        loaded = loaded[0]
+    if isinstance(loaded, _splinepy.Multipatch):
+        return loaded.patches
+    return loaded if isinstance(loaded, list) else [loaded]
+
+
 def convert(args):
     """Commandline interface functionality keyword convert.
 
@@ -25,14 +35,10 @@ def convert(args):
     -------
     None
     """
-    fname = args.input_file
-    from splinepy import io
-
-    loaded = io.load(fname)
-    if not isinstance(loaded, list):
-        loaded = [loaded]
-    if args.output_file:
-        io.export(args.output_file, loaded)
+    loaded = _load(args.input_file)
+    if args.output_file.lower().endswith(".mesh") and len(loaded) == 1:
+        loaded = loaded[0]  # mfem writes single patches
+    _splinepy.io.export(args.output_file, loaded)
 
 
 def show(args):
@@ -53,12 +59,7 @@ def show(args):
     -------
     None
     """
-    fname = args.input_file
-    from splinepy import io
-
-    loaded = io.load(fname)
-    if not isinstance(loaded, list):
-        loaded = [loaded]
+    loaded = _load(args.input_file)
     for loaded_object in loaded:
         loaded_object.show_options["knots"] = args.no_knot_vectors
         loaded_object.show_options["control_points"] = args.no_control_points
