@@ -6,11 +6,6 @@ import pytest
 import splinepy
 
 
-def error_log(*args):
-    """used instead of print within the test"""
-    splinepy.utils.log.error(*args)
-
-
 @pytest.fixture
 def np_rng():
     return np.random.default_rng(seed=0)
@@ -73,18 +68,6 @@ def big_perturbation():
     return 0.1
 
 
-@pytest.fixture
-def fd_derivative_stepsizes_and_weights():
-    """Stepsizes and weights for the calculation of the derivative using finite
-    differences. Using fourth-order accurate centered scheme.
-
-    Returns
-    -------
-    stepsizes_and_weights, denominator: dict<int:int>
-    """
-    return {-2: 1 / 12, -1: -8 / 12, 1: 8 / 12, 2: -1 / 12}
-
-
 # initializing a spline should be a test itself, so provide `dict_spline`
 # this is "iga-book"'s fig 2.15.
 @pytest.fixture
@@ -112,104 +95,53 @@ def bspline_2p2d():
     )
 
 
-# half-half circle.
+# a quarter ring of inner radius 1 and outer radius 2
+RING_POINTS = [[-1, 0], [-1, 1], [0, 1], [-2, 0], [-2, 2], [0, 2]]
+RING_WEIGHTS = [1.0, 2**-0.5, 1.0, 1.0, 2**-0.5, 1.0]
+# a twisted trilinear block
+BLOCK_POINTS = [
+    [0.0, 0.0, 0.0],
+    [1.0, 0.0, 0.0],
+    [0.0, 1.0, 0.0],
+    [1.0, 1.0, 0.0],
+    [0.0, -1.0, 1.0],
+    [1.0, 0.0, 1.0],
+    [-1.0, 1.0, 2.0],
+    [2.0, 2.0, 2.0],
+]
+
+
 @pytest.fixture
 def nurbs_2p2d():
     return splinepy.NURBS(
         degrees=[2, 1],
-        knot_vectors=[
-            [0, 0, 0, 1, 1, 1],
-            [0, 0, 1, 1],
-        ],
-        control_points=[
-            [-1.0, 0.0],
-            [-1.0, 1.0],
-            [0.0, 1.0],
-            [-2.0, 0.0],
-            [-2.0, 2.0],
-            [0.0, 2.0],
-        ],
-        weights=[
-            [1.0],
-            [2**-0.5],
-            [1.0],
-            [1.0],
-            [2**-0.5],
-            [1.0],
-        ],
+        knot_vectors=[[0, 0, 0, 1, 1, 1], [0, 0, 1, 1]],
+        control_points=RING_POINTS,
+        weights=RING_WEIGHTS,
     )
 
 
 @pytest.fixture
 def bezier_2p2d():
-    return splinepy.Bezier(
-        degrees=[2, 1],
-        control_points=[
-            [-1.0, 0.0],
-            [-1.0, 1.0],
-            [0.0, 1.0],
-            [-2.0, 0.0],
-            [-2.0, 2.0],
-            [0.0, 2.0],
-        ],
-    )
+    return splinepy.Bezier(degrees=[2, 1], control_points=RING_POINTS)
 
 
 @pytest.fixture
 def rational_bezier_2p2d():
     return splinepy.RationalBezier(
-        degrees=[2, 1],
-        control_points=[
-            [-1.0, 0.0],
-            [-1.0, 1.0],
-            [0.0, 1.0],
-            [-2.0, 0.0],
-            [-2.0, 2.0],
-            [0.0, 2.0],
-        ],
-        weights=[
-            [1.0],
-            [2**-0.5],
-            [1.0],
-            [1.0],
-            [2**-0.5],
-            [1.0],
-        ],
+        degrees=[2, 1], control_points=RING_POINTS, weights=RING_WEIGHTS
     )
 
 
 @pytest.fixture
 def bezier_3p3d():
-    return splinepy.Bezier(
-        degrees=[1, 1, 1],
-        control_points=[
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [1.0, 1.0, 0.0],
-            [0.0, -1.0, 1.0],
-            [1.0, 0.0, 1.0],
-            [-1.0, 1.0, 2.0],
-            [2.0, 2.0, 2.0],
-        ],
-    )
+    return splinepy.Bezier(degrees=[1, 1, 1], control_points=BLOCK_POINTS)
 
 
 @pytest.fixture
 def rational_bezier_3p3d():
     return splinepy.RationalBezier(
-        degrees=[1, 1, 1],
-        control_points=[
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [1.0, 1.0, 0.0],
-            [0.0, -1.0, 1.0],
-            [1.0, 0.0, 1.0],
-            [-1.0, 1.0, 2.0],
-            [2.0, 2.0, 2.0],
-        ],
-        weights=[1.0] * 8,
+        degrees=[1, 1, 1], control_points=BLOCK_POINTS, weights=[1.0] * 8
     )
 
 
@@ -217,21 +149,8 @@ def rational_bezier_3p3d():
 def bspline_3p3d():
     return splinepy.BSpline(
         degrees=[1, 1, 1],
-        control_points=[
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [1.0, 1.0, 0.0],
-            [0.0, -1.0, 1.0],
-            [1.0, 0.0, 1.0],
-            [-1.0, 1.0, 2.0],
-            [2.0, 2.0, 2.0],
-        ],
-        knot_vectors=[
-            [0.0, 0.0, 1.0, 1.0],
-            [0.0, 0.0, 1.0, 1.0],
-            [0.0, 0.0, 1.0, 1.0],
-        ],
+        control_points=BLOCK_POINTS,
+        knot_vectors=[[0.0, 0.0, 1.0, 1.0]] * 3,
     )
 
 
@@ -239,22 +158,9 @@ def bspline_3p3d():
 def nurbs_3p3d():
     return splinepy.NURBS(
         degrees=[1, 1, 1],
-        control_points=[
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [1.0, 1.0, 0.0],
-            [0.0, -1.0, 1.0],
-            [1.0, 0.0, 1.0],
-            [-1.0, 1.0, 2.0],
-            [2.0, 2.0, 2.0],
-        ],
+        control_points=BLOCK_POINTS,
         weights=[1.0] * 8,
-        knot_vectors=[
-            [0.0, 0.0, 1.0, 1.0],
-            [0.0, 0.0, 1.0, 1.0],
-            [0.0, 0.0, 1.0, 1.0],
-        ],
+        knot_vectors=[[0.0, 0.0, 1.0, 1.0]] * 3,
     )
 
 
@@ -310,7 +216,7 @@ def to_tmpf():
 
 @pytest.fixture
 def are_splines_equal():
-    def _are_splines_equal(a, b, print_=False):
+    def _are_splines_equal(a, b):
         """returns True if Splines are equivalent"""
         if a.whatami != b.whatami:
             return False
@@ -318,55 +224,9 @@ def are_splines_equal():
             if req_prop == "knot_vectors":
                 for aa, bb in zip(a.knot_vectors, b.knot_vectors, strict=True):
                     if not np.allclose(aa.numpy(), bb.numpy()):
-                        if print_:
-                            error_log("a.kvs", a.kvs)
-                            error_log("b.kvs", b.kvs)
                         return False
             elif not np.allclose(getattr(a, req_prop), getattr(b, req_prop)):
-                if print_:
-                    error_log(f"a.{req_prop}", getattr(a, req_prop))
-                    error_log(f"b.{req_prop}", getattr(b, req_prop))
                 return False
         return True
 
     return _are_splines_equal
-
-
-@pytest.fixture
-def are_items_close():
-    def _are_items_close(a, b):
-        """returns True if items in a and b are close"""
-        all_close = True
-
-        for i, (aa, bb) in enumerate(zip(a, b, strict=True)):
-            if not all(np.isclose(aa, bb)):
-                # print to inform
-                error_log(f"elements in index-{i} are not close")
-                error_log(f"  from first: {aa}")
-                error_log(f"  from second: {bb}")
-
-                all_close = False
-
-        return all_close
-
-    return _are_items_close
-
-
-@pytest.fixture
-def are_items_same():
-    def _are_items_same(a, b):
-        """returns True if items in a and b are same"""
-        all_same = True
-
-        for i, (aa, bb) in enumerate(zip(a, b, strict=True)):
-            if aa != bb:
-                # print to inform
-                error_log(f"element in index-{i} are not same")
-                error_log(f"  from first: {aa}")
-                error_log(f"  from second: {bb}")
-
-                all_same = False
-
-        return all_same
-
-    return _are_items_same
