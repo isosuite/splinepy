@@ -101,6 +101,32 @@ def edges(
     return _mesh.merge(lines)
 
 
+def _boundary_faces(spline, resolution):
+    """Quads on the six sides of volumes, wound to face outwards where the
+    jacobian determinant is positive."""
+    multi = spline.name.startswith("Multi")
+    if multi:
+        sides = spline.boundary_patch_ids() % 6
+        patches = spline.boundary_multipatch().patches
+    meshes = []
+    for side in range(6):
+        if multi:
+            group = [patches[i] for i in _np.flatnonzero(sides == side)]
+            if not group:
+                continue
+            boundary = type(spline)(group)
+        else:
+            boundary = spline.extract.boundaries([side])[0]
+        # sides 2k and 2k+1 are normal to axis k
+        mesh = _sampled_grid(
+            boundary, resolution[: side // 2] + resolution[side // 2 + 1 :]
+        )
+        if (side // 2 + side) % 2 == 0:
+            mesh["connectivity"] = mesh["connectivity"][:, ::-1]
+        meshes.append(mesh)
+    return _mesh.merge(meshes)
+
+
 def faces(
     spline,
     resolution,
@@ -130,15 +156,7 @@ def faces(
     if spline.para_dim == 2:
         faces = _sampled_grid(spline, resolution)
     elif spline.para_dim == 3:
-        full_res = [int(r) for r in _enforce_len(resolution, 3)]
-        if spline.name.startswith("Multi"):
-            faces = _sampled_grid(spline.boundary_multipatch(), max(full_res))
-        else:
-            # boundary 2k and 2k+1 are normal to axis k
-            faces = _mesh.merge(
-                _sampled_grid(b, full_res[: i // 2] + full_res[i // 2 + 1 :])
-                for i, b in enumerate(spline.extract.boundaries())
-            )
+        faces = _boundary_faces(spline, [int(r) for r in _enforce_len(resolution, 3)])
     else:
         raise ValueError("Invalid spline to make faces.")
 

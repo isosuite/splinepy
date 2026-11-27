@@ -521,3 +521,18 @@ def test_extract_sub_spline_repeated_knots_and_invalid_splits():
     for axis, split in [(1, 0.5), (0, []), (0, (1, 0)), (0, np.nan), (0, 1.1)]:
         with pytest.raises(ValueError):
             spline.extract.spline(axis, split)
+
+
+@pytest.mark.parametrize("multipatch", [False, True])
+def test_volume_faces_face_outwards_with_their_own_resolution(multipatch):
+    box = splinepy.helpme.create.box(1, 1, 1).bspline
+    volume = splinepy.Multipatch([box]) if multipatch else box
+    faces = volume.extract.faces([2, 3, 4], watertight=False)
+    vertices, quads = faces["vertices"], faces["connectivity"]
+    assert len(quads) == 22
+    normals = np.cross(
+        vertices[quads[:, 1]] - vertices[quads[:, 0]],
+        vertices[quads[:, 3]] - vertices[quads[:, 0]],
+    )
+    outwards = vertices[quads].mean(axis=1) - 0.5
+    assert (np.einsum("ij,ij->i", normals, outwards) > 0).all()
