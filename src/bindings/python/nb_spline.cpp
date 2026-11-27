@@ -64,8 +64,8 @@ bool QueriesInBounds(const core::SplineView& view,
   const size_t size = queries.size();
   for (size_t i = 0; i < size; i += dimension) {
     for (size_t d = 0; d < dimension; ++d) {
-      // like numpy's min / max checks, NaN passes
-      if (q[i + d] < lower[d] || q[i + d] > upper[d]) {
+      // written so that NaN fails
+      if (!(q[i + d] >= lower[d] && q[i + d] <= upper[d])) {
         return false;
       }
     }

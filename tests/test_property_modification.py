@@ -304,4 +304,5 @@ def test_queries_report_bad_values_they_read_and_no_others(method, args, nthread
     spline.control_points[0] = 0
 
     # a NaN query is not the spline's fault
-    assert np.isnan(query([[np.nan, 0.5]], *args)).any()
+    with pytest.raises(ValueError, match="Queries must be finite"):
+        query([[np.nan, 0.5]], *args)
