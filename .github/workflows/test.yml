@@ -1,10 +1,16 @@
-name: Builds minimal and runs tests
+name: Builds and runs tests
 
 on:
-  push
+  push:
+    branches: ["main"]
+  pull_request:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build_and_tests:
@@ -12,7 +18,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        python-version: ["3.12"]
+        # the oldest and newest supported python, and 3.12 as a debug build;
+        # 3.13 runs in the wheel test and every version in release wheels
+        python-version: ["3.10", "3.12", "3.14"]
         os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
@@ -23,26 +31,26 @@ jobs:
         python-version: ${{ matrix.python-version }}
 
     - name: build
-      if: matrix.os != 'windows-latest'
-      run: |
-        pip install ".[test]" -v --config-settings=cmake.build-type="Debug"
-
-    - name: build for windows
-      if: matrix.os == 'windows-latest'
+      if: matrix.python-version != '3.12' || matrix.os == 'windows-latest'
       run: |
         pip install ".[test]" -v
+
+    - name: build debug
+      if: matrix.python-version == '3.12' && matrix.os != 'windows-latest'
+      run: |
+        pip install ".[test]" -v --config-settings=cmake.build-type="Debug"
 
     # Every other job has scipy from the test extra; this one covers the
     # numpy-only fallbacks.
     - name: remove scipy
-      if: matrix.os == 'ubuntu-latest'
+      if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
       run: |
         pip uninstall -y scipy
 
     # The viewer's screenshot and widget tests skip without these; this job
     # runs them in headless Chromium.
     - name: install headless browser
-      if: matrix.os == 'ubuntu-latest'
+      if: matrix.python-version == '3.12' && matrix.os == 'ubuntu-latest'
       run: |
         pip install playwright pillow anywidget
         playwright install --with-deps chromium

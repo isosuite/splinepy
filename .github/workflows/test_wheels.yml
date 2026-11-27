@@ -4,31 +4,16 @@ on:
   pull_request
 
 jobs:
-  macos_wheel:
-    runs-on: macos-latest
+  wheel:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
 
     steps:
     - uses: actions/checkout@v4
     - name: build wheels
-      uses: pypa/cibuildwheel@v2.23.2
-      env:
-        CIBW_ARCHS: native
-        CIBW_BUILD: "cp313-*"
-        SKBUILD_INSTALL_COMPONENTS: PythonModule
-
-    - uses: actions/upload-artifact@v4
-      with:
-        name: wheels-macos
-        path: ./wheelhouse/*.whl
-        retention-days: 1
-
-  linux_wheel:
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v4
-    - name: build wheels
-      uses: pypa/cibuildwheel@v2.23.2
+      uses: pypa/cibuildwheel@v4.1.0
       env:
         CIBW_ARCHS: native
         CIBW_BUILD: "cp313-*"
@@ -37,25 +22,7 @@ jobs:
 
     - uses: actions/upload-artifact@v4
       with:
-        name: wheels-linux
-        path: ./wheelhouse/*.whl
-        retention-days: 1
-
-  windows_wheel:
-    runs-on: windows-latest
-
-    steps:
-    - uses: actions/checkout@v4
-    - name: build wheels
-      uses: pypa/cibuildwheel@v2.23.2
-      env:
-        CIBW_ARCHS: native
-        CIBW_BUILD: "cp313-*"
-        SKBUILD_INSTALL_COMPONENTS: PythonModule
-
-    - uses: actions/upload-artifact@v4
-      with:
-        name: wheels-windows
+        name: wheels-${{ matrix.os }}
         path: ./wheelhouse/*.whl
         retention-days: 1
 
@@ -75,7 +42,7 @@ jobs:
 
 
   try_download_artifact:
-    needs: [macos_wheel, linux_wheel, windows_wheel, source_dist]
+    needs: [wheel, source_dist]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

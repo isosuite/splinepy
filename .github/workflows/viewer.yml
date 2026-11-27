@@ -2,6 +2,7 @@ name: Viewer bundle
 
 on:
   push:
+    branches: ["main"]
     paths:
       - "splinepy/viewer/js/**"
       - "splinepy/viewer/static/**"
