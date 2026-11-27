@@ -32,6 +32,10 @@ def _export_internal(fname, splines):
     for s in splines:
         # Bump to 3D if needed
         cps = _np.array(s.control_points, dtype=_np.float64)
+        if cps.shape[1] > 3:
+            raise ValueError(
+                f"IGES only supports up to 3 dimensions, given {cps.shape[1]}."
+            )
         if cps.shape[1] < 3:
             cps = _np.hstack([cps, _np.zeros((len(cps), 3 - cps.shape[1]))])
 
@@ -90,7 +94,7 @@ def _export_internal(fname, splines):
 
         p_str = (
             ",".join(
-                str(int(t)) if isinstance(t, (int, _np.integer)) else f"{t:.16g}"
+                str(int(t)) if isinstance(t, (int, _np.integer)) else repr(float(t))
                 for t in tokens
             )
             + ";"

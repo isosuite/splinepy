@@ -55,3 +55,18 @@ def test_iges_round_trip_bsplines(to_tmpf, are_splines_equal):
             are_splines_equal(a, b)
             for a, b in zip(splines_in_3d, list_of_splines_loaded, strict=True)
         )
+
+
+def test_iges_keeps_close_knots_and_rejects_four_dimensions(tmp_path):
+    close = np.nextafter(1.0, 2.0)
+    curve = splinepy.BSpline(
+        [1], [[0, 0, 1, close, 2, 2]], [[0.0, 0], [1, 0], [2, 1], [3, 1]]
+    )
+    fname = str(tmp_path / "close.igs")
+    splinepy.io.iges.export(fname, [curve])
+    (loaded,) = splinepy.io.iges.load(fname)
+    np.testing.assert_array_equal(loaded.knot_vectors[0], curve.knot_vectors[0])
+
+    flat = splinepy.Bezier([1], np.zeros((2, 4)))
+    with pytest.raises(ValueError, match="up to 3 dimensions"):
+        splinepy.io.iges.export(fname, [flat])
