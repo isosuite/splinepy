@@ -816,3 +816,15 @@ def test_unclamped_knots_repeated_at_a_domain_end(degree, knots, rational, np_rn
         lambda u: spline.basis_and_support(u)[0],
     ):
         np.testing.assert_allclose(query(ends), query(inside), atol=1e-6)
+
+
+def test_queries_reject_nan_and_weights_without_a_reciprocal():
+    line = splinepy.BSpline([1], [[0, 0, 1, 1]], [[0.0], [1.0]])
+    for query in (line.evaluate, line.jacobian, line.support, line.basis):
+        with pytest.raises(ValueError, match="finite"):
+            query([[np.nan]])
+    tiny = splinepy.RationalBezier([1], [[1.0], [2.0]], [1e-310, 1e-310])
+    with pytest.raises(splinepy.SplinepyError, match="normal"):
+        tiny.evaluate([[0.5]])
+    small = splinepy.RationalBezier([1], [[1.0], [2.0]], [1e-300, 1e-300])
+    np.testing.assert_allclose(small.evaluate([[0.5]]), [[1.5]])

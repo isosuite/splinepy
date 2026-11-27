@@ -1,6 +1,7 @@
 #include "splinepy/core/validate/validator.hpp"
 
 #include <cmath>
+#include <limits>
 #include <sstream>
 
 #include "splinepy/core/math/bspline_basis.hpp"
@@ -116,10 +117,11 @@ Status ValidateImpl(const SplineView& view, bool throw_on_error) {
           os << "Weight at index " << i << " is non-finite";
         });
       }
-      if (w <= 0.0) {
+      // a subnormal weight has no finite reciprocal
+      if (w < std::numeric_limits<double>::min()) {
         return fail(Status::kInvalidArgument, [&](auto& os) {
           os << "Weight at index " << i << " (" << w
-             << ") must be strictly positive";
+             << ") must be a positive normal number";
         });
       }
     }
@@ -157,9 +159,10 @@ void ThrowIfInvalidQueryValues(const SplineView& view,
     }
     if (view.IsRational()) {
       const double weight = view.Weight(cp);
-      if (!(weight > 0.) || !std::isfinite(weight)) {
+      if (!(weight >= std::numeric_limits<double>::min())
+          || !std::isfinite(weight)) {
         throw SplinepyException(
-            "A queried weight must be finite and positive.");
+            "A queried weight must be a finite, positive normal number.");
       }
     }
   };
