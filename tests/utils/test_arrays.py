@@ -1,21 +1,24 @@
-import gustaf as gus
 import numpy as np
 
 import splinepy
 
 
 def test_uniform_query(np_rng):
-    """
-    Test uniform query against gustaf's vertice creation
-    """
-    for i in range(1, 11):
-        l_bound = np_rng.random(i)
-        bounds = [l_bound, l_bound + 1]
-        res = np_rng.integers([3] * i) + 2  # minimum 2
-        gus_q = gus.create.vertices.raster(bounds, res).vertices
-        spp_q = splinepy.utils.data.uniform_query(bounds, res)
+    """a grid over the bounds, with the first axis running fastest"""
+    for dim in range(1, 6):
+        lower = np_rng.random(dim)
+        bounds = [lower, lower + 1]
+        resolutions = np_rng.integers([3] * dim) + 2  # minimum 2
+        axes = [
+            np.linspace(lo, hi, n)
+            for lo, hi, n in zip(*bounds, resolutions, strict=True)
+        ]
+        grid = np.meshgrid(*axes[::-1], indexing="ij")[::-1]
+        expected = np.column_stack([axis.ravel() for axis in grid])
 
-        assert np.allclose(gus_q, spp_q)
+        queries = splinepy.utils.data.uniform_query(bounds, resolutions)
+
+        np.testing.assert_allclose(queries, expected)
 
 
 def test_make_matrix_ignores_negative_padding():

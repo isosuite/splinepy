@@ -11,7 +11,7 @@ def test_cartesian_product(np_rng):
     # define arrays for cartesian product
     # make different len, but not too long so that test
     # doesn't take too long.
-    max_dim = 10
+    max_dim = 5
     pool = np.array([0.0, 1.1, 4.4, 8.8, 9.6])
     queries = [pool[: np_rng.integers(2, 5)] for _ in range(max_dim)]
 

@@ -1,6 +1,5 @@
 import numpy as np
 import pytest
-from gustaf.utils import arr
 
 import splinepy
 
@@ -520,9 +519,8 @@ def test_swept_control_point_placing(np_rng):
 
     angle_of_custom_cs_normal = np.arctan2(custom_normal[2], custom_normal[0])
     # calculate rotation matrix for cross-section normal vector
-    R = arr.rotation_matrix_around_axis(
-        axis=[0, 1, 0], rotation=angle_of_custom_cs_normal, degree=False
-    )
+    sine, cosine = np.sin(angle_of_custom_cs_normal), np.cos(angle_of_custom_cs_normal)
+    R = np.array([[cosine, 0, sine], [0, 1, 0], [-sine, 0, cosine]])
     # in sweeping, the cross-section is rotated, we mimic this here
     test_normal = np.matmul(R, custom_normal)
 
