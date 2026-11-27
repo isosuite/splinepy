@@ -192,6 +192,12 @@ def test_svg_export_draws_arrows(surface, tmp_path):
     )
     assert np.allclose(tails, corners)
 
+    surface.spline_data["scalar"] = surface.copy().create.determinant_spline()
+    surface.show_options["arrow_data"] = "scalar"
+    with pytest.raises(ValueError, match="one component per spline dimension"):
+        splinepy.io.svg.export(str(tmp_path / "scalar.svg"), surface)
+    assert "arrow_data_scale" not in surface.show_options
+
 
 def test_svg_export_of_gustaf_vertices(surface, tmp_path):
     gustaf = pytest.importorskip("gustaf")

@@ -470,15 +470,18 @@ def _quiver_plot(
 
     # Use Arrow Data to retrieve spline data (prevent from scaling)
     arrow_data = spline.extract.arrow_data(arrow_data_field)
-    ends = arrow_data["vertices"][arrow_data["connectivity"]]
-    positions = ends[:, 0]
-    directions = ends[:, 1] - positions
 
     # Set back data to original options
     if original_scale is None:
         spline.show_options.pop("arrow_data_scale")
     else:
         spline.show_options["arrow_data_scale"] = original_scale
+
+    if arrow_data["element_type"] != "line":
+        raise ValueError("arrow_data needs one component per spline dimension.")
+    ends = arrow_data["vertices"][arrow_data["connectivity"]]
+    positions = ends[:, 0]
+    directions = ends[:, 1] - positions
 
     # Retrieve scaling
     arrow_data_scale = spline.show_options.get("arrow_data_scale", 1)
