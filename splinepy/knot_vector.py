@@ -148,7 +148,8 @@ class KnotVector(_np.ndarray):
 
     def find_span(self, u):
         """Returns the index i of the knot span with knots[i] <= u < knots[i+1].
-        Queries outside the range are clipped to the first / last span.
+        Queries outside the range are clipped to the first / last span that
+        is not empty.
 
         Parameters
         ----------
@@ -164,7 +165,9 @@ class KnotVector(_np.ndarray):
         n = len(a) - 1
         if n < 1:
             return 0
-        return int(max(0, min(_np.searchsorted(a, u, side="right") - 1, n - 1)))
+        if u >= a[-1]:
+            return int(max(0, _np.searchsorted(a, a[-1], side="left") - 1))
+        return int(_np.searchsorted(a, max(u, a[0]), side="right") - 1)
 
     def __repr__(self):
         return f"KnotVector({_np.asarray(self).tolist()})"
