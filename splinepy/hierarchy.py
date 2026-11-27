@@ -123,14 +123,22 @@ class HierarchySpline(_core.HierarchyCore, _Spline):
             self.weights if self.is_rational else None,
         )
 
-    def copy(self):
+    def copy(self, saved_data=True):
         """Returns an independent copy.
+
+        Parameters
+        ----------
+        saved_data : bool, optional
+            Copy show_options and shallow copy spline_data.
 
         Returns
         -------
         spline : HierarchySpline
         """
-        return _from_hierarchy(*self.__reduce__()[1])
+        new = _from_hierarchy(*self.__reduce__()[1])
+        if saved_data:
+            self._copy_saved_data(new)
+        return new
 
     @staticmethod
     def active_keys(degrees, levels, leaf_cells):
@@ -237,12 +245,13 @@ class HierarchySpline(_core.HierarchyCore, _Spline):
         data = getattr(self, "_spline_data", None)
         if self.para_dim == 3 or global_parameters or data is not None:
             spline = self.create.converted()
-            if data is not None:
-                spline.spline_data._saved = data._saved.copy()
         else:
             spline = self.extract.multipatch()
+            data = None
         if getattr(self, "_show_options", None) is not None:
             self.show_options.copy_valid_options(spline.show_options)
+        if data is not None:
+            spline.spline_data._saved = data._saved.copy()
         return spline
 
     @staticmethod

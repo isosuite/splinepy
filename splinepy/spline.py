@@ -334,6 +334,13 @@ class Spline(_SplinepyBase):
         """
         return _helpme.mapper.Mapper(self, reference=reference)
 
+    def _copy_saved_data(self, new):
+        """Copies show_options and shallow copies spline_data, where they exist."""
+        if getattr(self, "_show_options", None) is not None:
+            self.show_options.copy_valid_options(new.show_options)
+        if getattr(self, "_spline_data", None) is not None:
+            new.spline_data._saved = self.spline_data._saved.copy()
+
     def sample(self, resolutions, nthreads=None, out=None):
         """
         Uniformly sample along each parametric dimensions from spline.
@@ -1400,11 +1407,7 @@ class TensorSpline(_core.SplineCore, Spline):
         )
 
         if saved_data:
-            # copy show_options and shallow copy spline_data, where they exist
-            if getattr(self, "_show_options", None) is not None:
-                self.show_options.copy_valid_options(new.show_options)
-            if getattr(self, "_spline_data", None) is not None:
-                new.spline_data._saved = self.spline_data._saved.copy()
+            self._copy_saved_data(new)
 
         return new
 

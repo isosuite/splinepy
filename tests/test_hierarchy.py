@@ -925,6 +925,10 @@ def test_hierarchies_share_the_spline_interface(to_hierarchy, np_rng):
     hierarchy.spline_data["position"] = hierarchy
     hierarchy.show_options["c"] = "red"
     hierarchy.show_options["data"] = "position"
-    surface = splinepy.viewer.show(hierarchy).scene["layers"][0]
+    copied = hierarchy.copy()
+    assert copied.show_options["c"] == "red"
+    assert copied.spline_data["position"] is hierarchy
+    assert getattr(hierarchy.copy(saved_data=False), "_show_options", None) is None
+    surface = splinepy.viewer.show(copied).scene["layers"][0]
     assert surface["kind"] == "mesh"
     assert "scalars" in surface
