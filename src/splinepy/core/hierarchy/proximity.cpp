@@ -1,6 +1,5 @@
 #include "splinepy/core/hierarchy/proximity.hpp"
 
-#include <array>
 #include <cmath>
 #include <limits>
 
@@ -52,20 +51,20 @@ BuildHierarchyProximity(const HierarchicalSplineView& spline,
   return result;
 }
 
-HierarchyProximityResult
-HierarchyProximities(const HierarchicalSplineView& spline,
+void HierarchyProximities(const HierarchicalSplineView& spline,
                      const ThbCacheData& extraction,
                      const HierarchyProximityData& data,
                      Span<const double> queries,
                      Span<const int32_t> resolutions,
                      double tolerance,
                      int32_t max_iterations,
-                     bool verbose,
+                     int32_t max_starts,
+                     const HierarchyProximityOutput& out,
                      const Options& options) {
   if (!data.bvh.IsValid() || spline.tensor.para_dim <= 0
       || spline.tensor.dim <= 0 || data.bvh.ParaDim() != spline.tensor.para_dim
       || data.bvh.Dim() != spline.tensor.dim || !std::isfinite(tolerance)
-      || tolerance <= 0) {
+      || tolerance <= 0 || max_starts < 1) {
     throw SplinepyException("Invalid hierarchy proximity options");
   }
   proximity::ValidateIterationBudget(max_iterations);
@@ -83,13 +82,22 @@ HierarchyProximities(const HierarchicalSplineView& spline,
   }
 
   const auto count = queries.size() / dim;
-  HierarchyProximityResult result;
-  result.parameters.resize(CheckedProduct(count, pd));
-  if (count == 0) {
-    return result;
-  }
   const auto first_size = CheckedProduct(pd, dim);
   const auto second_size = CheckedProduct(pd, first_size);
+  const auto sized = [&](Span<double> rows, std::size_t width) {
+    return rows.empty() || rows.size() == CheckedProduct(count, width);
+  };
+  if (out.parameters.size() != CheckedProduct(count, pd)
+      || !sized(out.points, dim) || !sized(out.differences, dim)
+      || !sized(out.distances, 1) || !sized(out.residuals, 1)
+      || !sized(out.first_derivatives, first_size)
+      || !sized(out.second_derivatives, second_size)
+      || out.first_derivatives.empty() != out.second_derivatives.empty()) {
+    throw SplinepyException("Invalid hierarchy proximity output size");
+  }
+  if (count == 0) {
+    return;
+  }
   // The existing local solvers use int indices for derivative and SLSQP
   // workspace arrays. Check their largest workspace before entering them.
   if (second_size > INT32_MAX) {
@@ -103,14 +111,6 @@ HierarchyProximities(const HierarchicalSplineView& spline,
   if (slsqp_size > INT32_MAX) {
     throw SplinepyException("Hierarchy proximity exceeds local solver capacity",
                             Status::kOutOfBounds);
-  }
-  if (verbose) {
-    result.points.resize(queries.size());
-    result.differences.resize(queries.size());
-    result.distances.resize(count);
-    result.residuals.resize(count);
-    result.first_derivatives.resize(CheckedProduct(count, first_size));
-    result.second_derivatives.resize(CheckedProduct(count, second_size));
   }
 
   // Keep the sampling budget bounded even for large resolutions or many
@@ -201,12 +201,14 @@ HierarchyProximities(const HierarchicalSplineView& spline,
         auto& arena = scratch.arena;
         const auto nested = scratch.Nested(local_options);
         const auto query = queries.subspan(q * dim, dim);
-        auto parameters = result.parameters.span().subspan(q * pd, pd);
+        auto parameters = out.parameters.subspan(q * pd, pd);
+        auto starts = arena.AllocateSpan<std::size_t>(max_starts);
         auto candidate = arena.AllocateSpan<double>(pd);
         auto mapped = arena.AllocateSpan<double>(pd);
         auto unit = arena.AllocateSpan<double>(pd);
         auto best_unit = arena.AllocateSpan<double>(pd);
         auto point = arena.AllocateSpan<double>(dim);
+        auto best_point = arena.AllocateSpan<double>(dim);
         auto difference = arena.AllocateSpan<double>(dim);
         auto distances = arena.AllocateSpan<double>(sample_count);
         auto physical_samples = sampled.empty()
@@ -237,10 +239,9 @@ HierarchyProximities(const HierarchicalSplineView& spline,
                     SquaredDistance(values.subspan(i * dim, dim), query);
               }
 
-              // The four best sampled basins give independent starts on a
-              // curved leaf.
-              std::array<std::size_t, 4> starts;
-              starts.fill(sample_count);
+              // The best sampled basins give independent starts on a curved
+              // leaf.
+              std::fill(starts.begin(), starts.end(), sample_count);
               for (std::size_t i = 0; i < sample_count; ++i) {
                 bool minimum = true;
                 for (std::size_t axis = 0; axis < pd && minimum; ++axis) {
@@ -305,11 +306,7 @@ HierarchyProximities(const HierarchicalSplineView& spline,
                   best_residual = residual;
                   std::copy(mapped.begin(), mapped.end(), parameters.begin());
                   std::copy(unit.begin(), unit.end(), best_unit.begin());
-                  if (verbose) {
-                    std::copy(point.begin(),
-                              point.end(),
-                              result.points.data() + q * dim);
-                  }
+                  std::copy(point.begin(), point.end(), best_point.begin());
                 }
               }
               return best;
@@ -320,14 +317,22 @@ HierarchyProximities(const HierarchicalSplineView& spline,
           throw SplinepyException(
               "Hierarchy proximity did not find a finite candidate");
         }
-        if (!verbose) {
-          return;
-        }
-        result.distances[q] = std::sqrt(best);
-        result.residuals[q] = best_residual;
         for (std::size_t c = 0; c < dim; ++c) {
-          result.differences[q * dim + c] =
-              result.points[q * dim + c] - query[c];
+          if (!out.points.empty()) {
+            out.points[q * dim + c] = best_point[c];
+          }
+          if (!out.differences.empty()) {
+            out.differences[q * dim + c] = best_point[c] - query[c];
+          }
+        }
+        if (!out.distances.empty()) {
+          out.distances[q] = std::sqrt(best);
+        }
+        if (!out.residuals.empty()) {
+          out.residuals[q] = best_residual;
+        }
+        if (out.first_derivatives.empty()) {
+          return;
         }
         const auto view = local_view(best_leaf);
         const auto bounds =
@@ -343,9 +348,8 @@ HierarchyProximities(const HierarchicalSplineView& spline,
         }
         for (std::size_t axis = 0; axis < pd; ++axis) {
           ++order[axis];
-          auto first = result.first_derivatives.span().subspan(q * first_size
-                                                                   + axis * dim,
-                                                               dim);
+          auto first =
+              out.first_derivatives.subspan(q * first_size + axis * dim, dim);
           Derivative(view, best_unit, order, first, nested);
           for (auto& x : first) {
             if (x != 0.0) {
@@ -354,7 +358,7 @@ HierarchyProximities(const HierarchicalSplineView& spline,
           }
           for (std::size_t other = axis; other < pd; ++other) {
             ++order[other];
-            auto second = result.second_derivatives.span().subspan(
+            auto second = out.second_derivatives.subspan(
                 q * second_size + (axis * pd + other) * dim,
                 dim);
             Derivative(view, best_unit, order, second, nested);
@@ -366,7 +370,7 @@ HierarchyProximities(const HierarchicalSplineView& spline,
             if (axis != other) {
               std::copy(second.begin(),
                         second.end(),
-                        result.second_derivatives.data() + q * second_size
+                        out.second_derivatives.data() + q * second_size
                             + (other * pd + axis) * dim);
             }
             --order[other];
@@ -374,7 +378,6 @@ HierarchyProximities(const HierarchicalSplineView& spline,
           --order[axis];
         }
       });
-  return result;
 }
 
 } // namespace splinepy::core

@@ -898,16 +898,8 @@ void ProximityHandle::Query(nb::object queries,
   using Output = nb::ndarray<nb::numpy, double, nb::c_contig, nb::device::cpu>;
   auto buffer = [&](size_t slot,
                     std::initializer_list<size_t> shape,
-                    bool optional = false) -> Output {
-    if (optional && out[slot].is_none()) {
-      return {};
-    }
-    Output array;
-    if (!nb::try_cast(out[slot], array, false) || array.ndim() != shape.size()
-        || !std::equal(shape.begin(), shape.end(), array.shape_ptr())) {
-      throw nb::value_error("Invalid proximity output shape, dtype or layout");
-    }
-    return array;
+                    bool optional = false) {
+    return ProximityOutput(out[slot], shape, optional);
   };
   const auto params = buffer(0, {count, pdim});
   const auto points = buffer(1, {count, physical}, true);

@@ -466,18 +466,23 @@ TEST_F(HierarchyQueryTest, LeafProximityInvertsAnalyticGeometry) {
     EXPECT_EQ(proximity.bvh.NumElements(),
               static_cast<int64_t>(cache.leaf_levels.size()));
     const std::array<int32_t, 1> resolution{4};
-    const auto closest = HierarchyProximities(source,
-                                              cache,
-                                              proximity,
-                                              physical,
-                                              resolution,
-                                              1e-13,
-                                              -1,
-                                              true,
-                                              options);
+    std::array<double, queries.size()> parameters{}, distances{};
+    HierarchyProximityOutput closest;
+    closest.parameters = parameters;
+    closest.distances = distances;
+    HierarchyProximities(source,
+                         cache,
+                         proximity,
+                         physical,
+                         resolution,
+                         1e-13,
+                         -1,
+                         4,
+                         closest,
+                         options);
     for (std::size_t i = 0; i < queries.size(); ++i) {
-      EXPECT_NEAR(closest.parameters[i], queries[i], 1e-10);
-      EXPECT_NEAR(closest.distances[i], 0.0, 1e-12);
+      EXPECT_NEAR(parameters[i], queries[i], 1e-10);
+      EXPECT_NEAR(distances[i], 0.0, 1e-12);
     }
   }
 }

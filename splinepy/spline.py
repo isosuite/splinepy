@@ -98,7 +98,9 @@ def _proximity_resolutions(spline, resolutions):
 
 
 def _run_proximity(
-    handle,
+    query,
+    para_dim,
+    dim,
     queries,
     tolerance,
     max_iterations,
@@ -109,10 +111,9 @@ def _run_proximity(
     if tolerance is None:
         tolerance = min(_settings.TOLERANCE, 1e-14)
     queries = _np.ascontiguousarray(queries, dtype="float64")
-    if queries.ndim != 2 or queries.shape[1] != handle.dim:
-        raise ValueError(f"Expected proximity queries with shape (n, {handle.dim}).")
-    n = len(queries)
-    pd, dim = handle.para_dim, handle.dim
+    if queries.ndim != 2 or queries.shape[1] != dim:
+        raise ValueError(f"Expected proximity queries with shape (n, {dim}).")
+    n, pd = len(queries), para_dim
     if return_verbose:
         if out is None:
             shapes = (
@@ -136,7 +137,7 @@ def _run_proximity(
         if out is None:
             out = _np.empty((n, pd))
         outputs = (out, None, None, None, _np.empty((n, 1)), None, None)
-    handle.query(
+    query(
         queries=queries,
         tolerance=tolerance,
         max_iterations=_default_if_none(max_iterations, -1),
@@ -178,7 +179,9 @@ class _PreparedProximity:
     ):
         """Query the snapshot. Arguments and results match spline.proximities."""
         return _run_proximity(
-            self._handle,
+            self._handle.query,
+            self._handle.para_dim,
+            self._handle.dim,
             queries,
             tolerance,
             max_iterations,
@@ -522,23 +525,41 @@ class Spline(_SplinepyBase):
         max_iterations=-1,
         nthreads=None,
         return_verbose=False,
+        out=None,
+        max_starts=4,
     ):
         """
         Given physical coordinate, finds a parametric coordinate that maps to
         the nearest physical coordinate. Also known as "point inversion".
 
+        A tensor product spline is sampled as a whole, a hierarchy per leaf.
+        To reuse the search of a tensor product spline across batches, see
+        :meth:`.TensorSpline.prepare_proximity`.
+
         Parameters
         -----------
         queries: (n, dim) array-like
         initial_guess_sample_resolutions: (para_dim) array-like
-          Samples per parametric axis the initial guesses are taken from.
+          Samples per parametric axis the initial guesses are taken from, at
+          least 2 each. Default is 2 * control_mesh_resolutions, on a
+          hierarchy degrees + 3 per leaf. For complex shapes, we recommend
+          setting large values.
         tolerance: float
-          Convergence tolerance.
+          Convergence tolerance. Defaults to the smaller of settings.TOLERANCE
+          and 1e-14.
         max_iterations: int
-          -1 takes the default of the search.
+          Default is (para_dim * 20)
         nthreads: int
         return_verbose : bool
           If False, returns only parametric coords.
+        out: optional
+          Writable C-contiguous float64 result array, or a tuple of seven
+          such arrays in the order below when return_verbose is True.
+        max_starts: int
+          Default is 4. Most initial guesses the search starts from per
+          query, on a hierarchy per query and leaf; further ones are tried
+          only where a closer point is still possible. Raise it, together
+          with the sample resolutions, for geometry that folds over itself.
 
         Returns
         --------
@@ -551,7 +572,8 @@ class Spline(_SplinepyBase):
         distance: (n, 1) np.ndarray
           (only if return_verbose) respective 2-norm of difference
         convergence_norm: (n, 1) np.ndarrray
-          (only if return_verbose) Newton residual
+          (only if return_verbose) Newton residual, on a hierarchy in the
+          unit box of the leaf
         first_derivatives: (n, para_dim, dim) np.ndarray
           (only if return_verbose) Convergence information
         second_derivatives: (n, para_dim, para_dim, dim) np.ndarray
@@ -1210,60 +1232,15 @@ class TensorSpline(_core.SplineCore, Spline):
         out=None,
         max_starts=4,
     ):
-        """
-        Given physical coordinate, finds a parametric coordinate that maps to
-        the nearest physical coordinate. Also known as "point inversion".
-
-        Prepares a fresh search for the entire query batch. To reuse a
-        search across batches, use :meth:`prepare_proximity`.
-
-        Parameters
-        -----------
-        queries: (n, dim) array-like
-        initial_guess_sample_resolutions: (para_dim) array-like
-          Default is 2 * control_mesh_resolutions. For complex shapes, we
-          recommend setting large values. Entries must be at least 2.
-        tolerance: float
-          Convergence tolerance. Defaults to the smaller of settings.TOLERANCE
-          and 1e-14.
-        max_iterations: int
-          Default is (para_dim * 20)
-        nthreads: int
-        return_verbose : bool
-          If False, returns only parametric coords.
-        out: optional
-          Writable C-contiguous float64 result array, or a tuple of seven
-          such arrays in the order below when return_verbose is True.
-        max_starts: int
-          Default is 4. Most initial guesses the search starts from per
-          query; further ones are tried only where a closer point is still
-          possible. Raise it, together with the sample resolutions, for
-          geometry that folds over itself.
-
-        Returns
-        --------
-        para_coord: (n, para_dim) np.ndarray
-          Parametric coordinates
-        phys_coord: (n, dim) np.ndarray
-          (only if return_verbose) respective physical coordinates
-        phys_diff: (n, dim) np.ndarray
-          (only if return_verbose) respective cartesian difference to query
-        distance: (n, 1) np.ndarray
-          (only if return_verbose) respective 2-norm of difference
-        convergence_norm: (n, 1) np.ndarrray
-          (only if return_verbose) Newton residual
-        first_derivatives: (n, para_dim, dim) np.ndarray
-          (only if return_verbose) Convergence information
-        second_derivatives: (n, para_dim, para_dim, dim) np.ndarray
-          (only if return_verbose) Convergence information
-        """
         return _run_proximity(
             _core.ProximityHandle(
                 self,
                 _proximity_resolutions(self, initial_guess_sample_resolutions),
                 nthreads=_default_if_none(nthreads, _settings.NTHREADS),
                 max_starts=max_starts,
-            ),
+            ).query,
+            self.para_dim,
+            self.dim,
             queries,
             tolerance,
             max_iterations,

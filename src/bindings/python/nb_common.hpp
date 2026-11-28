@@ -66,6 +66,22 @@ inline bool OverlapsOutput(const void* data, size_t bytes, nb::handle out) {
   });
 }
 
+/// One slot of a tuple of proximity outputs. An optional slot may be None.
+inline nb::ndarray<nb::numpy, double, nb::c_contig, nb::device::cpu>
+ProximityOutput(nb::handle slot,
+                std::initializer_list<size_t> shape,
+                bool optional = false) {
+  nb::ndarray<nb::numpy, double, nb::c_contig, nb::device::cpu> array;
+  if (optional && slot.is_none()) {
+    return array;
+  }
+  if (!nb::try_cast(slot, array, false) || array.ndim() != shape.size()
+      || !std::equal(shape.begin(), shape.end(), array.shape_ptr())) {
+    throw nb::value_error("Invalid proximity output shape, dtype or layout");
+  }
+  return array;
+}
+
 /// Kernels fill the arrays of a tuple or list of outputs independently.
 inline void CheckOutputsDisjoint(nb::handle out) {
   splinepy::core::DynamicBuffer<std::pair<const void*, size_t>> seen;

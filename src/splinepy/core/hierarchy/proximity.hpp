@@ -16,27 +16,31 @@ BuildHierarchyProximity(const HierarchicalSplineView& spline,
                         const ThbGeometryData& geometry,
                         const Options& options = {});
 
-struct HierarchyProximityResult {
-  Buffer<double> parameters;
-  Buffer<double> points;
-  Buffer<double> differences;
-  Buffer<double> distances;
-  Buffer<double> residuals;
-  Buffer<double> first_derivatives;
-  Buffer<double> second_derivatives;
+/// Caller-owned results with one row per query. Only parameters is required;
+/// an empty span is not filled. The derivatives are given together or not at
+/// all.
+struct HierarchyProximityOutput {
+  Span<double> parameters;
+  Span<double> points;
+  Span<double> differences;
+  Span<double> distances;
+  Span<double> residuals;
+  Span<double> first_derivatives;
+  Span<double> second_derivatives;
 };
 
-/// Search the leaf BVH and solve on each promising unit-box Bezier patch.
-/// Verbose derivatives use global parameter coordinates, in axis-major order.
-HierarchyProximityResult
-HierarchyProximities(const HierarchicalSplineView& spline,
+/// Search the leaf BVH and solve on each promising unit-box Bezier patch,
+/// from at most max_starts sampled basins per leaf.
+/// Derivatives use global parameter coordinates, in axis-major order.
+void HierarchyProximities(const HierarchicalSplineView& spline,
                      const ThbCacheData& extraction,
                      const HierarchyProximityData& data,
                      Span<const double> queries,
                      Span<const int32_t> resolutions,
                      double tolerance,
                      int32_t max_iterations,
-                     bool verbose,
+                     int32_t max_starts,
+                     const HierarchyProximityOutput& out,
                      const Options& options = {});
 
 } // namespace splinepy::core

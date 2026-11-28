@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Point sets with their own style: `mesh.make_mesh("vertex", points, show_options={"c": ..., "r": ..., "data": ...})` in `show()` and in `io.svg.export()`, which also takes bare `(n, 2)` arrays.
 - three.js viewer (`splinepy.viewer`), which `splinepy.show()` and `spline.show()` now use.
 - `out=` argument on evaluation queries to write into existing arrays.
+- `out` and `max_starts` on `proximities` of hierarchies, as on tensor splines; results are written into the given arrays.
 - `Spline.validate()` for an explicit check of the complete layout and all values.
 - `Bezier.compose_batch()` and `Bezier.composition_derivative_batch()`.
 - `Spline.prepare_proximity()` for reusable point inversion searches; it accepts `guess="bvh"` or `"grid"`.

@@ -951,7 +951,7 @@ def test_spline_declares_the_queries_both_families_answer():
         for name in queries:
             declared = list(signature(getattr(splinepy.Spline, name)).parameters)
             answered = list(signature(vars(family)[name]).parameters)
-            assert answered[: len(declared)] == declared, (family, name)
+            assert answered == declared, (family, name)
             assert getdoc(getattr(family, name))
 
 
@@ -960,3 +960,28 @@ def test_hierarchy_check_offers_only_what_it_answers():
     assert thb.check.valid_queries([[0.5]])
     assert not hasattr(thb.check, "clamped_knot_vectors")
     assert splinepy.helpme.create.box(1, 1).bspline.check.clamped_knot_vectors()
+
+
+def test_hierarchy_proximities_fill_out_and_take_max_starts():
+    tensor = _tensor_spline(False)
+    thb = splinepy.THBSpline.from_bspline(tensor)
+    expected = np.array([[0.3, 0.7], [0.6, 0.2]])
+    queries = tensor.evaluate(expected)
+
+    out = np.empty_like(expected)
+    assert thb.proximities(queries, out=out) is out
+    assert np.allclose(out, expected)
+
+    verbose = thb.proximities(queries, return_verbose=True)
+    outs = tuple(np.empty_like(array) for array in verbose)
+    filled = thb.proximities(queries, return_verbose=True, out=outs, max_starts=1)
+    for given, array, reference in zip(outs, filled, verbose, strict=True):
+        assert array is given
+        assert np.allclose(array, reference, atol=1e-9)
+
+    with pytest.raises(ValueError, match="max_starts"):
+        thb.proximities(queries, max_starts=0)
+    with pytest.raises(ValueError):
+        thb.proximities(queries, out=np.empty((2, 3)))
+    with pytest.raises(ValueError, match="overlap"):
+        thb.proximities(queries, return_verbose=True, out=(outs[0],) * 2 + outs[2:])

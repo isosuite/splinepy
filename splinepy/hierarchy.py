@@ -1,5 +1,6 @@
 """Hierarchical B-splines with leaf-local tensor extraction."""
 
+from functools import partial as _partial
 from itertools import product as _product
 from operator import index as _index
 
@@ -8,6 +9,7 @@ import numpy as _np
 from splinepy import settings as _settings
 from splinepy import splinepy_core as _core
 from splinepy.spline import Spline as _Spline
+from splinepy.spline import _run_proximity
 
 _INT32_MAX = _np.iinfo(_np.int32).max
 
@@ -444,45 +446,25 @@ class HierarchySpline(_core.HierarchyCore, _Spline):
         max_iterations=-1,
         nthreads=None,
         return_verbose=False,
+        out=None,
+        max_starts=4,
     ):
-        """Find closest points by searching Bézier leaf bounds.
-
-        Queries have shape (n, dim). Sampling resolutions are per leaf and
-        default to degree + 3 per axis. The verbose result uses the tensor
-        spline convention: parameters, points, differences, distances,
-        residuals, first derivatives and second derivatives. Derivatives
-        use global coordinates and residuals use the leaf's unit box.
-
-        Parameters
-        ----------
-        queries : (n, dim) array-like
-            Physical points to project.
-        initial_guess_sample_resolutions : array-like, optional
-            Samples per parametric axis on each leaf.
-        tolerance : float, optional
-            Convergence tolerance.
-        max_iterations : int, optional
-            Iteration limit. Use -1 for the kernel default.
-        nthreads : int, optional
-            Number of worker threads.
-        return_verbose : bool, optional
-            Include projection diagnostics.
-
-        Returns
-        -------
-        result : numpy.ndarray or tuple
-            Closest parameters, or the parameters and diagnostics described above.
-        """
         if initial_guess_sample_resolutions is None:
             initial_guess_sample_resolutions = self.degrees.astype(_np.int64) + 3
-        resolutions = _integers(initial_guess_sample_resolutions, "resolutions")
-        return self._proximities(
-            _np.asarray(queries, dtype=_np.float64, order="C"),
-            resolutions,
-            1e-14 if tolerance is None else tolerance,
-            -1 if max_iterations is None else _index(max_iterations),
-            _thread_count(nthreads),
-            bool(return_verbose),
+        return _run_proximity(
+            _partial(
+                self._proximities,
+                resolutions=_integers(initial_guess_sample_resolutions, "resolutions"),
+                max_starts=max_starts,
+            ),
+            self.para_dim,
+            self.dim,
+            queries,
+            tolerance,
+            max_iterations,
+            nthreads,
+            return_verbose,
+            out,
         )
 
     def evaluate(self, queries, nthreads=None, out=None):

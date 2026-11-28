@@ -480,14 +480,16 @@ public:
                           support ? support->result() : nb::none());
   }
 
-  nb::object Proximities(nb::handle queries,
-                         nb::handle resolutions,
-                         double tolerance,
-                         int32_t max_iterations,
-                         int threads,
-                         bool verbose) const {
+  void Proximities(nb::handle queries,
+                   nb::handle resolutions,
+                   int32_t max_starts,
+                   double tolerance,
+                   int32_t max_iterations,
+                   int threads,
+                   nb::tuple out) const {
     const auto state = RequireState();
-    const ContiguousAdapter<double> points(queries, "float64");
+    ContiguousAdapter<double> points(queries, "float64");
+    points.ProtectOutput(out);
     const ContiguousAdapter<int32_t> samples(resolutions, "int32");
     const auto pd = static_cast<std::size_t>(state->spline.tensor.para_dim);
     const auto dim = static_cast<std::size_t>(state->spline.tensor.dim);
@@ -495,6 +497,28 @@ public:
         || samples.size() != pd) {
       throw nb::value_error("invalid hierarchy proximity array shape");
     }
+    if (max_starts < 1) {
+      throw nb::value_error("max_starts must be >= 1");
+    }
+    if (out.size() != 7) {
+      throw nb::value_error("Expected seven proximity output slots");
+    }
+    CheckOutputsDisjoint(out);
+    const auto n = points.shape(0);
+    const auto rows = [&](size_t slot,
+                          std::initializer_list<size_t> shape,
+                          bool optional = true) {
+      const auto array = ProximityOutput(out[slot], shape, optional);
+      return array.is_valid() ? Span<double>(array.data(), array.size())
+                              : Span<double>();
+    };
+    const HierarchyProximityOutput output{rows(0, {n, pd}, false),
+                                          rows(1, {n, dim}),
+                                          rows(2, {n, dim}),
+                                          rows(3, {n, 1}),
+                                          rows(4, {n, 1}),
+                                          rows(5, {n, pd, dim}),
+                                          rows(6, {n, pd, pd, dim})};
     Options options;
     options.nthreads = threads;
     auto proximity = state->proximity;
@@ -512,32 +536,17 @@ public:
       }
       proximity = state->proximity;
     }
-    HierarchyProximityResult result;
-    {
-      nb::gil_scoped_release release;
-      result = HierarchyProximities(state->spline,
-                                    state->extraction[0],
-                                    *proximity,
-                                    {points.data(), points.size()},
-                                    {samples.data(), samples.size()},
-                                    tolerance,
-                                    max_iterations,
-                                    verbose,
-                                    options);
-    }
-    const auto n = points.shape(0);
-    auto parameters = TakeNumPyBuffer(result.parameters, {n, pd});
-    if (!verbose) {
-      return parameters;
-    }
-    return nb::make_tuple(
-        parameters,
-        TakeNumPyBuffer(result.points, {n, dim}),
-        TakeNumPyBuffer(result.differences, {n, dim}),
-        TakeNumPyBuffer(result.distances, {n, 1}),
-        TakeNumPyBuffer(result.residuals, {n, 1}),
-        TakeNumPyBuffer(result.first_derivatives, {n, pd, dim}),
-        TakeNumPyBuffer(result.second_derivatives, {n, pd, pd, dim}));
+    nb::gil_scoped_release release;
+    HierarchyProximities(state->spline,
+                         state->extraction[0],
+                         *proximity,
+                         {points.data(), points.size()},
+                         {samples.data(), samples.size()},
+                         tolerance,
+                         max_iterations,
+                         max_starts,
+                         output,
+                         options);
   }
 
   nb::object Bernstein(int threads) const {
@@ -748,7 +757,15 @@ void init_nb_hierarchy(nb::module_& module) {
       .def("_bernstein_extraction", &Hierarchy::Bernstein)
       .def("_bezier_geometry", &Hierarchy::BezierGeometry)
       .def("_to_bspline", &Hierarchy::ToBSpline)
-      .def("_proximities", &Hierarchy::Proximities)
+      .def("_proximities",
+           &Hierarchy::Proximities,
+           nb::arg("queries"),
+           nb::arg("resolutions"),
+           nb::arg("max_starts"),
+           nb::arg("tolerance"),
+           nb::arg("max_iterations"),
+           nb::arg("nthreads"),
+           nb::arg("out"))
       .def("_is_admissible", &Hierarchy::IsAdmissible)
       .def("_admissible_closure", &Hierarchy::Closure)
       .def("_refine", &Hierarchy::Refine)
